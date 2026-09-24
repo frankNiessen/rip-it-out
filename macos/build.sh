@@ -120,7 +120,14 @@ if [[ $MAKE_DMG == 1 ]]; then
   ditto "$APP" "$DMG_STAGE/$APP_NAME.app"
   ln -s /Applications "$DMG_STAGE/Applications"
   echo "==> Creating $DMG"
-  hdiutil create -quiet -volname "$APP_NAME" -srcfolder "$DMG_STAGE" -fs HFS+ -format ULMO "$DMG"
+  # hdiutil sometimes fails with "Resource busy" while macOS still scans the fresh
+  # files (common on CI runners). Retrying after a pause fixes it.
+  for attempt in 1 2 3 4; do
+    if hdiutil create -volname "$APP_NAME" -srcfolder "$DMG_STAGE" -fs HFS+ -format ULMO "$DMG"; then break; fi
+    [[ $attempt == 4 ]] && { echo "Creating the DMG failed"; exit 1; }
+    echo "hdiutil failed (attempt $attempt), retrying in 20 s"
+    rm -f "$DMG"; sleep 20
+  done
   rm -rf "$DMG_STAGE"
   if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
     codesign --force --timestamp --sign "$CODESIGN_IDENTITY" "$DMG"
