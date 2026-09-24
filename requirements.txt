@@ -1,0 +1,27 @@
+# Web server
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart  # take uploads
+
+# YouTube
+# yt-dlp and its optional helpers, without mutagen (GPL, only used for tagging files)
+yt-dlp
+yt-dlp-ejs
+brotli
+certifi
+pycryptodomex
+requests
+urllib3
+websockets
+
+# Audio I/O and click rendering
+numpy
+soundfile
+mido
+scipy  # electronic-style cleanup, take resampling and video sync
+
+# Separation (pulls in torch)
+demucs==4.0.1
+
+# Beat tracking
+beat_this @ https://github.com/CPJKU/beat_this/archive/main.zip

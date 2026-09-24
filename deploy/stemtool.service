@@ -1,0 +1,20 @@
+# Linux: run the engine as a systemd user service (headless, UI in the browser).
+#   1. Adjust the two paths below to where you cloned the repository.
+#   2. cp deploy/stemtool.service ~/.config/systemd/user/
+#   3. systemctl --user daemon-reload && systemctl --user enable --now stemtool
+#   4. Open http://localhost:8765 and pick the library folder under Settings.
+#   loginctl enable-linger $USER keeps it running when you are logged out.
+[Unit]
+Description=Rip It Out (drum stems, click tracks, play-along recording)
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/rip-it-out
+# Deno must be on PATH for yt-dlp's YouTube support
+Environment=PATH=%h/.deno/bin:/usr/local/bin:/usr/bin
+# localhost only: browsers allow recording only on localhost or HTTPS anyway
+ExecStart=%h/rip-it-out/.venv/bin/uvicorn stemtool.server:app --host 127.0.0.1 --port 8765
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>Rip It Out</title>
+<style>
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: grid; place-items: center; color: #e4f6e6; font: 16px/1.5 -apple-system, system-ui, sans-serif;
+    background:
+      radial-gradient(ellipse 60% 45% at 50% 40%, rgba(150, 230, 60, .16), transparent 70%),
+      linear-gradient(rgba(120, 200, 140, .05) 1px, transparent 1px) 0 0 / 32px 32px,
+      linear-gradient(90deg, rgba(120, 200, 140, .05) 1px, transparent 1px) 0 0 / 32px 32px,
+      #070b10;
+    -webkit-user-select: none; user-select: none;
+  }
+  main { text-align: center; max-width: 34rem; padding: 2rem; }
+  h1 { margin: 0 0 1rem; font-size: 3rem; letter-spacing: -.02em; color: #c6f432; text-shadow: 0 0 18px rgba(170, 245, 60, .45); }
+  .msg { font-size: 1.15rem; font-weight: 600; }
+  .detail { color: #7f9c98; font-size: .92rem; -webkit-user-select: text; user-select: text; overflow-wrap: anywhere; }
+  .error .msg { color: #ff5d6c; }
+  .pulse { width: .7rem; height: .7rem; border-radius: 50%; background: #c6f432; margin: 1.5rem auto 0;
+    box-shadow: 0 0 14px #c6f432; animation: pulse 1s infinite; }
+  .error .pulse { display: none; }
+  @keyframes pulse { 50% { opacity: .25; } }
+</style>
+</head>
+<body>
+<main id="box">
+  <h1>Rip It Out</h1>
+  <div class="msg" id="msg"></div>
+  <div class="detail" id="detail"></div>
+  <div class="pulse"></div>
+</main>
+<script>
+  const q = new URLSearchParams(location.search);
+  document.getElementById("msg").textContent = q.get("message") || "";
+  document.getElementById("detail").textContent = q.get("detail") || "";
+  if (q.get("error")) document.getElementById("box").classList.add("error");
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "rip-it-out",
+  "productName": "Rip It Out",
+  "version": "0.2.0",
+  "description": "Rip the drums out of songs, play along with a click and record yourself.",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "electron": "44.4.5"
+  }
+}

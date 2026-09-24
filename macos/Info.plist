@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the Electron app's Info.plist by desktop/package.mjs. -->
+<plist version="1.0">
+<dict>
+  <key>LSMinimumSystemVersion</key><string>13.0</string>
+  <key>NSMicrophoneUsageDescription</key><string>Rip It Out records your drums from your audio interface while you play along.</string>
+  <key>NSCameraUsageDescription</key><string>Rip It Out can film you while you play along, to watch or share the take later.</string>
+  <key>NSHumanReadableCopyright</key><string>MIT License. Bundled components keep their own licenses (Contents/Resources/licenses).</string>
+</dict>
+</plist>

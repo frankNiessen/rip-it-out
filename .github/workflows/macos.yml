@@ -1,0 +1,98 @@
+# Builds the macOS app and DMG on an Apple Silicon runner.
+#
+# - Every push to main and every pull request: build, keep the DMG as a
+#   workflow artifact for 14 days.
+# - A tag like v0.2.0: build and attach the DMG to a GitHub release.
+#
+# Signing and notarization happen only when these repository secrets exist
+# (Settings > Secrets and variables > Actions). Without them the DMG is signed
+# ad hoc; see the README for opening such an app.
+#   MACOS_CERT_P12          base64 of your "Developer ID Application" .p12
+#   MACOS_CERT_PASSWORD     password of that .p12
+#   MACOS_SIGN_IDENTITY     e.g. "Developer ID Application: Your Name (TEAMID)"
+#   APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD   for notarization (app-specific password)
+name: macOS app
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write  # to create releases on tags
+
+jobs:
+  build:
+    runs-on: macos-15  # Apple Silicon
+    timeout-minutes: 60
+    env:
+      MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Cache ffmpeg build
+        uses: actions/cache@v4
+        with:
+          path: build/ffmpeg-*
+          key: ffmpeg-${{ hashFiles('macos/build_ffmpeg.sh', 'macos/build.sh') }}
+
+      - name: Import signing certificate
+        if: env.MACOS_CERT_P12 != ''
+        env:
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          echo "CODESIGN_IDENTITY=${{ secrets.MACOS_SIGN_IDENTITY }}" >> "$GITHUB_ENV"
+
+      - name: Store notarization credentials
+        if: env.MACOS_CERT_P12 != '' && env.APPLE_ID != ''
+        run: |
+          xcrun notarytool store-credentials ripitout-notary \
+            --apple-id "$APPLE_ID" --team-id "${{ secrets.APPLE_TEAM_ID }}" \
+            --password "${{ secrets.APPLE_APP_PASSWORD }}"
+          echo "NOTARY_PROFILE=ripitout-notary" >> "$GITHUB_ENV"
+
+      - name: Build app and DMG
+        run: macos/build.sh
+
+      - name: Smoke test the bundled engine
+        run: |
+          RES="dist/Rip It Out.app/Contents/Resources"
+          "$RES/python/bin/python3" -c \
+            "import torch, demucs.pretrained, beat_this.inference, yt_dlp, stemtool.server; print('imports ok')"
+          "$RES/bin/ffmpeg" -hide_banner -encoders | grep -q h264_videotoolbox
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RipItOut-dmg
+          path: dist/*.dmg
+          retention-days: 14
+
+      - name: Attach DMG to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.dmg
+          generate_release_notes: true

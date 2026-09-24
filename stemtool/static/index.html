@@ -1,0 +1,1509 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rip It Out</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --paper: #070b10;
+    --surface: rgba(16, 27, 30, .78);
+    --surface-solid: #0f1a1d;
+    --line: #22363a;
+    --ink: #e4f6e6;
+    --muted: #7f9c98;
+    --accent: #c6f432;       /* lime, the glowing core */
+    --on-accent: #0a1204;
+    --brass: #c6f432;        /* counts, bpm, playhead */
+    --beat: #3ee88a;         /* tempo line, links */
+    --edge: #c69cf5;         /* lilac rim of the glass panels */
+    --glow: 0 0 18px rgba(170, 245, 60, .35);
+    --fail: #ff5d6c;
+    --focus: #c6f432;
+    --rec: #ff3d6e;
+    --ok: #6ee07a;
+    --body: "Barlow", system-ui, sans-serif;
+    --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; color: var(--ink); font: 16px/1.5 var(--body);
+    background:
+      radial-gradient(ellipse 60% 45% at 70% 35%, rgba(150, 230, 60, .13), transparent 70%),
+      radial-gradient(ellipse 50% 40% at 10% 90%, rgba(62, 232, 138, .08), transparent 70%),
+      linear-gradient(rgba(120, 200, 140, .05) 1px, transparent 1px) 0 0 / 32px 32px,
+      linear-gradient(90deg, rgba(120, 200, 140, .05) 1px, transparent 1px) 0 0 / 32px 32px,
+      var(--paper);
+    background-attachment: fixed;
+  }
+  a { color: var(--accent); }
+  button, input, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+
+  header {
+    display: flex; flex-wrap: wrap; align-items: flex-end; gap: .5rem 2rem;
+    padding: 1.25rem clamp(1rem, 4vw, 3rem) 0; border-bottom: 2px solid var(--accent);
+    box-shadow: 0 6px 24px -12px rgba(198, 244, 50, .6);
+  }
+  h1 { color: var(--accent); text-shadow: var(--glow); margin: 0 0 .6rem; font: 700 2.4rem/1 var(--display); letter-spacing: -.01em; }
+  nav { display: flex; gap: .25rem; }
+  nav button {
+    all: unset; cursor: pointer; padding: .45rem 1.1rem .35rem; font: 600 1.25rem/1.2 var(--display);
+    color: var(--muted); border: 1px solid transparent; border-bottom: none; border-radius: 4px 4px 0 0;
+  }
+  nav button:hover { color: var(--ink); }
+  nav button[aria-selected="true"] { color: var(--on-accent); background: var(--accent); border-color: var(--accent); box-shadow: var(--glow); }
+  nav button:focus-visible { outline: 2px solid var(--focus); }
+  header .status { margin: 0 0 .7rem auto; color: var(--muted); font-size: .85rem; overflow-wrap: anywhere; }
+
+  .tab { padding: 1.5rem clamp(1rem, 4vw, 3rem) 3rem; }
+  .lib-grid { display: grid; grid-template-columns: minmax(18rem, 26rem) 1fr; gap: 2rem; align-items: start; }
+  @media (max-width: 860px) { .lib-grid { grid-template-columns: 1fr; } }
+  h2 { margin: 0 0 .75rem; font: 600 1.5rem/1.1 var(--display); }
+  h3 { margin: 0 0 .5rem; font: 600 1.15rem/1.1 var(--display); }
+  section + section { margin-top: 2rem; }
+
+  .field { display: flex; flex-direction: column; gap: .2rem; font-size: .88rem; color: var(--muted); }
+  .field > span { font-weight: 500; }
+  input[type=url], input[type=text], input[type=search], input[type=number], select {
+    min-width: 0; padding: .5rem .65rem; background: var(--surface-solid); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 4px; font-size: 1rem;
+  }
+  #add { display: grid; gap: .6rem; }
+  #add .row { display: flex; gap: .5rem; }
+  #add .row > * { flex: 1; }
+  .btn {
+    padding: .55rem 1rem; border: 1px solid var(--accent); border-radius: 4px;
+    background: var(--accent); color: var(--on-accent); font-weight: 600; cursor: pointer; white-space: nowrap;
+    box-shadow: var(--glow); transition: box-shadow .15s, border-color .15s;
+  }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btn.quiet { background: transparent; color: var(--ink); border-color: var(--line); font-weight: 500; padding: .3rem .7rem; font-size: .9rem; }
+  .btn.quiet { box-shadow: none; }
+  .btn.quiet:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .btn.danger { color: var(--fail); }
+  .btn.rec { background: var(--rec); border-color: var(--rec); color: #fff; box-shadow: 0 0 18px rgba(255, 61, 110, .45); display: inline-flex; align-items: center; gap: .45rem; }
+  .btn.rec::before { content: ""; width: .7rem; height: .7rem; border-radius: 50%; background: currentColor; }
+  .btn.rec.on::before { border-radius: 2px; }
+  .note { margin: .6rem 0 0; font-size: .92rem; color: var(--muted); min-height: 1.4em; }
+  .note.error { color: var(--fail); }
+  .empty { color: var(--muted); padding: .75rem 0; margin: 0; }
+
+  .queue { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+  .queue li { padding: .6rem 0; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 1fr auto; gap: .15rem .75rem; }
+  .queue .title { font-weight: 500; overflow-wrap: anywhere; }
+  .queue .state { grid-column: 1; font-size: .88rem; color: var(--muted); }
+  .queue .actions { grid-row: 1 / span 2; grid-column: 2; display: flex; gap: .35rem; align-self: center; }
+  .queue li.running .state { color: var(--beat); font-weight: 600; }
+  .queue li.running .state::before {
+    content: ""; display: inline-block; width: .5rem; height: .5rem; margin-right: .4rem;
+    border-radius: 50%; background: var(--beat); animation: pulse 1s infinite;
+  }
+  .queue li.failed .state { color: var(--fail); }
+  .queue li.done .state { color: var(--ok); }
+  @keyframes pulse { 50% { opacity: .2; } }
+  @media (prefers-reduced-motion: reduce) { .queue li.running .state::before, .recording-dot { animation: none !important; } }
+  .head { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
+  .head .actions { display: flex; gap: .35rem; }
+
+  .lib-tools { display: flex; gap: .5rem; margin-bottom: .75rem; }
+  .lib-tools input { flex: 1; }
+  .selbar {
+    position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem;
+    padding: .6rem .75rem; margin-bottom: .75rem; background: rgba(198, 244, 50, .12); color: var(--ink); border: 1px solid var(--accent); border-radius: 4px;
+    backdrop-filter: blur(8px); box-shadow: var(--glow);
+  }
+  .selbar .grp { display: flex; gap: .35rem; align-items: center; }
+  .selbar input { padding: .3rem .5rem; font-size: .9rem; width: 11rem; }
+  .selbar .btn.quiet { color: var(--ink); border-color: var(--line); }
+  .group { border-top: 1px solid rgba(198, 244, 50, .45); margin-bottom: 1.25rem; }
+  .group > summary {
+    cursor: pointer; list-style: none; display: flex; align-items: baseline; gap: .6rem; padding: .5rem .25rem;
+    font: 600 1.2rem/1.2 var(--display);
+  }
+  .group > summary::-webkit-details-marker { display: none; }
+  .group > summary::before { content: "▸"; font-size: .9rem; color: var(--muted); transition: transform .15s; }
+  .group[open] > summary::before { transform: rotate(90deg); }
+  .group > summary small { font: 500 .85rem var(--body); color: var(--muted); }
+  .song {
+    display: grid; grid-template-columns: auto 1fr auto auto auto; gap: .5rem 1rem; align-items: center;
+    padding: .55rem .25rem; border-top: 1px solid var(--line);
+  }
+  .song:hover { background: rgba(198, 244, 50, .05); }
+  .song input[type=checkbox] { width: 1.05rem; height: 1.05rem; accent-color: var(--accent); }
+  .song .name { font-weight: 600; overflow-wrap: anywhere; cursor: pointer; }
+  .song .artist { display: block; font-weight: 400; color: var(--muted); font-size: .9rem; }
+  .song .tags { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .15rem; }
+  .tag { font: 600 .72rem/1.5 var(--body); text-transform: uppercase; letter-spacing: .04em; padding: 0 .4rem; border-radius: 3px; border: 1px solid var(--line); color: var(--muted); }
+  .tag.warn { border-color: #ffb347; color: #ffb347; }
+  .tag.elec { border-color: var(--beat); color: var(--beat); }
+  .song .bpm { font: 600 1.5rem/1 var(--display); color: var(--brass); text-align: right; min-width: 4.5ch; }
+  .song .bpm small { font: 500 .75rem var(--body); color: var(--muted); margin-left: .15rem; }
+  .song .len { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 4ch; text-align: right; }
+  .song .go { display: flex; gap: .3rem; }
+  @media (max-width: 600px) {
+    .song { grid-template-columns: auto 1fr auto; }
+    .song .len { display: none; }
+    .song .go { grid-column: 2 / -1; }
+  }
+
+  /* ---- Play and Record ---- */
+  .songbar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; margin-bottom: 1.25rem; }
+  .songbar select { flex: 1; min-width: 14rem; max-width: 40rem; font-weight: 600; }
+  .songbar .meta { color: var(--muted); font-size: .9rem; }
+  .deck, .setup {
+    background: var(--surface); border: 1px solid rgba(198, 156, 245, .35); border-radius: 8px;
+    backdrop-filter: blur(10px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05), 0 0 0 1px rgba(62, 232, 138, .06), 0 18px 40px -20px rgba(0, 0, 0, .8);
+  }
+  .deck { padding: 1rem; }
+  .deck-top { display: grid; grid-template-columns: 9.5rem 1fr; gap: 1rem; }
+  @media (max-width: 600px) { .deck-top { grid-template-columns: 1fr; } }
+  .counter {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .3rem;
+    border: 2px solid var(--line); border-radius: 6px; padding: .5rem; min-height: 9.5rem; transition: background-color .08s;
+  }
+  .counter .num { font: 700 4.2rem/1 var(--display); font-variant-numeric: tabular-nums; }
+  .counter .label { font-size: .85rem; color: var(--muted); font-weight: 500; }
+  .counter .dots { display: flex; gap: .3rem; }
+  .counter .dots i { width: .7rem; height: .7rem; border-radius: 50%; background: var(--line); }
+  .counter .dots i.on { background: var(--beat); box-shadow: 0 0 8px var(--beat); }
+  .counter .dots i.down.on { background: var(--brass); }
+  .counter.counting { border-color: var(--brass); }
+  .counter.counting .num { color: var(--brass); }
+  .counter.flash { background: rgba(62, 232, 138, .14); }
+  .counter.counting { box-shadow: var(--glow); }
+  .counter.counting.flash { background: var(--brass); }
+  .counter.counting.flash .num, .counter.counting.flash .label { color: var(--on-accent); }
+  .counter.counting.flash .dots i { background: rgba(10, 18, 4, .3); box-shadow: none; }
+  .counter.counting.flash .dots i.on { background: var(--on-accent); }
+  .timeline { position: relative; height: 9.5rem; border: 1px solid var(--line); border-radius: 4px; cursor: pointer; background: rgba(4, 8, 10, .75); }
+  .timeline canvas { width: 100%; height: 100%; display: block; }
+  .caption { display: flex; justify-content: space-between; gap: 1rem; font-size: .85rem; color: var(--muted); margin: .35rem 0 .9rem; font-variant-numeric: tabular-nums; }
+  .transport { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem 1rem; }
+  .transport label { display: flex; align-items: center; gap: .4rem; font-size: .92rem; }
+  .transport select { padding: .3rem .5rem; font-size: .92rem; }
+  .mixer { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.5rem; margin-top: 1rem; padding-top: .9rem; border-top: 1px solid var(--line); }
+  .mixer label { display: flex; align-items: center; gap: .5rem; font-size: .92rem; }
+  .mixer label.mine { font-weight: 600; }
+  .mixer input[type=range] { width: 7rem; accent-color: var(--accent); }
+  .mixer .src { font-size: .88rem; color: var(--muted); margin-left: auto; }
+  .mixer .src a { color: inherit; }
+  .recstate { font-weight: 600; color: var(--rec); display: flex; align-items: center; gap: .4rem; }
+  .recording-dot { width: .65rem; height: .65rem; border-radius: 50%; background: var(--rec); animation: pulse 1s infinite; }
+  .hint { font-size: .85rem; color: var(--muted); }
+
+  .setup { margin-bottom: 1.25rem; }
+  .setup > summary { cursor: pointer; padding: .7rem 1rem; font: 600 1.15rem/1.2 var(--display); display: flex; gap: .75rem; align-items: baseline; flex-wrap: wrap; }
+  .setup > summary small { font: 400 .88rem var(--body); color: var(--muted); }
+  .setup-body { padding: 0 1rem 1rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem 1.5rem; }
+  .meter { height: .5rem; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: .35rem; }
+  .meter i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .05s; }
+  .meter i.hot { background: var(--fail); }
+  .latency { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+  .latency input { width: 5.5rem; }
+  .setup .explain { grid-column: 1 / -1; margin: 0; font-size: .88rem; color: var(--muted); }
+
+  .rec-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(16rem, 24rem); gap: 1.5rem; margin-top: 1.5rem; align-items: start; }
+  @media (max-width: 900px) { .rec-grid { grid-template-columns: 1fr; } }
+  .videobox { background: #04070a; border: 1px solid rgba(198, 156, 245, .3); border-radius: 6px; aspect-ratio: 16 / 9; display: grid; place-items: center; overflow: hidden; color: #8a97a3; font-size: .9rem; }
+  .videobox video { width: 100%; height: 100%; object-fit: contain; }
+  .takes { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+  .takes li { border-bottom: 1px solid var(--line); }
+  .takes li > button { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; padding: .55rem .4rem; display: flex; justify-content: space-between; gap: .75rem; }
+  .takes li > button:hover { background: rgba(198, 244, 50, .06); }
+  .takes li > button:focus-visible { outline: 2px solid var(--focus); }
+  .takes li.sel > button { background: var(--accent); color: var(--on-accent); box-shadow: var(--glow); }
+  .takes .when { font-weight: 600; }
+  .takes .info { font-size: .85rem; opacity: .75; font-variant-numeric: tabular-nums; }
+  .take-panel { margin-top: 1rem; display: grid; gap: .9rem; }
+  .take-panel .row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+  .take-panel label { display: flex; align-items: center; gap: .5rem; font-size: .92rem; }
+  .take-panel input[type=range] { width: 9rem; accent-color: var(--accent); }
+  .take-panel output { font-variant-numeric: tabular-nums; min-width: 5ch; }
+  .take-panel a { color: var(--accent); font-weight: 600; }
+  .settings { max-width: 48rem; }
+  .lib-form { display: flex; gap: .5rem; flex-wrap: wrap; }
+  .lib-form input { flex: 1; min-width: 16rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .92rem; }
+  .about { display: grid; grid-template-columns: max-content 1fr; gap: .35rem 1.5rem; margin: 0; }
+  .about dt { color: var(--muted); }
+  .about dd { margin: 0; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Rip It Out</h1>
+  <nav role="tablist" aria-label="Sections">
+    <button role="tab" id="t-library" aria-controls="tab-library" aria-selected="true">Library</button>
+    <button role="tab" id="t-play" aria-controls="tab-play" aria-selected="false">Play</button>
+    <button role="tab" id="t-record" aria-controls="tab-record" aria-selected="false">Record</button>
+    <button role="tab" id="t-settings" aria-controls="tab-settings" aria-selected="false">Settings</button>
+  </nav>
+  <p class="status" id="status">Connecting…</p>
+</header>
+
+<!-- ======================= Library ======================= -->
+<main class="tab" id="tab-library" role="tabpanel" aria-labelledby="t-library">
+  <div class="lib-grid">
+    <div>
+      <section>
+        <h2>Add songs</h2>
+        <form id="add">
+          <input id="url" type="url" required placeholder="YouTube playlist or video link" aria-label="YouTube playlist or video link">
+          <div class="row">
+            <label class="field"><span>Group</span>
+              <input id="add-group" type="text" list="group-names" placeholder="Playlist name">
+            </label>
+            <label class="field"><span>Music style</span>
+              <select id="add-style">
+                <option value="standard">Band (rock, pop, funk)</option>
+                <option value="electronic">Electronic (DnB, EDM)</option>
+              </select>
+            </label>
+          </div>
+          <button class="btn" id="add-btn">Add</button>
+        </form>
+        <p class="note" id="add-note" aria-live="polite"></p>
+      </section>
+
+      <section>
+        <div class="head">
+          <h2>Queue</h2>
+          <span class="actions">
+            <button class="btn quiet danger" id="stop-all" hidden>Stop all</button>
+            <button class="btn quiet" id="clear" hidden>Clear finished</button>
+          </span>
+        </div>
+        <ul class="queue" id="queue"></ul>
+      </section>
+    </div>
+
+    <section>
+      <h2 id="lib-title">Library</h2>
+      <div class="lib-tools">
+        <input id="search" type="search" placeholder="Search title or artist" aria-label="Search the library">
+      </div>
+      <div class="selbar" id="selbar" hidden>
+        <strong id="sel-count"></strong>
+        <span class="grp">
+          <input id="sel-group" type="text" list="group-names" placeholder="Group name" aria-label="Group name">
+          <button class="btn quiet" id="sel-move">Move to group</button>
+        </span>
+        <span class="grp">
+          Redo separation as
+          <button class="btn quiet" data-redo="electronic">Electronic</button>
+          <button class="btn quiet" data-redo="standard">Band</button>
+        </span>
+        <button class="btn quiet" id="sel-clear">Clear selection</button>
+      </div>
+      <div id="songs"></div>
+      <datalist id="group-names"></datalist>
+    </section>
+  </div>
+</main>
+
+<!-- ======================= Play ======================= -->
+<main class="tab" id="tab-play" role="tabpanel" aria-labelledby="t-play" hidden>
+  <div class="songbar">
+    <select class="song-pick" aria-label="Song"></select>
+    <span class="meta"></span>
+  </div>
+  <div id="play-deck"></div>
+</main>
+
+<!-- ======================= Record ======================= -->
+<main class="tab" id="tab-record" role="tabpanel" aria-labelledby="t-record" hidden>
+  <div class="songbar">
+    <select class="song-pick" aria-label="Song"></select>
+    <span class="meta"></span>
+  </div>
+
+  <details class="setup" id="setup">
+    <summary>Setup <small id="setup-summary">Pick your drum module as input</small></summary>
+    <div class="setup-body">
+      <div id="setup-enable">
+        <p class="hint" style="margin-top:0">The browser needs permission to use your audio interface (and camera).</p>
+        <button class="btn" id="enable-input">Allow input</button>
+      </div>
+      <p class="note error" id="insecure" hidden style="grid-column: 1 / -1; margin: 0">
+        Browsers only allow audio input and camera on localhost or HTTPS, not on this address.
+        Open <a id="local-link" href="#"></a> on the computer running Rip It Out to record.
+      </p>
+      <label class="field" data-needs-input><span>Drums input</span>
+        <select id="in-dev"></select>
+        <div class="meter" aria-hidden="true"><i id="meter"></i></div>
+      </label>
+      <label class="field" data-needs-input><span>Camera</span>
+        <select id="cam-dev"></select>
+      </label>
+      <label class="field" data-needs-input id="out-field"><span>Headphone output</span>
+        <select id="out-dev"></select>
+      </label>
+      <div class="field" data-needs-input><span>Latency compensation</span>
+        <div class="latency">
+          <input id="latency" type="number" min="0" max="500" step="1" aria-label="Latency in milliseconds"> ms
+          <button class="btn quiet" id="calibrate">Calibrate</button>
+        </div>
+        <span id="lat-note"></span>
+      </div>
+      <p class="explain" data-needs-input>
+        You hear your live kit directly through the module, so the computer doesn't play your input back.
+        Turn off any USB loopback on the module, or the backing track ends up in your recording.
+        Calibrate plays 20 clicks: listen to the first 4, then hit a pad exactly with the rest.
+      </p>
+    </div>
+  </details>
+
+  <div id="rec-deck"></div>
+
+  <div class="rec-grid">
+    <div>
+      <div class="videobox" id="videobox"><span id="video-msg">No camera selected</span><video id="video" playsinline muted hidden></video></div>
+    </div>
+    <section style="margin-top:0">
+      <h2>Takes</h2>
+      <ul class="takes" id="takes"></ul>
+      <div class="take-panel" id="take-panel" hidden></div>
+    </section>
+  </div>
+</main>
+
+<!-- ======================= Settings ======================= -->
+<main class="tab" id="tab-settings" role="tabpanel" aria-labelledby="t-settings" hidden>
+  <section class="settings">
+    <h2>Library folder</h2>
+    <p class="hint">Every song gets its own folder in here (stems, click, takes). Pick a synced folder
+      (Nextcloud, iCloud Drive, Dropbox) to have the library on your other devices too.</p>
+    <form id="lib-form" class="lib-form">
+      <input id="lib-path" type="text" spellcheck="false" aria-label="Library folder">
+      <button type="button" class="btn quiet" id="lib-choose" hidden>Choose…</button>
+      <button class="btn" id="lib-save">Use this folder</button>
+    </form>
+    <p class="note" id="lib-note" aria-live="polite"></p>
+
+    <h2 style="margin-top:2rem">About</h2>
+    <dl class="about" id="about"></dl>
+  </section>
+</main>
+
+<script>
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtTime = (s) => { s = Math.max(0, Math.round(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+const fileUrl = (folder, ...parts) => `/files/${[folder, ...parts].map(encodeURIComponent).join("/")}`;
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("stemtool." + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("stemtool." + k, JSON.stringify(v)); } catch {} },
+};
+
+async function api(path, opts = {}) {
+  const isForm = opts.body instanceof FormData;
+  const res = await fetch(path, { headers: isForm ? {} : { "Content-Type": "application/json" }, ...opts });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(typeof body.detail === "string" ? body.detail : `Request failed (${res.status})`);
+  return body;
+}
+
+// ---- tabs -----------------------------------------------------------------
+let activeTab = "library";
+function showTab(name) {
+  if (name === activeTab) return;
+  if (recording) return; // don't leave a take half recorded
+  engine.pause();
+  activeTab = name;
+  for (const t of ["library", "play", "record", "settings"]) {
+    $(`#t-${t}`).setAttribute("aria-selected", String(t === name));
+    $(`#tab-${t}`).hidden = t !== name;
+  }
+  store.set("tab", name);
+  if (name === "play") decks.play.activate();
+  if (name === "record") { decks.record.activate(); onRecordTab(); }
+  if (name === "settings") loadSettings();
+}
+$$("nav button").forEach((b) => b.addEventListener("click", () => showTab(b.id.slice(2))));
+
+// ---- status and settings ----------------------------------------------------
+const desktop = window.ripitout || null; // set by the desktop app (Electron preload)
+function showStatus(s) { $("#status").textContent = `${s.library_dir}  ·  ${s.separation_model} on ${s.device}`; }
+api("/api/status").then(showStatus).catch(() => { $("#status").textContent = "Server not reachable"; });
+
+async function loadSettings() {
+  const s = await api("/api/status");
+  $("#lib-path").value = s.library_dir;
+  $("#lib-path").readOnly = s.library_locked;
+  $("#lib-save").disabled = s.library_locked;
+  $("#lib-choose").hidden = !desktop || s.library_locked;
+  $("#lib-note").className = "note";
+  $("#lib-note").textContent = s.library_locked ? "Set by the STEMTOOL_LIBRARY environment variable, change it there." : "";
+  $("#about").innerHTML = [
+    ["Version", s.version], ["Separation model", s.separation_model], ["Device", s.device],
+    ["Settings file", s.config_file],
+  ].map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("");
+}
+$("#lib-choose").addEventListener("click", async () => {
+  const chosen = await desktop.chooseFolder($("#lib-path").value);
+  if (chosen) { $("#lib-path").value = chosen; $("#lib-form").requestSubmit(); }
+});
+$("#lib-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (recording) return;
+  const note = $("#lib-note");
+  note.className = "note"; note.textContent = "Switching…";
+  try {
+    const s = await api("/api/settings", { method: "PUT", body: JSON.stringify({ library_dir: $("#lib-path").value }) });
+    engine.stop(); current = null; loadingFolder = null; unloadTake();
+    Object.values(decks).forEach((d) => d.clear());
+    $$(".songbar .meta").forEach((el) => { el.textContent = ""; });
+    store.set("song", null);
+    showStatus(s); await refreshLibrary(); refreshJobs();
+    $("#lib-path").value = s.library_dir;
+    note.textContent = `Library switched. ${songs.length} ${songs.length === 1 ? "song" : "songs"} found.`;
+  } catch (err) { note.className = "note error"; note.textContent = err.message; }
+});
+
+// ---- add ------------------------------------------------------------------
+$("#add").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = $("#add-btn"), note = $("#add-note");
+  btn.disabled = true; note.className = "note"; note.textContent = "Reading the playlist…";
+  const group = $("#add-group").value.trim();
+  try {
+    const r = await api("/api/submit", { method: "POST", body: JSON.stringify({
+      url: $("#url").value, style: $("#add-style").value, group: group || null }) });
+    const parts = [`${r.added} added to the queue`];
+    if (r.already_in_library) parts.push(`${r.already_in_library} already in your library`);
+    if (r.already_queued) parts.push(`${r.already_queued} already queued`);
+    note.textContent = `Found ${r.found} ${r.found === 1 ? "song" : "songs"}: ${parts.join(", ")}.` + (r.group ? ` Group: ${r.group}.` : "");
+    if (r.added) $("#url").value = "";
+    refreshJobs();
+  } catch (err) {
+    note.className = "note error"; note.textContent = err.message;
+  } finally { btn.disabled = false; }
+});
+
+// ---- queue ----------------------------------------------------------------
+let doneCount = -1;
+async function refreshJobs() {
+  let jobs;
+  try { jobs = await api("/api/jobs"); } catch { return; }
+  const list = $("#queue");
+  if (!jobs.length) {
+    list.innerHTML = `<p class="empty">Nothing waiting. Add a playlist to start.</p>`;
+  } else {
+    const order = { running: 0, queued: 1, failed: 2, done: 3 };
+    jobs.sort((a, b) => order[a.status] - order[b.status] || a.added_at - b.added_at);
+    list.innerHTML = jobs.map((j) => {
+      const style = j.style === "electronic" ? " · electronic" : "";
+      const state = { queued: `Waiting${style}`, running: j.stage + style, done: j.reseparate ? "Separation redone" : "Added to library", failed: `Failed: ${j.error}` }[j.status];
+      const id = esc(j.video_id);
+      const actions = [
+        j.status === "running" ? `<button class="btn quiet danger" data-stop="${id}">Stop</button>` : "",
+        j.status === "failed" ? `<button class="btn quiet" data-retry="${id}">Retry</button>` : "",
+        j.status !== "running" ? `<button class="btn quiet" data-remove="${id}" aria-label="Remove ${esc(j.title)}">Remove</button>` : "",
+      ].join("");
+      return `<li class="${j.status}"><span class="title">${esc(j.title)}</span><span class="state">${esc(state)}</span><span class="actions">${actions}</span></li>`;
+    }).join("");
+  }
+  $("#clear").hidden = !jobs.some((j) => j.status === "done" || j.status === "failed");
+  $("#stop-all").hidden = !jobs.some((j) => j.status === "running" || j.status === "queued");
+  const done = jobs.filter((j) => j.status === "done").length;
+  if (done !== doneCount) { doneCount = done; refreshLibrary(); }
+}
+$("#queue").addEventListener("click", async (e) => {
+  const { retry, remove, stop } = e.target.dataset;
+  try {
+    if (retry) await api(`/api/jobs/${encodeURIComponent(retry)}/retry`, { method: "POST" });
+    if (remove) await api(`/api/jobs/${encodeURIComponent(remove)}`, { method: "DELETE" });
+    if (stop) { e.target.disabled = true; await api(`/api/jobs/${encodeURIComponent(stop)}/stop`, { method: "POST" }); }
+  } catch (err) { alert(err.message); }
+  refreshJobs();
+});
+$("#clear").addEventListener("click", async () => { await api("/api/jobs/clear", { method: "POST" }); refreshJobs(); });
+$("#stop-all").addEventListener("click", async () => {
+  if (!confirm("Stop the song being processed and remove everything waiting in the queue?")) return;
+  await api("/api/jobs/stop-all", { method: "POST" }); refreshJobs();
+});
+
+// ---- library --------------------------------------------------------------
+let songs = [];
+const selected = new Set();
+const collapsed = new Set(store.get("collapsed", []));
+const UNGROUPED = "Ungrouped";
+const HEAVY = 0.55; // drums stem holding more than this share of the mix usually means basses went in there
+
+async function refreshLibrary() {
+  try { songs = await api("/api/library"); } catch { return; }
+  for (const f of [...selected]) if (!songs.some((s) => s.folder === f)) selected.delete(f);
+  $("#lib-title").textContent = songs.length ? `Library (${songs.length})` : "Library";
+  const groups = [...new Set(songs.map((s) => s.group).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  $("#group-names").innerHTML = groups.map((g) => `<option value="${esc(g)}">`).join("");
+  renderLibrary();
+  fillSongPickers();
+}
+
+function renderLibrary() {
+  const box = $("#songs");
+  if (!songs.length) { box.innerHTML = `<p class="empty">Finished songs appear here.</p>`; updateSelbar(); return; }
+  const q = $("#search").value.trim().toLowerCase();
+  const shown = songs.filter((s) => !q || `${s.title} ${s.artist || ""}`.toLowerCase().includes(q));
+  const byGroup = new Map();
+  for (const s of shown) {
+    const g = s.group || UNGROUPED;
+    if (!byGroup.has(g)) byGroup.set(g, []);
+    byGroup.get(g).push(s);
+  }
+  const names = [...byGroup.keys()].sort((a, b) => (a === UNGROUPED) - (b === UNGROUPED) || a.localeCompare(b));
+  box.innerHTML = names.map((g) => {
+    const list = byGroup.get(g).sort((a, b) => a.title.localeCompare(b.title));
+    return `<details class="group" data-group="${esc(g)}" ${collapsed.has(g) && !q ? "" : "open"}>
+      <summary>${esc(g)} <small>${list.length} ${list.length === 1 ? "song" : "songs"}</small></summary>
+      ${list.map(songRow).join("")}
+    </details>`;
+  }).join("") || `<p class="empty">No song matches.</p>`;
+  updateSelbar();
+}
+
+function songRow(s) {
+  const tags = [];
+  if (s.style === "electronic") tags.push(`<span class="tag elec">Electronic</span>`);
+  else if (s.drum_share > HEAVY) tags.push(`<span class="tag warn" title="Most of the mix ended up in the drums stem. Redo the separation as Electronic.">Drums ${Math.round(s.drum_share * 100)}% of mix</span>`);
+  if (s.takes) tags.push(`<span class="tag">${s.takes} ${s.takes === 1 ? "take" : "takes"}</span>`);
+  const f = esc(s.folder);
+  return `<div class="song" data-folder="${f}">
+    <input type="checkbox" data-select="${f}" ${selected.has(s.folder) ? "checked" : ""} aria-label="Select ${esc(s.title)}">
+    <span class="name" data-open="play">${esc(s.title)}${s.artist ? `<span class="artist">${esc(s.artist)}</span>` : ""}
+      ${tags.length ? `<span class="tags">${tags.join("")}</span>` : ""}</span>
+    <span class="bpm">${s.bpm ? Math.round(s.bpm) : "?"}<small>bpm</small></span>
+    <span class="len">${fmtTime(s.duration_s)}</span>
+    <span class="go"><button class="btn quiet" data-open="play">Play</button><button class="btn quiet" data-open="record">Record</button></span>
+  </div>`;
+}
+
+$("#search").addEventListener("input", renderLibrary);
+$("#songs").addEventListener("toggle", (e) => {
+  const g = e.target.dataset?.group;
+  if (!g || $("#search").value) return;
+  e.target.open ? collapsed.delete(g) : collapsed.add(g);
+  store.set("collapsed", [...collapsed]);
+}, true);
+$("#songs").addEventListener("change", (e) => {
+  const f = e.target.dataset.select;
+  if (!f) return;
+  e.target.checked ? selected.add(f) : selected.delete(f);
+  updateSelbar();
+});
+$("#songs").addEventListener("click", (e) => {
+  const open = e.target.closest("[data-open]");
+  if (!open) return;
+  const folder = open.closest(".song").dataset.folder;
+  selectSong(folder);
+  showTab(open.dataset.open);
+});
+
+function updateSelbar() {
+  $("#selbar").hidden = !selected.size;
+  $("#sel-count").textContent = `${selected.size} selected`;
+}
+$("#sel-clear").addEventListener("click", () => { selected.clear(); renderLibrary(); });
+$("#sel-move").addEventListener("click", async () => {
+  const group = $("#sel-group").value.trim();
+  if (!group && !confirm("Move the selected songs out of their group?")) return;
+  await api("/api/library/group", { method: "POST", body: JSON.stringify({ folders: [...selected], group }) });
+  selected.clear(); $("#sel-group").value = "";
+  refreshLibrary();
+});
+$$("[data-redo]").forEach((b) => b.addEventListener("click", async () => {
+  const style = b.dataset.redo;
+  const n = selected.size;
+  if (!confirm(`Redo the drum separation of ${n} ${n === 1 ? "song" : "songs"} as ${style === "electronic" ? "Electronic" : "Band"}? The stems are replaced; beats, click and takes stay.`)) return;
+  const r = await api("/api/library/reseparate", { method: "POST", body: JSON.stringify({ folders: [...selected], style }) });
+  selected.clear(); renderLibrary(); refreshJobs();
+  $("#add-note").className = "note"; $("#add-note").textContent = `${r.queued} queued for new separation.`;
+}));
+
+// ---- current song -----------------------------------------------------------
+let ctx = null;
+function audioCtx() {
+  if (!ctx) { ctx = new AudioContext({ latencyHint: "interactive" }); engine.init(); }
+  return ctx;
+}
+let current = null;      // { folder, m, buffers }
+let loadingFolder = null;
+
+function fillSongPickers() {
+  const byGroup = new Map();
+  for (const s of songs) {
+    const g = s.group || UNGROUPED;
+    if (!byGroup.has(g)) byGroup.set(g, []);
+    byGroup.get(g).push(s);
+  }
+  const names = [...byGroup.keys()].sort((a, b) => (a === UNGROUPED) - (b === UNGROUPED) || a.localeCompare(b));
+  const html = `<option value="">Pick a song…</option>` + names.map((g) => `<optgroup label="${esc(g)}">${
+    byGroup.get(g).sort((a, b) => a.title.localeCompare(b.title)).map((s) =>
+      `<option value="${esc(s.folder)}">${esc(s.title)}${s.artist ? ` · ${esc(s.artist)}` : ""}</option>`).join("")}</optgroup>`).join("");
+  $$(".song-pick").forEach((sel) => { sel.innerHTML = html; sel.value = current?.folder || loadingFolder || ""; });
+}
+$$(".song-pick").forEach((sel) => sel.addEventListener("change", () => { if (!recording && sel.value) selectSong(sel.value); }));
+
+async function selectSong(folder) {
+  if (recording || folder === current?.folder || folder === loadingFolder) return;
+  engine.stop();
+  loadingFolder = folder;
+  $$(".song-pick").forEach((sel) => { sel.value = folder; });
+  $$(".songbar .meta").forEach((el) => { el.textContent = "Loading audio…"; });
+  Object.values(decks).forEach((d) => d.clear());
+  unloadTake(); $("#takes").innerHTML = "";
+  store.set("song", folder);
+  try {
+    const m = await api(`/api/library/${encodeURIComponent(folder)}`);
+    audioCtx();
+    const names = { drums: m.stems.drums, music: m.stems.no_drums, click: m.click.audio };
+    const buffers = {};
+    await Promise.all(Object.entries(names).map(async ([k, file]) => {
+      const data = await (await fetch(fileUrl(folder, file))).arrayBuffer();
+      buffers[k] = await ctx.decodeAudioData(data);
+    }));
+    if (loadingFolder !== folder) return;
+    current = { folder, m, buffers, bpb: beatsPerBar(m) };
+    engine.load(current);
+    const meta = `${m.bpm ? Math.round(m.bpm) + " bpm · " : ""}${current.bpb}/4 · ${fmtTime(m.duration_s)} · <a href="${esc(m.source_url)}" target="_blank" rel="noopener">Source</a>`;
+    $$(".songbar .meta").forEach((el) => { el.innerHTML = meta; });
+    Object.values(decks).forEach((d) => d.render());
+    if (activeTab === "play") decks.play.activate();
+    if (activeTab === "record") { decks.record.activate(); refreshTakes(); }
+  } catch (err) {
+    if (loadingFolder === folder) $$(".songbar .meta").forEach((el) => { el.textContent = `Couldn't load the audio: ${err.message}`; });
+  } finally {
+    if (loadingFolder === folder) loadingFolder = null;
+  }
+}
+
+// ---- beat helpers -----------------------------------------------------------
+function lastLE(arr, t) { let lo = 0, hi = arr.length - 1, r = -1; while (lo <= hi) { const mid = (lo + hi) >> 1; if (arr[mid] <= t) { r = mid; lo = mid + 1; } else hi = mid - 1; } return r; }
+const median = (xs) => { const s = [...xs].sort((a, b) => a - b); return s.length ? s[Math.floor(s.length / 2)] : NaN; };
+
+function beatsPerBar(m) {
+  if (m.beats_per_bar) return m.beats_per_bar;
+  const counts = [];
+  for (let i = 0; i + 1 < m.downbeats.length; i++) {
+    const c = m.beats.filter((b) => b >= m.downbeats[i] - 0.03 && b < m.downbeats[i + 1] - 0.03).length;
+    if (c >= 2 && c <= 12) counts.push(c);
+  }
+  if (!counts.length) return 4;
+  const freq = {}; counts.forEach((c) => { freq[c] = (freq[c] || 0) + 1; });
+  return +Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0];
+}
+function beatInterval(m, t) {
+  const i = Math.max(0, lastLE(m.beats, t));
+  const seg = m.beats.slice(i, i + 9);
+  const diffs = seg.slice(1).map((b, k) => b - seg[k]).filter((d) => d > 0.15 && d < 2);
+  return median(diffs) || (m.bpm ? 60 / m.bpm : 0.5);
+}
+
+// Where to start and which count-in clicks to play. With a count-in the start
+// snaps back to the bar line, and the clicks lead into the next downbeat.
+function planStart(m, bpb, from, bars) {
+  if (!bars) return { pos: from, clicks: [] };
+  const dbs = m.downbeats;
+  let pos = from;
+  if (from > 0.05) { const i = lastLE(dbs, from + 0.05); if (i >= 0) pos = dbs[i]; }
+  let di = lastLE(dbs, pos - 0.001) + 1;
+  let target = di < dbs.length ? dbs[di] : pos;
+  const I = beatInterval(m, target);
+  if (target - pos > bpb * I + 0.05) target = pos; // long intro without beats: count straight into the start
+  const K = bars * bpb, clicks = [];
+  for (let k = K; k >= 1; k--) {
+    let s = target - k * I;
+    if (s >= pos) { const bi = lastLE(m.beats, s + I / 3); if (bi >= 0 && Math.abs(m.beats[bi] - s) < I / 3) s = m.beats[bi]; }
+    const n = (K - k) % bpb;
+    clicks.push({ s, n: n + 1, down: n === 0, bar: Math.floor((K - k) / bpb) + 1 });
+  }
+  return { pos, clicks, target, interval: I };
+}
+
+function beatAt(m, bpb, t) {
+  const di = lastLE(m.downbeats, t + 0.02);
+  const bi = lastLE(m.beats, t + 0.02);
+  if (di < 0 || bi < 0) return null;
+  const beatTime = m.beats[bi];
+  const n = m.beats.filter((b) => b >= m.downbeats[di] - 0.03 && b <= beatTime + 0.001).length;
+  return { bar: di + 1, beat: Math.min(n, 12), time: beatTime, down: Math.abs(beatTime - m.downbeats[di]) < 0.03 };
+}
+
+// ---- audio engine (all sources start on one shared clock) --------------------
+function makeTick(freq, dur = 0.035) {
+  const n = Math.round(ctx.sampleRate * dur), buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) { const t = i / ctx.sampleRate; d[i] = Math.sin(2 * Math.PI * freq * t) * Math.exp(-t * 90); }
+  return buf;
+}
+const visualNow = () => {
+  const ts = ctx.getOutputTimestamp ? ctx.getOutputTimestamp() : null;
+  return ts && ts.contextTime > 0 ? ts.contextTime + (performance.now() - ts.performanceTime) / 1000 : ctx.currentTime - (ctx.outputLatency || 0);
+};
+
+const engine = {
+  song: null, gains: {}, sources: [], playing: false, offset: 0, tAudio: 0, pos0: 0,
+  plan: null, take: null, takeShift: 0, withTake: false, onEnded: null, ticks: null,
+  init() {
+    for (const k of ["drums", "music", "click", "take", "count"]) { this.gains[k] = ctx.createGain(); this.gains[k].connect(ctx.destination); }
+    this.gains.count.gain.value = 0.9;
+    this.ticks = { hi: makeTick(1760), lo: makeTick(1100) };
+  },
+  load(song) { this.stop(); this.song = song; this.offset = 0; },
+  get duration() { return this.song ? this.song.m.duration_s : 0; },
+  setGain(k, v) { if (this.gains[k]) this.gains[k].gain.value = v; },
+  position(visual = true) {
+    if (!this.playing) return this.offset;
+    const now = visual ? visualNow() : ctx.currentTime;
+    return Math.max(0, Math.min(this.duration, this.pos0 + now - this.tAudio));
+  },
+  play({ countInBars = 0 } = {}) {
+    if (this.playing || !this.song) return null;
+    ctx.resume();
+    const { m, buffers, bpb } = this.song;
+    const from = this.offset >= this.duration - 0.05 ? 0 : this.offset;
+    const plan = planStart(m, bpb, from, countInBars);
+    const now = ctx.currentTime;
+    const lead = plan.clicks.length ? Math.max(0, plan.pos - plan.clicks[0].s) : 0;
+    const tAudio = now + 0.12 + lead;
+    const play = (buf, gainKey, when, off) => {
+      if (off < 0) { when -= off; off = 0; }
+      if (off >= buf.duration) return;
+      const s = ctx.createBufferSource(); s.buffer = buf; s.connect(this.gains[gainKey]); s.start(when, off); this.sources.push(s);
+    };
+    for (const k of ["drums", "music", "click"]) play(buffers[k], k, tAudio, plan.pos);
+    if (this.withTake && this.take) play(this.take, "take", tAudio, plan.pos - this.takeShift);
+    for (const c of plan.clicks) {
+      c.t = tAudio + (c.s - plan.pos);
+      play(c.down ? this.ticks.hi : this.ticks.lo, "count", c.t, 0);
+    }
+    plan.end = plan.clicks.length ? tAudio + (plan.target - plan.pos) : 0;
+    this.plan = plan; this.tAudio = tAudio; this.pos0 = plan.pos; this.playing = true;
+    return { tAudio, pos: plan.pos };
+  },
+  pause() {
+    if (!this.playing) return;
+    this.offset = this.position(false);
+    this.stop();
+  },
+  stop() {
+    this.playing = false; this.plan = null;
+    this.sources.forEach((s) => { try { s.stop(); } catch {} });
+    this.sources = [];
+  },
+  seek(t) {
+    const was = this.playing;
+    this.pause();
+    this.offset = Math.max(0, Math.min(this.duration, t));
+    return was;
+  },
+  checkEnd() {
+    if (this.playing && this.pos0 + ctx.currentTime - this.tAudio >= this.duration) {
+      this.stop(); this.offset = this.duration;
+      if (this.onEnded) this.onEnded();
+    }
+  },
+};
+
+// ---- decks (the player UI; Play and Record each have one) ---------------------
+const CHANNELS = {
+  play: [["drums", "Drums", 0], ["music", "Music", 1], ["click", "Click", 0.8]],
+  record: [["take", "My drums", 1], ["drums", "Original drums", 0], ["music", "Music", 1], ["click", "Click", 0.8]],
+};
+
+function makeDeck(kind, root) {
+  const gains = store.get(`gains.${kind}`, Object.fromEntries(CHANNELS[kind].map(([k, , v]) => [k, v])));
+  root.innerHTML = `
+    <div class="deck">
+      <div class="deck-top">
+        <div class="counter" aria-live="off"><span class="num">&ndash;</span><span class="label">&nbsp;</span><span class="dots"></span></div>
+        <div class="timeline" title="Click to jump here"><canvas></canvas></div>
+      </div>
+      <div class="caption"><span class="pos">0:00 / 0:00</span><span class="cap-hint">Tempo per beat, bar lines at downbeats</span></div>
+      <div class="transport">
+        ${kind === "record" ? `<button class="btn rec">Record</button><span class="recstate" hidden><span class="recording-dot"></span><span class="rectime">0:00</span></span>` : ""}
+        <button class="btn ${kind === "record" ? "quiet" : ""} play" disabled>Play</button>
+        <button class="btn quiet rewind" disabled>To start</button>
+        <label>Count-in <select class="countin">
+          <option value="0">Off</option><option value="1">1 bar</option><option value="2">2 bars</option>
+        </select></label>
+        <span class="hint">Space plays and pauses</span>
+      </div>
+      <div class="mixer">
+        ${CHANNELS[kind].map(([k, label]) => `<label class="${k === "take" ? "mine" : ""}" data-ch="${k}" ${k === "take" ? "hidden" : ""}>${label}
+          <input type="range" min="0" max="1" step="0.01" value="${gains[k] ?? 1}" data-gain="${k}"></label>`).join("")}
+      </div>
+    </div>`;
+  const q = (s) => $(s, root);
+  const counter = q(".counter"), canvas = q("canvas"), playBtn = q(".play"), countSel = q(".countin");
+  countSel.value = String(store.get(`countin.${kind}`, kind === "record" ? 1 : 0));
+  countSel.addEventListener("change", () => store.set(`countin.${kind}`, +countSel.value));
+
+  const deck = {
+    kind, root, gains,
+    get countIn() { return +countSel.value; },
+    activate() {
+      engine.withTake = kind === "record";
+      for (const [k] of CHANNELS.play.concat(CHANNELS.record)) engine.setGain(k, gains[k] ?? 0);
+    },
+    clear() { playBtn.disabled = q(".rewind").disabled = true; if (q(".rec")) q(".rec").disabled = true; },
+    render() {
+      const ok = !!current;
+      playBtn.disabled = q(".rewind").disabled = !ok;
+      if (q(".rec")) q(".rec").disabled = !ok;
+      q(".dots").innerHTML = ok ? Array.from({ length: current.bpb }, (_, i) => `<i class="${i ? "" : "down"}"></i>`).join("") : "";
+    },
+    toggle() {
+      if (!current) return;
+      if (engine.playing) engine.pause(); else { deck.activate(); engine.play({ countInBars: deck.countIn }); }
+    },
+    showTake(on) { q('[data-ch="take"]') && (q('[data-ch="take"]').hidden = !on); },
+    draw() {
+      if (!current) return;
+      const m = current.m, pos = engine.position();
+      drawTimeline(canvas, m, pos, kind === "record" ? selectedTake : null);
+      q(".pos").textContent = `${fmtTime(pos)} / ${fmtTime(m.duration_s)}`;
+      playBtn.textContent = engine.playing ? "Pause" : "Play";
+      q(".cap-hint").textContent = deck.countIn ? "With count-in, playback starts at the bar line" : "Tempo per beat, bar lines at downbeats";
+      drawCounter(counter, m);
+    },
+  };
+
+  root.addEventListener("input", (e) => {
+    const k = e.target.dataset.gain;
+    if (!k) return;
+    gains[k] = +e.target.value;
+    engine.setGain(k, gains[k]);
+    store.set(`gains.${kind}`, gains);
+  });
+  playBtn.addEventListener("click", () => deck.toggle());
+  q(".rewind").addEventListener("click", () => { const was = engine.seek(0); if (was) engine.play({ countInBars: deck.countIn }); });
+  q(".timeline").addEventListener("click", (e) => {
+    if (!current || recording) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const was = engine.seek(((e.clientX - r.left) / r.width) * current.m.duration_s);
+    if (was) engine.play({ countInBars: deck.countIn });
+  });
+  if (q(".rec")) q(".rec").addEventListener("click", () => (recording ? stopRecording() : startRecording()));
+  return deck;
+}
+
+function drawCounter(el, m) {
+  const now = visualNow();
+  const num = $(".num", el), label = $(".label", el), dots = $$(".dots i", el);
+  const plan = engine.playing ? engine.plan : null;
+  let counting = false, flash = false, beat = null, text = "–", sub = "";
+  if (plan && plan.clicks.length && now < plan.end) {
+    const i = plan.clicks.findLastIndex((c) => c.t <= now);
+    counting = true;
+    if (i < 0) { text = "…"; sub = "Get ready"; }
+    else {
+      const c = plan.clicks[i];
+      beat = c.n; text = String(c.n); flash = now - c.t < 0.12;
+      const bars = plan.clicks[plan.clicks.length - 1].bar;
+      sub = bars > 1 ? `Count-in, bar ${c.bar} of ${bars}` : "Count-in";
+    }
+  } else if (current) {
+    const pos = engine.position();
+    const b = beatAt(m, current.bpb, pos);
+    if (b) {
+      beat = b.beat; text = String(b.beat); sub = `Bar ${b.bar}`;
+      flash = engine.playing && pos - b.time < 0.1 && pos >= b.time;
+    }
+  }
+  num.textContent = text; label.textContent = sub || " ";
+  el.classList.toggle("counting", counting);
+  el.classList.toggle("flash", flash);
+  dots.forEach((d, i) => d.classList.toggle("on", beat !== null && i < beat));
+}
+
+function drawTimeline(canvas, m, position, take) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (!w || !h) return;
+  if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+  const g = canvas.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  const css = getComputedStyle(document.documentElement);
+  const x = (t) => (t / m.duration_s) * w;
+
+  if (take) {
+    g.fillStyle = "rgba(255, 61, 110, .14)";
+    const a = Math.max(0, take.start_s), b = Math.min(m.duration_s, take.start_s + take.captured_s);
+    g.fillRect(x(a), 0, x(b) - x(a), h);
+  }
+  g.strokeStyle = css.getPropertyValue("--line"); g.lineWidth = 1;
+  for (const d of m.downbeats) { g.beginPath(); g.moveTo(Math.round(x(d)) + .5, h - 14); g.lineTo(Math.round(x(d)) + .5, h); g.stroke(); }
+
+  const pts = [];
+  for (let i = 1; i < m.beats.length; i++) {
+    const dt = m.beats[i] - m.beats[i - 1];
+    if (dt > 0) pts.push([(m.beats[i] + m.beats[i - 1]) / 2, 60 / dt]);
+  }
+  if (pts.length > 1) {
+    const sorted = pts.map((p) => p[1]).sort((a, b) => a - b);
+    const lo = sorted[Math.floor(sorted.length * .02)] - 4, hi = sorted[Math.floor(sorted.length * .98)] + 4;
+    const y = (bpm) => 8 + (1 - (Math.min(hi, Math.max(lo, bpm)) - lo) / (hi - lo)) * (h - 30);
+    g.strokeStyle = css.getPropertyValue("--beat"); g.lineWidth = 1.5; g.beginPath();
+    g.shadowColor = css.getPropertyValue("--beat"); g.shadowBlur = 8;
+    pts.forEach(([t, bpm], i) => (i ? g.lineTo(x(t), y(bpm)) : g.moveTo(x(t), y(bpm))));
+    g.stroke();
+    g.shadowBlur = 0;
+  }
+  g.fillStyle = css.getPropertyValue(recording ? "--rec" : "--brass");
+  g.fillRect(Math.round(x(position)) - 1, 0, 2, h);
+}
+
+const decks = { play: makeDeck("play", $("#play-deck")), record: makeDeck("record", $("#rec-deck")) };
+
+document.addEventListener("keydown", (e) => {
+  if (e.code !== "Space" || activeTab === "library" || e.repeat) return;
+  if (e.target.closest("input, select, textarea, button, summary, a")) return;
+  e.preventDefault();
+  if (activeTab === "record" && recording) { stopRecording(); return; }
+  decks[activeTab].toggle();
+});
+
+function frame() {
+  if (ctx) {
+    engine.checkEnd();
+    if (activeTab === "play") decks.play.draw();
+    if (activeTab === "record") { decks.record.draw(); syncTakeVideo(); updateRecClock(); }
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ---- input devices ------------------------------------------------------------
+const CAPTURE_WORKLET = `
+class Capture extends AudioWorkletProcessor {
+  constructor() {
+    super(); this.rec = false; this.buf = null; this.n = 0; this.frame0 = 0; this.peak = 0; this.count = 0;
+    this.port.onmessage = (e) => {
+      if (e.data === "start") this.rec = true;
+      if (e.data === "stop") { this.flush(); this.rec = false; this.port.postMessage({ type: "stopped" }); }
+    };
+  }
+  flush() {
+    if (this.buf && this.n) {
+      const data = this.buf.map((c) => c.slice(0, this.n));
+      this.port.postMessage({ type: "chunk", frame: this.frame0, data }, data.map((c) => c.buffer));
+    }
+    this.buf = null; this.n = 0;
+  }
+  process(inputs) {
+    const inp = inputs[0], len = 128;
+    for (const ch of inp) for (let i = 0; i < ch.length; i++) { const v = Math.abs(ch[i]); if (v > this.peak) this.peak = v; }
+    this.count += len;
+    if (this.count >= 2048) { this.port.postMessage({ type: "peak", peak: this.peak }); this.peak = 0; this.count = 0; }
+    if (this.rec) {
+      if (!this.buf) { this.buf = [new Float32Array(16384), new Float32Array(16384)]; this.n = 0; this.frame0 = currentFrame; }
+      for (let c = 0; c < 2; c++) { const src = inp[c] || inp[0]; if (src) this.buf[c].set(src, this.n); }
+      this.n += len;
+      if (this.n >= 16384) this.flush();
+    }
+    return true;
+  }
+}
+registerProcessor("capture", Capture);`;
+
+const canSink = typeof AudioContext !== "undefined" && "setSinkId" in AudioContext.prototype;
+const input = { stream: null, node: null, source: null, workletReady: false, capture: null, onChunk: null, onStopped: null };
+
+async function listDevices() {
+  const devs = await navigator.mediaDevices.enumerateDevices();
+  const fill = (sel, kind, saved, extra = "") => {
+    const list = devs.filter((d) => d.kind === kind);
+    sel.innerHTML = extra + list.map((d, i) => `<option value="${esc(d.deviceId)}">${esc(d.label || `${kind} ${i + 1}`)}</option>`).join("");
+    const guess = kind === "audioinput" || kind === "audiooutput" ? list.find((d) => /dtx|yamaha/i.test(d.label)) : null;
+    sel.value = list.some((d) => d.deviceId === saved) ? saved : (guess ? guess.deviceId : sel.options[0]?.value ?? "");
+  };
+  fill($("#in-dev"), "audioinput", store.get("dev.in"));
+  fill($("#cam-dev"), "videoinput", store.get("dev.cam", ""), `<option value="">No camera</option>`);
+  if (canSink) fill($("#out-dev"), "audiooutput", store.get("dev.out"), `<option value="default">System default</option>`);
+  return devs.some((d) => d.kind === "audioinput" && d.label);
+}
+
+async function openInput() {
+  audioCtx();
+  if (input.stream) input.stream.getTracks().forEach((t) => t.stop());
+  if (input.source) input.source.disconnect();
+  input.stream = null;
+  const inId = $("#in-dev").value, camId = $("#cam-dev").value;
+  const audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: { ideal: 2 } };
+  if (inId) audio.deviceId = { exact: inId };
+  const video = camId ? { deviceId: { exact: camId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } } : false;
+  input.stream = await navigator.mediaDevices.getUserMedia({ audio, video });
+  if (!input.workletReady) {
+    const url = URL.createObjectURL(new Blob([CAPTURE_WORKLET], { type: "application/javascript" }));
+    await ctx.audioWorklet.addModule(url);
+    input.workletReady = true;
+  }
+  if (!input.node) {
+    input.node = new AudioWorkletNode(ctx, "capture", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1], channelCount: 2, channelCountMode: "explicit" });
+    input.node.connect(ctx.destination); // outputs silence; being connected keeps it running
+    input.node.port.onmessage = (e) => {
+      const msg = e.data;
+      if (msg.type === "peak") showLevel(msg.peak);
+      if (msg.type === "chunk" && input.onChunk) input.onChunk(msg);
+      if (msg.type === "stopped" && input.onStopped) { const f = input.onStopped; input.onStopped = null; f(); }
+    };
+  }
+  input.source = ctx.createMediaStreamSource(input.stream);
+  input.source.connect(input.node);
+  ctx.resume();
+  showLivePreview();
+  setupSummary();
+}
+
+function captureStart() {
+  const cap = { chunks: [], sr: ctx.sampleRate };
+  input.onChunk = (msg) => cap.chunks.push(msg);
+  input.node.port.postMessage("start");
+  return cap;
+}
+function captureStop() {
+  return new Promise((resolve) => { input.onStopped = resolve; input.node.port.postMessage("stop"); });
+}
+function captureToChannels(cap) {
+  if (!cap.chunks.length) return null;
+  const f0 = cap.chunks[0].frame;
+  const last = cap.chunks[cap.chunks.length - 1];
+  const total = last.frame + last.data[0].length - f0;
+  const chans = [new Float32Array(total), new Float32Array(total)];
+  for (const c of cap.chunks) for (let ch = 0; ch < 2; ch++) chans[ch].set(c.data[ch], c.frame - f0);
+  return { startFrame: f0, chans };
+}
+function encodeWav(chans, sr) { // 32-bit float, interleaved
+  const n = chans[0].length, nc = chans.length, bytes = n * nc * 4;
+  const buf = new ArrayBuffer(44 + bytes), v = new DataView(buf);
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, "RIFF"); v.setUint32(4, 36 + bytes, true); str(8, "WAVE"); str(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 3, true); v.setUint16(22, nc, true); v.setUint32(24, sr, true);
+  v.setUint32(28, sr * nc * 4, true); v.setUint16(32, nc * 4, true); v.setUint16(34, 32, true);
+  str(36, "data"); v.setUint32(40, bytes, true);
+  const out = new Float32Array(buf, 44);
+  for (let i = 0; i < n; i++) for (let c = 0; c < nc; c++) out[i * nc + c] = chans[c][i];
+  return new Blob([buf], { type: "audio/wav" });
+}
+
+let levelDecay = 0;
+function showLevel(peak) {
+  levelDecay = Math.max(peak, levelDecay * 0.85);
+  const db = 20 * Math.log10(Math.max(levelDecay, 1e-5));
+  const el = $("#meter");
+  el.style.width = `${Math.max(0, Math.min(100, (db + 60) / 60 * 100))}%`;
+  el.classList.toggle("hot", levelDecay > 0.95);
+}
+
+function latencyKey() { return `latency.${$("#in-dev").selectedOptions[0]?.textContent || "default"}`; }
+function autoLatencyMs() {
+  const track = input.stream?.getAudioTracks()[0];
+  const inLat = track?.getSettings?.().latency || 0;
+  return Math.round(((ctx?.baseLatency || 0) + (ctx?.outputLatency || 0) + inLat) * 1000);
+}
+function loadLatency() {
+  const saved = store.get(latencyKey(), null);
+  $("#latency").value = saved ?? autoLatencyMs();
+  $("#lat-note").textContent = saved !== null ? "Calibrated or set by you" : "Estimate reported by the browser; calibrating is more exact";
+}
+$("#latency").addEventListener("change", () => { store.set(latencyKey(), +$("#latency").value || 0); loadLatency(); setupSummary(); });
+
+function setupSummary() {
+  if (!navigator.mediaDevices) { // not a secure context (e.g. http://0.0.0.0 or a LAN IP)
+    const url = `http://localhost:${location.port || 80}/`;
+    $("#local-link").href = url; $("#local-link").textContent = url;
+    $("#insecure").hidden = false; $("#setup-enable").hidden = true;
+    $$("[data-needs-input]").forEach((el) => { el.hidden = true; });
+    $("#setup-summary").textContent = "Recording isn't possible on this address";
+    return;
+  }
+  const ready = !!input.stream;
+  $("#setup-enable").hidden = ready;
+  $$("[data-needs-input]").forEach((el) => { el.hidden = !ready; });
+  $("#out-field").hidden = !ready || !canSink;
+  if (!ready) { $("#setup-summary").textContent = "Allow input to start"; return; }
+  const inName = $("#in-dev").selectedOptions[0]?.textContent || "default input";
+  const cam = $("#cam-dev").value ? $("#cam-dev").selectedOptions[0].textContent : "no camera";
+  $("#setup-summary").textContent = `${inName} · ${cam} · latency ${$("#latency").value} ms`;
+}
+
+$("#enable-input").addEventListener("click", async () => {
+  try {
+    audioCtx();
+    const tmp = await navigator.mediaDevices.getUserMedia({ audio: true, video: true }).catch(() => navigator.mediaDevices.getUserMedia({ audio: true }));
+    tmp.getTracks().forEach((t) => t.stop());
+    await listDevices();
+    store.set("inputAllowed", true);
+    await openInput(); loadLatency(); setupSummary();
+  } catch (err) { alert(`No access to audio input: ${err.message}`); }
+});
+for (const [id, key] of [["#in-dev", "dev.in"], ["#cam-dev", "dev.cam"]]) {
+  $(id).addEventListener("change", async () => {
+    store.set(key, $(id).value);
+    try { await openInput(); loadLatency(); } catch (err) { alert(`Couldn't open that device: ${err.message}`); }
+  });
+}
+$("#out-dev").addEventListener("change", async () => {
+  store.set("dev.out", $("#out-dev").value);
+  try { await audioCtx().setSinkId($("#out-dev").value === "default" ? "" : $("#out-dev").value); } catch (err) { alert(err.message); }
+});
+
+let recordTabReady = false;
+async function onRecordTab() {
+  if (current) refreshTakes();
+  if (recordTabReady) return;
+  recordTabReady = true;
+  setupSummary();
+  if (!navigator.mediaDevices) { $("#setup").open = true; return; }
+  if (store.get("inputAllowed", false)) {
+    try {
+      const labelled = await listDevices();
+      if (labelled) {
+        await openInput(); loadLatency(); setupSummary();
+        const out = $("#out-dev").value;
+        if (out && out !== "default" && ctx.setSinkId) ctx.setSinkId(out).catch(() => {});
+        return;
+      }
+    } catch { /* fall through to asking again */ }
+  }
+  $("#setup").open = true;
+}
+
+// ---- calibration ----------------------------------------------------------------
+$("#calibrate").addEventListener("click", async () => {
+  if (!input.stream || recording) return;
+  engine.pause();
+  const btn = $("#calibrate"), note = $("#lat-note");
+  btn.disabled = true;
+  const interval = 0.5, n = 20, listen = 4, t0 = ctx.currentTime + 0.6;
+  const clicks = [];
+  for (let i = 0; i < n; i++) {
+    const t = t0 + i * interval;
+    const s = ctx.createBufferSource(); s.buffer = i % 4 ? engine.ticks.lo : engine.ticks.hi; s.connect(engine.gains.count); s.start(t);
+    clicks.push(t);
+  }
+  const cap = captureStart();
+  const timer = setInterval(() => {
+    const k = Math.floor((ctx.currentTime - t0) / interval);
+    note.textContent = k < 0 ? "Get ready…" : k < listen ? `Listen… ${k + 1}` : `Hit a pad with every click (${Math.min(n, k + 1) - listen} of ${n - listen})`;
+  }, 50);
+  await new Promise((r) => setTimeout(r, (t0 - ctx.currentTime + n * interval + 0.5) * 1000));
+  clearInterval(timer);
+  await captureStop();
+  btn.disabled = false;
+  const got = captureToChannels(cap);
+  if (!got) { note.textContent = "Nothing was captured."; return; }
+  const mono = got.chans[0].map((v, i) => Math.abs(v) + Math.abs(got.chans[1][i]));
+  let peak = 0; for (const v of mono) if (v > peak) peak = v;
+  if (peak < 0.02) { note.textContent = "No signal on this input. Check the input device."; return; }
+  const thr = peak * 0.3, sr = cap.sr, onsets = [];
+  for (let i = 0; i < mono.length; i++) {
+    if (mono[i] > thr) { onsets.push((got.startFrame + i) / sr); i += Math.round(0.15 * sr); }
+  }
+  const deltas = [];
+  for (const c of clicks.slice(listen)) {
+    const o = onsets.find((t) => t > c - 0.08 && t < c + 0.35);
+    if (o !== undefined) deltas.push(o - c);
+  }
+  if (deltas.length < 8) { note.textContent = `Only ${deltas.length} hits matched the clicks. Try again, one hit per click.`; return; }
+  const med = median(deltas), spread = median(deltas.map((d) => Math.abs(d - med)));
+  const ms = Math.round(med * 1000);
+  $("#latency").value = ms; store.set(latencyKey(), ms);
+  setupSummary();
+  note.textContent = `Measured ${ms} ms from ${deltas.length} hits (your timing varied by about ±${Math.round(spread * 1000)} ms).`;
+});
+
+// ---- recording ------------------------------------------------------------------
+let recording = null;
+let mediaRecorder = null;
+
+const VIDEO_TYPES = ["video/mp4;codecs=avc1.640028,mp4a.40.2", "video/mp4", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", ""];
+
+// Starts a MediaRecorder with the first format that actually starts (some browsers
+// list a format as supported and then fail on start).
+function startMediaRecorder(stream, rec) {
+  for (const type of VIDEO_TYPES) {
+    if (type && !MediaRecorder.isTypeSupported(type)) continue;
+    try {
+      const mr = new MediaRecorder(stream, { mimeType: type || undefined, videoBitsPerSecond: 6_000_000, audioBitsPerSecond: 128_000 });
+      mr.ondataavailable = (e) => { if (e.data.size) rec.videoChunks.push(e.data); };
+      const started = new Promise((resolve) => {
+        mr.onstart = () => { rec.videoStartCtx = ctxTimeFromPerf(performance.now()); resolve(); };
+        setTimeout(resolve, 1500);
+      });
+      mr.start(1000);
+      rec.videoType = mr.mimeType || type;
+      return { mr, started };
+    } catch { /* try the next format */ }
+  }
+  return null;
+}
+function ctxTimeFromPerf(perfMs) {
+  const ts = ctx.getOutputTimestamp ? ctx.getOutputTimestamp() : null;
+  if (ts && ts.contextTime > 0) return ts.contextTime + (perfMs - ts.performanceTime) / 1000;
+  return ctx.currentTime - (performance.now() - perfMs) / 1000;
+}
+
+async function startRecording() {
+  if (!current || recording) return;
+  if (!input.stream) { $("#setup").open = true; setupSummary(); if (navigator.mediaDevices) alert("Pick your input in Setup first."); return; }
+  engine.pause();
+  unloadTake();
+  const deck = decks.record;
+  deck.activate();
+  engine.withTake = false;
+  const rec = { cap: null, videoChunks: [], videoStartCtx: null, videoType: "" };
+  recording = rec;
+
+  if (input.stream.getVideoTracks().length && window.MediaRecorder) {
+    const got = startMediaRecorder(input.stream, rec);
+    if (got) { mediaRecorder = got.mr; await got.started; }
+    else alert("This browser couldn't start the video recording. Recording audio only.");
+  }
+  rec.cap = captureStart();
+  const started = engine.play({ countInBars: deck.countIn });
+  rec.tAudio = started.tAudio; rec.pos = started.pos;
+  engine.onEnded = () => stopRecording();
+  const btn = $(".rec", deck.root);
+  btn.textContent = "Stop"; btn.classList.add("on");
+  $(".recstate", deck.root).hidden = false;
+  $(".play", deck.root).disabled = $(".rewind", deck.root).disabled = true;
+  showLivePreview();
+}
+
+function updateRecClock() {
+  if (!recording) return;
+  const t = ctx.currentTime - recording.tAudio;
+  $(".rectime", decks.record.root).textContent = t < 0 ? "Count-in" : fmtTime(t);
+}
+
+async function stopRecording() {
+  const rec = recording;
+  if (!rec || rec.stopping) return;
+  rec.stopping = true;
+  engine.onEnded = null;
+  engine.pause();
+  await captureStop();
+  let videoBlob = null;
+  if (mediaRecorder) {
+    await new Promise((resolve) => { mediaRecorder.onstop = resolve; mediaRecorder.stop(); });
+    videoBlob = rec.videoChunks.length ? new Blob(rec.videoChunks, { type: rec.videoType || rec.videoChunks[0].type }) : null;
+    mediaRecorder = null;
+  }
+  recording = null;
+  const deck = decks.record, btn = $(".rec", deck.root);
+  btn.textContent = "Record"; btn.classList.remove("on");
+  $(".recstate", deck.root).hidden = true;
+  deck.render();
+
+  const got = captureToChannels(rec.cap);
+  const sr = rec.cap.sr;
+  if (!got) return;
+  const captureStartS = got.startFrame / sr - rec.tAudio + rec.pos;
+  const captureEndS = captureStartS + got.chans[0].length / sr;
+  if (captureEndS <= rec.pos + 0.5) { flashNote("Stopped during the count-in, nothing saved."); return; }
+
+  flashNote("Saving take…");
+  const form = new FormData();
+  form.append("meta", JSON.stringify({
+    capture_start_s: captureStartS,
+    latency_ms: +$("#latency").value || 0,
+    input_label: $("#in-dev").selectedOptions[0]?.textContent || "",
+    video_clock_offset_s: rec.videoStartCtx !== null ? rec.videoStartCtx - got.startFrame / sr : null,
+  }));
+  form.append("audio", encodeWav(got.chans, sr), "capture.wav");
+  if (videoBlob) form.append("video", videoBlob, `video.${/mp4/.test(videoBlob.type) ? "mp4" : "webm"}`);
+  try {
+    const take = await api(`/api/library/${encodeURIComponent(current.folder)}/takes`, { method: "POST", body: form });
+    flashNote(take.peak_dbfs < -45 ? "Saved, but the take is almost silent. Check the input device." : "Take saved.");
+    await refreshTakes();
+    openTake(take.id);
+    refreshLibrary();
+  } catch (err) { flashNote(`Saving failed: ${err.message}`, true); }
+}
+
+function flashNote(text, error = false) {
+  const panel = $("#take-panel");
+  panel.hidden = false;
+  if (!selectedTake) panel.innerHTML = `<p class="note ${error ? "error" : ""}">${esc(text)}</p>`;
+  else { const n = $(".take-note", panel); if (n) { n.textContent = text; n.className = `note take-note ${error ? "error" : ""}`; } }
+}
+
+// ---- takes ------------------------------------------------------------------------
+let takes = [], selectedTake = null, takeBase = null; // takeBase: timing the loaded buffer was rendered with
+
+async function refreshTakes() {
+  if (!current) return;
+  const folder = current.folder;
+  try { takes = await api(`/api/library/${encodeURIComponent(folder)}/takes`); } catch { return; }
+  if (current?.folder !== folder) return;
+  const list = $("#takes");
+  list.innerHTML = takes.length ? takes.map((t) => {
+    const d = new Date(t.created_at);
+    const when = d.toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    const range = `${fmtTime(t.start_s)} to ${fmtTime(t.start_s + t.captured_s)}`;
+    return `<li class="${selectedTake?.id === t.id ? "sel" : ""}"><button data-take="${esc(t.id)}">
+      <span class="when">${esc(t.name || when)}</span><span class="info">${range}${t.video ? " · video" : ""}</span></button></li>`;
+  }).join("") : `<p class="empty">No takes yet. Press Record and play along.</p>`;
+}
+$("#takes").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-take]");
+  if (b && !recording) openTake(b.dataset.take);
+});
+
+function unloadTake() {
+  selectedTake = null; takeBase = null;
+  engine.take = null; engine.takeShift = 0;
+  decks.record?.showTake(false);
+  $("#take-panel").hidden = true; $("#take-panel").innerHTML = "";
+  $$("#takes li").forEach((li) => li.classList.remove("sel"));
+  showLivePreview();
+}
+
+async function openTake(id) {
+  const t = takes.find((x) => x.id === id);
+  if (!t || !current) return;
+  engine.pause();
+  selectedTake = t;
+  $$("#takes li").forEach((li) => li.classList.toggle("sel", li.querySelector("[data-take]")?.dataset.take === id));
+  const panel = $("#take-panel");
+  panel.hidden = false;
+  panel.innerHTML = `<p class="note">Loading take…</p>`;
+  const folder = current.folder;
+  const data = await (await fetch(`${fileUrl(folder, "takes", t.id, t.files.my_drums)}?v=${t.latency_ms}`)).arrayBuffer();
+  const buf = await ctx.decodeAudioData(data);
+  if (selectedTake?.id !== id || current?.folder !== folder) return;
+  engine.take = buf; engine.takeShift = 0; takeBase = { latency: t.latency_ms };
+  decks.record.showTake(true);
+  decks.record.activate();
+  engine.seek(Math.max(0, t.start_s));
+  renderTakePanel();
+  showTakeVideo();
+}
+
+function renderTakePanel() {
+  const t = selectedTake, panel = $("#take-panel");
+  const hasVideo = !!t.video;
+  panel.innerHTML = `
+    <div class="row">
+      <label>Drums timing <input type="range" min="0" max="250" step="1" value="${t.latency_ms}" id="tk-lat"><output id="tk-lat-o">${Math.round(t.latency_ms)} ms</output></label>
+    </div>
+    ${hasVideo ? `<div class="row"><label>Video timing <input type="range" min="-300" max="300" step="5" value="${t.video.nudge_ms}" id="tk-vid"><output id="tk-vid-o">${t.video.nudge_ms} ms</output></label>
+      <span class="hint">${t.video.sync === "audio" ? "Synced by sound" : "Synced by clock"}</span></div>` : ""}
+    <div class="row"><button class="btn quiet" id="tk-save" disabled>Save timing</button>
+      <span class="hint">Move Drums timing until your hits sit on the original. Higher means earlier.</span></div>
+    <div class="row">
+      <button class="btn quiet" id="tk-exp-a">Export audio</button>
+      ${hasVideo ? `<button class="btn quiet" id="tk-exp-v">Export video</button>` : ""}
+      <button class="btn quiet danger" id="tk-del">Delete take</button>
+    </div>
+    <p class="hint" style="margin:0">Export uses the slider levels above (My drums, Original drums, Music, Click) over the recorded range.</p>
+    <p class="note take-note" aria-live="polite"></p>`;
+  const lat = $("#tk-lat"), vid = $("#tk-vid"), save = $("#tk-save");
+  const dirty = () => { save.disabled = +lat.value === t.latency_ms && (!vid || +vid.value === t.video.nudge_ms); };
+  lat.addEventListener("input", () => {
+    $("#tk-lat-o").textContent = `${lat.value} ms`;
+    const was = engine.playing; engine.pause();
+    engine.takeShift = -(+lat.value - takeBase.latency) / 1000;
+    if (was) engine.play({ countInBars: 0 });
+    dirty();
+  });
+  vid?.addEventListener("input", () => { $("#tk-vid-o").textContent = `${vid.value} ms`; dirty(); });
+  save.addEventListener("click", async () => {
+    save.disabled = true;
+    const note = $(".take-note", panel);
+    note.textContent = "Saving…";
+    try {
+      const updated = await api(`/api/library/${encodeURIComponent(current.folder)}/takes/${encodeURIComponent(t.id)}`, {
+        method: "PATCH", body: JSON.stringify({ latency_ms: +lat.value, video_nudge_ms: vid ? +vid.value : null }) });
+      Object.assign(t, updated);
+      await refreshTakes();
+      await openTake(t.id);
+      $(".take-note").textContent = "Timing saved.";
+    } catch (err) { note.className = "note take-note error"; note.textContent = err.message; save.disabled = false; }
+  });
+  const doExport = async (video) => {
+    const note = $(".take-note", panel);
+    note.className = "note take-note"; note.textContent = video ? "Rendering video, this can take a minute…" : "Mixing…";
+    $$("#tk-exp-a, #tk-exp-v").forEach((b) => { b.disabled = true; });
+    const g = decks.record.gains;
+    try {
+      const r = await api(`/api/library/${encodeURIComponent(current.folder)}/takes/${encodeURIComponent(t.id)}/export`, {
+        method: "POST", body: JSON.stringify({ video, gains: { my_drums: g.take ?? 1, drums: g.drums ?? 0, music: g.music ?? 1, click: g.click ?? 0 } }) });
+      const v = Date.now();
+      const base = (f) => `${fileUrl(current.folder, "takes", t.id, f)}?v=${v}`;
+      note.innerHTML = `Ready: <a href="${base(r.audio)}" download>${esc(r.audio)}</a>${r.video ? ` · <a href="${base(r.video)}" download>${esc(r.video)}</a>` : ""}`;
+    } catch (err) { note.className = "note take-note error"; note.textContent = err.message; }
+    $$("#tk-exp-a, #tk-exp-v").forEach((b) => { b.disabled = false; });
+  };
+  $("#tk-exp-a").addEventListener("click", () => doExport(false));
+  $("#tk-exp-v")?.addEventListener("click", () => doExport(true));
+  $("#tk-del").addEventListener("click", async () => {
+    if (!confirm("Delete this take, including its audio and video files?")) return;
+    await api(`/api/library/${encodeURIComponent(current.folder)}/takes/${encodeURIComponent(t.id)}`, { method: "DELETE" });
+    unloadTake(); refreshTakes(); refreshLibrary();
+  });
+}
+
+// ---- video box: live camera while recording/idle, the take's video when reviewing ----
+const videoEl = $("#video");
+function showLivePreview() {
+  if (selectedTake?.video && !recording) return;
+  const hasCam = !!input.stream?.getVideoTracks().length;
+  videoEl.removeAttribute("src");
+  videoEl.srcObject = hasCam ? input.stream : null;
+  videoEl.muted = true;
+  videoEl.hidden = !hasCam;
+  $("#video-msg").hidden = hasCam;
+  $("#video-msg").textContent = "No camera selected";
+  if (hasCam) videoEl.play().catch(() => {});
+}
+function showTakeVideo() {
+  const t = selectedTake;
+  if (!t?.video) { showLivePreview(); return; }
+  videoEl.srcObject = null;
+  videoEl.src = fileUrl(current.folder, "takes", t.id, t.video.file);
+  videoEl.muted = true;
+  videoEl.hidden = false; $("#video-msg").hidden = true;
+}
+function syncTakeVideo() {
+  const t = selectedTake;
+  if (!t?.video || recording || videoEl.srcObject || !videoEl.src) return;
+  const nudge = +($("#tk-vid")?.value ?? t.video.nudge_ms);
+  const lat = +($("#tk-lat")?.value ?? t.latency_ms);
+  // start_s holds the saved timing; replace it with what the sliders say right now
+  const start = t.video.start_s + (nudge - t.video.nudge_ms) / 1000 - (lat - t.latency_ms) / 1000;
+  const vt = engine.position() - start;
+  const dur = isFinite(videoEl.duration) ? videoEl.duration : Infinity;
+  if (vt < 0 || vt > dur) { if (!videoEl.paused) videoEl.pause(); return; }
+  if (engine.playing) {
+    if (videoEl.paused) videoEl.play().catch(() => {});
+    if (Math.abs(videoEl.currentTime - vt) > 0.12 && !videoEl.seeking) videoEl.currentTime = vt;
+  } else {
+    if (!videoEl.paused) videoEl.pause();
+    if (Math.abs(videoEl.currentTime - vt) > 0.04 && !videoEl.seeking) videoEl.currentTime = vt;
+  }
+}
+
+// ---- start --------------------------------------------------------------------------
+refreshJobs();
+refreshLibrary().then(() => {
+  const saved = store.get("song", null);
+  if (saved && songs.some((s) => s.folder === saved)) selectSong(saved);
+  const tab = store.get("tab", "library");
+  if (tab !== "library") showTab(tab);
+});
+setInterval(refreshJobs, 2000);
+// Browsers keep audio suspended until the first click; resume it then.
+document.addEventListener("pointerdown", () => { if (ctx && ctx.state === "suspended") ctx.resume(); }, { capture: true });
+</script>
+</body>
+</html>

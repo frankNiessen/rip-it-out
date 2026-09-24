@@ -1,0 +1,265 @@
+"""FastAPI app. Run with:  uvicorn stemtool.server:app --port 8765"""
+
+from __future__ import annotations
+
+import json
+import logging
+import shutil
+import uuid
+from contextlib import asynccontextmanager
+from dataclasses import replace
+from pathlib import Path
+
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from yt_dlp.utils import DownloadError
+
+from . import __version__, config, library, takes
+from .config import STYLES, load_settings
+from .jobs import JobManager
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+settings = load_settings()
+settings.library_dir.mkdir(parents=True, exist_ok=True)
+manager = JobManager(settings)
+STATIC = Path(__file__).parent / "static"
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    manager.start()
+    yield
+
+
+app = FastAPI(title="Rip It Out", lifespan=lifespan)
+
+
+class SettingsUpdate(BaseModel):
+    library_dir: str
+
+
+class SubmitRequest(BaseModel):
+    url: str
+    style: str = "standard"
+    group: str | None = None  # None: use the playlist title
+
+
+class GroupRequest(BaseModel):
+    folders: list[str]
+    group: str
+
+
+class ReseparateRequest(BaseModel):
+    folders: list[str]
+    style: str
+
+
+class TakeUpdate(BaseModel):
+    latency_ms: float | None = None
+    video_nudge_ms: float | None = None
+    name: str | None = None
+
+
+class ExportRequest(BaseModel):
+    gains: dict[str, float]
+    video: bool = False
+
+
+def _song(folder: str) -> Path:
+    path = library.song_dir(settings.library_dir, folder)
+    if path is None:
+        raise HTTPException(404, "Song not found")
+    return path
+
+
+@app.get("/")
+def index() -> FileResponse:
+    return FileResponse(STATIC / "index.html")
+
+
+@app.get("/files/{path:path}")
+def files(path: str) -> FileResponse:
+    """Song files (stems, takes) from the current library. Supports range requests,
+    so video seeking works."""
+    root = settings.library_dir
+    target = (root / path).resolve()
+    if root not in target.parents or any(part.startswith(".") for part in Path(path).parts) or not target.is_file():
+        raise HTTPException(404, "File not found")
+    return FileResponse(target)
+
+
+@app.get("/api/status")
+def status() -> dict:
+    return {
+        "version": __version__,
+        "library_dir": str(settings.library_dir),
+        "library_locked": config.library_locked(),
+        "config_file": str(config.config_file()),
+        "separation_model": settings.separation_model,
+        "device": settings.device_setting,
+        "styles": list(STYLES),
+    }
+
+
+@app.put("/api/settings")
+def update_settings(req: SettingsUpdate) -> dict:
+    """Switch the library folder. Takes effect immediately and is saved."""
+    global settings
+    if config.library_locked():
+        raise HTTPException(409, "The library is set by the STEMTOOL_LIBRARY environment variable")
+    raw = req.library_dir.strip()
+    if not raw:
+        raise HTTPException(400, "Choose a folder")
+    new = Path(raw).expanduser()
+    if not new.is_absolute():
+        raise HTTPException(400, "Use a full path, like /Users/you/Music/Rip It Out")
+    new = new.resolve()
+    if manager.busy():
+        raise HTTPException(409, "Songs are still being processed. Stop them or wait before switching.")
+    try:
+        new.mkdir(parents=True, exist_ok=True)
+        probe = new / ".stemtool-write-test"
+        probe.write_text("ok")
+        probe.unlink()
+    except OSError as exc:
+        raise HTTPException(400, f"Can't use that folder: {exc.strerror or exc}") from exc
+    config.write_config({"library": str(new)})
+    settings = replace(settings, library_dir=new)
+    manager.settings = settings
+    return status()
+
+
+@app.post("/api/submit")
+def submit(req: SubmitRequest) -> dict:  # sync: runs in a threadpool, playlist listing can take a while
+    url = req.url.strip()
+    if not url.startswith(("http://", "https://")):
+        raise HTTPException(400, "Paste a full YouTube link, starting with https://")
+    if req.style not in STYLES:
+        raise HTTPException(400, f"Unknown style {req.style!r}")
+    try:
+        return manager.submit(url, req.style, req.group)
+    except DownloadError as exc:
+        raise HTTPException(400, f"YouTube couldn't list that link: {exc}") from exc
+
+
+@app.get("/api/jobs")
+def jobs() -> list[dict]:
+    return manager.snapshot()
+
+
+@app.post("/api/jobs/{video_id}/retry")
+def retry(video_id: str) -> dict:
+    if not manager.retry(video_id):
+        raise HTTPException(409, "Only failed songs can be retried")
+    return {"ok": True}
+
+
+@app.delete("/api/jobs/{video_id}")
+def remove(video_id: str) -> dict:
+    if not manager.remove(video_id):
+        raise HTTPException(409, "That song is processing right now and can't be removed")
+    return {"ok": True}
+
+
+@app.post("/api/jobs/{video_id}/stop")
+def stop(video_id: str) -> dict:
+    if not manager.cancel(video_id):
+        raise HTTPException(409, "That song isn't waiting or processing")
+    return {"ok": True}
+
+
+@app.post("/api/jobs/clear")
+def clear() -> dict:
+    return {"removed": manager.clear_finished()}
+
+
+@app.post("/api/jobs/stop-all")
+def stop_all() -> dict:
+    return manager.stop_all()
+
+
+@app.get("/api/library")
+def songs() -> list[dict]:
+    return library.list_songs(settings.library_dir)
+
+
+@app.get("/api/library/{folder}")
+def song(folder: str) -> dict:
+    manifest = library.read_manifest(settings.library_dir, folder)
+    if manifest is None:
+        raise HTTPException(404, "Song not found")
+    return manifest
+
+
+@app.post("/api/library/group")
+def set_group(req: GroupRequest) -> dict:
+    changed = sum(library.set_group(settings.library_dir, f, req.group) for f in req.folders)
+    return {"changed": changed}
+
+
+@app.post("/api/library/reseparate")
+def reseparate(req: ReseparateRequest) -> dict:
+    if req.style not in STYLES:
+        raise HTTPException(400, f"Unknown style {req.style!r}")
+    queued = sum(manager.reseparate(f, req.style) for f in req.folders)
+    return {"queued": queued}
+
+
+# --- takes --------------------------------------------------------------------
+
+@app.get("/api/library/{folder}/takes")
+def list_takes(folder: str) -> list[dict]:
+    return takes.list_takes(_song(folder))
+
+
+@app.post("/api/library/{folder}/takes")
+def create_take(
+    folder: str,
+    meta: str = Form(...),
+    audio: UploadFile = File(...),
+    video: UploadFile | None = File(None),
+) -> dict:
+    song = _song(folder)
+    upload = settings.work_dir / f"upload-{uuid.uuid4().hex[:8]}"
+    upload.mkdir(parents=True)
+    try:
+        raw = upload / "capture.wav"
+        with raw.open("wb") as out:
+            shutil.copyfileobj(audio.file, out)
+        video_path = video_ext = None
+        if video is not None and video.filename:
+            video_ext = Path(video.filename).suffix.lstrip(".").lower()
+            video_path = upload / f"video.{video_ext or 'webm'}"
+            with video_path.open("wb") as out:
+                shutil.copyfileobj(video.file, out)
+        try:
+            return takes.create(song, settings.work_dir, json.loads(meta), raw, video_path, video_ext)
+        except (takes.TakeError, KeyError, ValueError) as exc:
+            raise HTTPException(400, f"Couldn't save the take: {exc}") from exc
+    finally:
+        shutil.rmtree(upload, ignore_errors=True)
+
+
+@app.patch("/api/library/{folder}/takes/{take_id}")
+def update_take(folder: str, take_id: str, req: TakeUpdate) -> dict:
+    try:
+        return takes.update(_song(folder), take_id, req.model_dump())
+    except takes.TakeError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@app.post("/api/library/{folder}/takes/{take_id}/export")
+def export_take(folder: str, take_id: str, req: ExportRequest) -> dict:
+    try:
+        return takes.export(_song(folder), take_id, req.gains, req.video)
+    except takes.TakeError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.delete("/api/library/{folder}/takes/{take_id}")
+def delete_take(folder: str, take_id: str) -> dict:
+    if not takes.delete(_song(folder), take_id):
+        raise HTTPException(404, "Take not found")
+    return {"ok": True}

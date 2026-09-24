@@ -1,0 +1,14 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Build output
+build/
+dist/
+desktop/node_modules/
+
+# Local notes and tool settings, not part of the project
+CLAUDE.md
+.claude/
+.DS_Store
