@@ -119,7 +119,7 @@ modified. Settings live in the same folder, logs in `~/Library/Logs/Rip It Out`.
 
 ### Library format
 
-The library is plain files, so other tools (a DAW, or a future mobile player) can use it:
+The library is plain files, so other tools (or instance a DAW) can use it:
 
 ```
 <library>/
@@ -242,5 +242,5 @@ set up the virtual environment as in [Development](#development), and see
 ## License
 
 Rip It Out is MIT licensed, see [LICENSE](LICENSE). The app bundles third-party
-components under their own licenses, none of them GPL; see
+components under their own licenses; see
 [macos/THIRD_PARTY_NOTICES.md](macos/THIRD_PARTY_NOTICES.md).
