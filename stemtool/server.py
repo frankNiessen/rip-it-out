@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from yt_dlp.utils import DownloadError
 
-from . import __version__, audio, config, library, pipeline, takes, youtube
+from . import __version__, audio, config, library, localfiles, pipeline, takes, youtube
 from .config import STYLES, load_settings
 from .jobs import JobManager
 
@@ -166,6 +166,35 @@ def submit(req: SubmitRequest) -> dict:  # sync: runs in a threadpool, playlist 
         return manager.submit(url, req.style, req.group)
     except DownloadError as exc:
         raise HTTPException(400, f"YouTube couldn't list that link: {exc}") from exc
+
+
+@app.post("/api/import")
+def import_files(files: list[UploadFile] = File(...), style: str = Form("standard"), group: str = Form("")) -> dict:
+    """Queue your own audio or video files (drag and drop in the Library tab)."""
+    if style not in STYLES:
+        raise HTTPException(400, f"Unknown style {style!r}")
+    staged, refused = [], []
+    for upload in files:
+        name = localfiles.safe_name(upload.filename or "audio")
+        if Path(name).suffix.lower() not in localfiles.EXTENSIONS:
+            refused.append(name)
+            continue
+        tmp = settings.work_dir / "imports" / f"upload-{uuid.uuid4().hex[:8]}"
+        tmp.mkdir(parents=True)
+        with (tmp / name).open("wb") as out:
+            shutil.copyfileobj(upload.file, out)
+        final = tmp.parent / localfiles.file_id(tmp / name)  # the content decides the song's id
+        if final.exists():  # the same file is already waiting (maybe under another name)
+            shutil.rmtree(tmp)
+            staged.append((Path(name).stem, next(final.iterdir())))
+        else:
+            tmp.rename(final)
+            staged.append((Path(name).stem, final / name))
+    if not staged:
+        raise HTTPException(400, "None of these files is an audio or video file Rip It Out can read")
+    result = manager.submit_files(staged, style, group)
+    result["refused"] = refused
+    return result
 
 
 @app.get("/api/jobs")

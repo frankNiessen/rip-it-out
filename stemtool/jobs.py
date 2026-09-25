@@ -16,6 +16,7 @@ import signal
 import threading
 import time
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 
 from . import library, pipeline, youtube
 from .config import Settings
@@ -33,6 +34,7 @@ class Job:
     style: str = "standard"
     group: str = ""
     reseparate: str = ""  # folder name: redo the separation of a library song instead of downloading
+    source_file: str = ""  # an imported audio file (in the work folder) instead of a YouTube video
     status: str = QUEUED
     stage: str = ""
     error: str = ""
@@ -78,6 +80,28 @@ class JobManager:
         return {"found": len(refs), "added": added, "already_in_library": already, "already_queued": pending,
                 "group": group}
 
+    def submit_files(self, files: list[tuple[str, Path]], style: str = "standard", group: str = "") -> dict:
+        """Queue imported audio files: [(original name, path in the work folder)]."""
+        in_library = library.known_video_ids(self.settings.library_dir)
+        added = already = pending = 0
+        with self._lock:
+            for name, path in files:
+                file_id = path.parent.name
+                existing = self._jobs.get(file_id)
+                if file_id in in_library or (existing and existing.status in (QUEUED, RUNNING)):
+                    if file_id in in_library:
+                        already += 1
+                    else:
+                        pending += 1
+                    if not (existing and existing.status in (QUEUED, RUNNING)):
+                        shutil.rmtree(path.parent, ignore_errors=True)
+                    continue
+                self._jobs[file_id] = Job(file_id, name, "", style, group.strip(), source_file=str(path))
+                self._queue.put(file_id)
+                added += 1
+        return {"found": len(files), "added": added, "already_in_library": already, "already_queued": pending,
+                "group": group.strip()}
+
     def reseparate(self, folder: str, style: str, note: str | None = None) -> bool:
         manifest = library.read_manifest(self.settings.library_dir, folder)
         if manifest is None:
@@ -98,7 +122,8 @@ class JobManager:
             job = self._jobs.get(video_id)
             if not job or job.status != FAILED:
                 return False
-            self._jobs[video_id] = Job(job.video_id, job.title, job.url, job.style, job.group, job.reseparate)
+            self._jobs[video_id] = Job(job.video_id, job.title, job.url, job.style, job.group, job.reseparate,
+                                       source_file=job.source_file)
             self._queue.put(video_id)
             return True
 
@@ -108,13 +133,14 @@ class JobManager:
             if not job or job.status == RUNNING:
                 return False
             del self._jobs[video_id]  # a queued id left in the queue is skipped by the worker
+            _drop_import(job.source_file)
             return True
 
     def clear_finished(self) -> int:
         with self._lock:
             finished = [k for k, j in self._jobs.items() if j.status in (DONE, FAILED)]
             for k in finished:
-                del self._jobs[k]
+                _drop_import(self._jobs.pop(k).source_file)
             return len(finished)
 
     def snapshot(self) -> list[dict]:
@@ -129,6 +155,7 @@ class JobManager:
                 return False
             if job.status == QUEUED:
                 del self._jobs[video_id]
+                _drop_import(job.source_file)
                 return True
             job.stage = "Stopping"
             proc = self._proc
@@ -145,7 +172,7 @@ class JobManager:
         with self._lock:
             waiting = [k for k, j in self._jobs.items() if j.status == QUEUED]
             for k in waiting:
-                del self._jobs[k]
+                _drop_import(self._jobs.pop(k).source_file)
             running = next((k for k, j in self._jobs.items() if j.status == RUNNING), None)
         if running:
             self.cancel(running)
@@ -169,7 +196,7 @@ class JobManager:
                 if not job or job.status != QUEUED:
                     continue  # removed, or a stale duplicate queue entry
                 job.status, job.started_at, job.stage = RUNNING, time.time(), "Starting"
-                ref = youtube.VideoRef(job.video_id, job.title, job.url)
+                ref = youtube.VideoRef(job.video_id, job.title, job.url, job.source_file)
                 style, group, reseparate = job.style, job.group, job.reseparate
 
             if not reseparate and video_id in library.known_video_ids(self.settings.library_dir):
@@ -180,15 +207,17 @@ class JobManager:
             try:
                 folder = self._run_in_child(video_id, ref, style, group, reseparate)
             except _Cancelled:
-                log.info("Stopped: %s", ref.url)
+                log.info("Stopped: %s", ref.url or ref.title)
                 with self._lock:
                     self._jobs.pop(video_id, None)
+                _drop_import(ref.file)
             except Exception as exc:  # noqa: BLE001 (one bad video must not stop the queue)
                 log.error("Failed: %s: %s", ref.url, exc)
                 self._update(video_id, status=FAILED, error=str(exc)[:500] or type(exc).__name__,
                              finished_at=time.time())
             else:
                 self._update(video_id, status=DONE, stage="Done", folder=folder, finished_at=time.time())
+                _drop_import(ref.file)  # a failed import keeps its file, so Retry works
 
     def _run_in_child(self, video_id: str, ref: youtube.VideoRef, style: str, group: str, reseparate: str) -> str:
         """Runs the pipeline in its own process, so Stop can end it at any point
@@ -229,8 +258,15 @@ class JobManager:
             shutil.rmtree(self.settings.work_dir / work, ignore_errors=True)
 
 
+
 class _Cancelled(Exception):
     pass
+
+
+def _drop_import(source_file: str) -> None:
+    """Delete an imported file (its own folder in the work folder) once it's not needed."""
+    if source_file:
+        shutil.rmtree(Path(source_file).parent, ignore_errors=True)
 
 
 def _child(messages, settings: Settings, ref: youtube.VideoRef, style: str, group: str, reseparate: str) -> None:

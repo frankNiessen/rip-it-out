@@ -94,6 +94,9 @@
   .note.error { color: var(--fail); }
   .empty { color: var(--muted); padding: .75rem 0; margin: 0; }
 
+  .drop { display: block; padding: .8rem; border: 1px dashed var(--line); border-radius: 6px; text-align: center;
+    font-size: .88rem; color: var(--muted); cursor: pointer; transition: border-color .15s, background .15s; }
+  .drop:hover, .drop.over { border-color: var(--accent); background: rgba(198, 244, 50, .06); color: var(--ink); }
   .rights-note { margin: 0; font-size: .8rem; line-height: 1.4; color: var(--muted); }
   .queue { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
   .queue li { padding: .6rem 0; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 1fr auto; gap: .15rem .75rem; }
@@ -276,6 +279,10 @@
             </label>
           </div>
           <button class="btn" id="add-btn">Add</button>
+          <label class="drop" id="drop">
+            <input type="file" id="files" multiple accept="audio/*,video/*,.flac,.aif,.aiff,.opus,.mkv" hidden>
+            <span><strong>Or add your own files:</strong> drop audio or video files here, or click to choose.</span>
+          </label>
           <p class="rights-note">Only use content you are authorized to download and process. You are responsible
             for complying with copyright law and the terms of the source service.</p>
         </form>
@@ -527,6 +534,40 @@ $("#add").addEventListener("submit", async (e) => {
   } catch (err) {
     note.className = "note error"; note.textContent = err.message;
   } finally { btn.disabled = false; }
+});
+
+// ---- your own files ---------------------------------------------------------
+async function importFiles(fileList) {
+  const files = [...fileList];
+  if (!files.length) return;
+  const note = $("#add-note");
+  note.className = "note"; note.textContent = `Uploading ${files.length} ${files.length === 1 ? "file" : "files"}…`;
+  const form = new FormData();
+  files.forEach((f) => form.append("files", f, f.name));
+  form.append("style", $("#add-style").value);
+  form.append("group", $("#add-group").value.trim());
+  try {
+    const r = await api("/api/import", { method: "POST", body: form });
+    const parts = [`${r.added} added to the queue`];
+    if (r.already_in_library) parts.push(`${r.already_in_library} already in your library`);
+    if (r.already_queued) parts.push(`${r.already_queued} already queued`);
+    if (r.refused.length) parts.push(`skipped (not audio): ${r.refused.join(", ")}`);
+    note.textContent = parts.join(", ") + ".";
+    refreshJobs();
+  } catch (err) { note.className = "note error"; note.textContent = err.message; }
+  $("#files").value = "";
+}
+$("#files").addEventListener("change", (e) => importFiles(e.target.files));
+// Drop files anywhere on the Library tab.
+$("#tab-library").addEventListener("dragover", (e) => {
+  if (![...(e.dataTransfer?.types || [])].includes("Files")) return;
+  e.preventDefault(); $("#drop").classList.add("over");
+});
+$("#tab-library").addEventListener("dragleave", (e) => { if (!e.relatedTarget || !$("#tab-library").contains(e.relatedTarget)) $("#drop").classList.remove("over"); });
+$("#tab-library").addEventListener("drop", (e) => {
+  if (!e.dataTransfer?.files.length) return;
+  e.preventDefault(); $("#drop").classList.remove("over");
+  importFiles(e.dataTransfer.files);
 });
 
 // ---- queue ----------------------------------------------------------------

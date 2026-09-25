@@ -47,3 +47,46 @@ def test_format_setting_and_conversion(client):
     r = client.put("/api/settings", json={"stem_format": "flac24"})
     assert r.status_code == 200 and r.json()["to_convert"] == 0
     assert client.put("/api/settings", json={"stem_format": "mp3"}).status_code == 400
+
+
+def test_import_files_dedups_by_content(client, monkeypatch, tmp_path):
+    import io
+
+    import numpy as np
+    import soundfile as sf
+
+    import stemtool.server as server
+
+    monkeypatch.setattr(server.manager._queue, "put", lambda _id: None)  # queue only, don't process
+    buf = io.BytesIO()
+    sf.write(buf, np.zeros((44100, 2), np.float32), 44100, format="WAV")
+    wav = buf.getvalue()
+    files = [("files", ("Band - Song.wav", wav, "audio/wav")),
+             ("files", ("copy of it.wav", wav, "audio/wav")),
+             ("files", ("notes.txt", b"hello", "text/plain"))]
+    r = client.post("/api/import", files=files, data={"style": "standard", "group": "Mine"}).json()
+    assert r["added"] == 1 and r["already_queued"] == 1 and r["refused"] == ["notes.txt"]
+    jobs = client.get("/api/jobs").json()
+    assert len(jobs) == 1 and jobs[0]["video_id"].startswith("file-") and jobs[0]["group"] == "Mine"
+    staged = server.Path(jobs[0]["source_file"])
+    assert staged.is_file()
+    client.delete(f"/api/jobs/{jobs[0]['video_id']}")
+    assert not staged.parent.exists()  # removing the job removes the uploaded file
+
+
+def test_file_titles_from_tags_or_name(tmp_path):
+    import shutil
+
+    import numpy as np
+    import pytest
+    import soundfile as sf
+
+    from stemtool import localfiles
+
+    if not shutil.which("ffprobe"):
+        pytest.skip("ffprobe not installed")
+    path = tmp_path / "x.wav"
+    sf.write(str(path), np.zeros((4410, 2), np.float32), 44100)
+    meta = localfiles.read_meta(path, "The Band - Great Song.wav")
+    assert meta["title"] == "Great Song" and meta["artist"] == "The Band"
+    assert localfiles.read_meta(path, "just a title.wav")["title"] == "just a title"

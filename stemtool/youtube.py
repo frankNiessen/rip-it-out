@@ -31,6 +31,7 @@ class VideoRef:
     video_id: str
     title: str
     url: str
+    file: str = ""  # an imported audio file instead of a YouTube video (see localfiles.py)
 
 
 def watch_url(video_id: str) -> str:

@@ -2,7 +2,8 @@
 
 **Rip the drums out of your music, play along with a click, and record yourself.**
 
-Rip It Out is a practice tool for drummers. Paste a YouTube link or a whole playlist, and
+Rip It Out is a practice tool for drummers. Paste a YouTube link or a whole playlist, or
+drop in your own audio files, and
 it separates every song into drums, bass, vocals and the other instruments, finds every
 beat, bar and song section (intro, verse, chorus, ...), and builds a click that follows the band (even when the tempo drifts).
 Then play along in your own window with a count-in, record your drums (and yourself on
@@ -61,6 +62,11 @@ the default compressed format (140 MB with 24-bit FLAC), takes with video more.
 Each song takes one to two minutes on an M-series Mac. Songs already in your library are
 skipped, so you can add the same playlist again later to pick up new songs. **Stop** ends
 the song being processed, **Stop all** also empties the queue.
+
+Your own files work the same way: drop audio or video files (MP3, WAV, FLAC, M4A, AIFF,
+OGG, MP4, MOV, ...) onto the Library tab, or click the box under **Add**. Title and artist
+come from the file's tags, or from a name like `Artist - Title.mp3`. A file you add
+twice is recognized by its content.
 
 **3. Fix songs that came out drum heavy.** If the band sounds almost empty without the
 drums (typical for drum & bass or EDM, if you added it with the Band style), tick the songs
@@ -240,7 +246,8 @@ Browsers allow the microphone and camera only on `localhost` or HTTPS, so open
 |---|---|
 | `stemtool/server.py` | FastAPI app and API |
 | `stemtool/jobs.py` | Queue; each song runs in its own process so it can be stopped |
-| `stemtool/pipeline.py` | Download, decode, separate, track beats, write the song folder |
+| `stemtool/pipeline.py` | Download (or read an imported file), decode, separate, track beats, find sections, write the song folder |
+| `stemtool/localfiles.py` | Importing your own audio files |
 | `stemtool/separation.py` | Demucs and the electronic-style cleanup |
 | `stemtool/beats.py`, `grid.py`, `click.py` | Beat tracking, grid cleanup and edits, click audio and MIDI |
 | `stemtool/takes.py` | Recorded takes: alignment, video sync, export |

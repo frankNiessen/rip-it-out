@@ -20,7 +20,7 @@ import logging
 
 import numpy as np
 
-from . import audio, beats, click, grid, library, sections, separation, youtube
+from . import audio, beats, click, grid, library, localfiles, sections, separation, youtube
 from .config import SAMPLE_RATE, Settings
 
 StageCallback = Callable[[str], None]
@@ -134,8 +134,12 @@ def _sections(stems: dict[str, np.ndarray], sr: int, downbeats: list[float], dur
 
 def _process(ref: youtube.VideoRef, settings: Settings, on_stage: StageCallback, work: Path,
              style: str, group: str) -> Path:
-    on_stage("Downloading")
-    download, meta = youtube.download_audio(ref, work)
+    if ref.file:
+        on_stage("Reading the file")
+        download, meta = Path(ref.file), localfiles.read_meta(Path(ref.file), ref.title)
+    else:
+        on_stage("Downloading")
+        download, meta = youtube.download_audio(ref, work)
 
     on_stage("Decoding")
     mix_wav = work / "mix.wav"
@@ -161,7 +165,8 @@ def _process(ref: youtube.VideoRef, settings: Settings, on_stage: StageCallback,
     manifest = {
         "schema": library.SCHEMA_VERSION,
         "video_id": ref.video_id,
-        "source_url": ref.url,
+        "source_url": ref.url,  # empty for imported files
+        "source_file": meta.get("source_file"),
         "title": meta["title"],
         "artist": meta["artist"],
         "youtube_title": meta["youtube_title"],
