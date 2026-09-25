@@ -61,16 +61,19 @@ the default compressed format (140 MB with 24-bit FLAC), takes with video more.
 **1. Choose your library folder.** Open **Settings** and pick a folder. The default is
 `~/Music/Rip It Out`. Everything the app makes lives there, one folder per song.
 
-**2. Add songs.** In **Library**, paste a YouTube video or playlist link. Choose the group
-(the playlist name is used if you leave it empty) and the music style, then press **Add**.
-Each song takes one to two minutes on an M-series Mac. Songs already in your library are
-skipped, so you can add the same playlist again later to pick up new songs. **Stop** ends
-the song being processed, **Stop all** also empties the queue.
+**2. Add songs.** In **Library**, choose the group (optional) and the music style, then
+add from either source:
 
-Your own files work the same way: drop audio or video files (MP3, WAV, FLAC, M4A, AIFF,
-OGG, MP4, MOV, ...) onto the Library tab, or click the box under **Add**. Title and artist
-come from the file's tags, or from a name like `Artist - Title.mp3`. A file you add
-twice is recognized by its content.
+- **From YouTube:** paste a video or playlist link and press **Add**. With a playlist,
+  its name becomes the group if you leave the group empty. Songs already in your library
+  are skipped, so you can add the same playlist again later to pick up new songs.
+- **From your files:** press **Choose files** or drop audio or video files (MP3, WAV,
+  FLAC, M4A, AIFF, OGG, MP4, MOV, ...) anywhere on the Library tab. Title and artist come
+  from the file's tags, or from a name like `Artist - Title.mp3`. A file you add twice is
+  recognized by its content.
+
+Each song takes one to two minutes on an M-series Mac. **Stop** ends the song being
+processed, **Stop all** also empties the queue.
 
 **3. Electronic music.** If the drums took the basses and synths along (typical for
 drum & bass or EDM added with the Band style, so bass and other sound almost empty), tick

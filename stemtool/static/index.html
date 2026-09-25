@@ -74,9 +74,6 @@
     border: 1px solid var(--line); border-radius: 3px; font-size: .92rem;
   }
   input:hover, select:hover { border-color: var(--line-strong); }
-  #add { display: grid; gap: .6rem; }
-  #add .row { display: flex; gap: .5rem; }
-  #add .row > * { flex: 1; }
   .btn {
     padding: .5rem .95rem; border: 1px solid var(--accent); border-radius: 3px;
     background: var(--accent); color: var(--on-accent); font-weight: 700; cursor: pointer; white-space: nowrap;
@@ -94,10 +91,17 @@
   .empty { color: var(--muted); padding: .75rem 0; margin: 0; font-size: .9rem; }
   .hint { font-size: .8rem; color: var(--muted); }
 
-  .drop { display: block; padding: .75rem; border: 1px dashed var(--line-strong); border-radius: 3px;
-    font-size: .85rem; color: var(--muted); cursor: pointer; }
-  .drop strong { color: var(--ink); font-weight: 600; }
-  .drop:hover, .drop.over { border-color: var(--accent); color: var(--ink); }
+  .add-opts { display: flex; gap: .5rem; margin-bottom: .75rem; }
+  .add-opts > * { flex: 1; }
+  .sources { display: grid; gap: .6rem; margin-bottom: .6rem; }
+  @media (max-width: 1100px) and (min-width: 720px) { .sources { grid-template-columns: 1fr 1fr; } }
+  .source { margin: 0; padding: .7rem .75rem .75rem; background: var(--panel); border: 1px solid var(--line); border-radius: 3px; }
+  .source h3 { margin: 0 0 .5rem; font: 700 .85rem/1.2 var(--sans); }
+  .source-row { display: flex; gap: .5rem; align-items: center; }
+  .source-row input { flex: 1; }
+  .drop-area { justify-content: space-between; padding: .25rem .25rem .25rem .6rem; border: 1px dashed var(--line-strong);
+    border-radius: 3px; cursor: pointer; color: var(--muted); font-size: .85rem; }
+  .drop-area:hover, #drop.over .drop-area { border-color: var(--accent); color: var(--ink); }
   .rights-note { margin: 0; font-size: .75rem; line-height: 1.45; color: var(--muted); }
 
   .queue { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
@@ -267,27 +271,36 @@
     <div>
       <section>
         <h2>Add songs</h2>
-        <form id="add">
-          <input id="url" type="url" required placeholder="YouTube playlist or video link" aria-label="YouTube playlist or video link">
-          <div class="row">
-            <label class="field"><span>Group</span>
-              <input id="add-group" type="text" list="group-names" placeholder="Playlist name">
-            </label>
-            <label class="field"><span>Music style</span>
-              <select id="add-style">
-                <option value="standard">Band (rock, pop, funk)</option>
-                <option value="electronic">Electronic (DnB, EDM)</option>
-              </select>
+        <div class="row add-opts">
+          <label class="field"><span>Group (optional)</span>
+            <input id="add-group" type="text" list="group-names" placeholder="Playlist name">
+          </label>
+          <label class="field"><span>Music style</span>
+            <select id="add-style">
+              <option value="standard">Band (rock, pop, funk)</option>
+              <option value="electronic">Electronic (DnB, EDM)</option>
+            </select>
+          </label>
+        </div>
+        <div class="sources">
+          <form id="add" class="source">
+            <h3>From YouTube</h3>
+            <div class="source-row">
+              <input id="url" type="url" required placeholder="Video or playlist link" aria-label="YouTube video or playlist link">
+              <button class="btn" id="add-btn">Add</button>
+            </div>
+          </form>
+          <div class="source" id="drop">
+            <h3>From your files</h3>
+            <label class="source-row drop-area">
+              <input type="file" id="files" multiple accept="audio/*,video/*,.flac,.aif,.aiff,.opus,.mkv" hidden>
+              <span class="drop-text">Drop audio or video files</span>
+              <span class="btn" role="button">Choose files</span>
             </label>
           </div>
-          <button class="btn" id="add-btn">Add</button>
-          <label class="drop" id="drop">
-            <input type="file" id="files" multiple accept="audio/*,video/*,.flac,.aif,.aiff,.opus,.mkv" hidden>
-            <span><strong>Or add your own files:</strong> drop audio or video files here, or click to choose.</span>
-          </label>
-          <p class="rights-note">Only use content you are authorized to download and process. You are responsible
-            for complying with copyright law and the terms of the source service.</p>
-        </form>
+        </div>
+        <p class="rights-note">Only use content you are authorized to download and process. You are responsible
+          for complying with copyright law and the terms of the source service.</p>
         <p class="note" id="add-note" aria-live="polite"></p>
       </section>
 
@@ -579,7 +592,7 @@ async function refreshJobs() {
   try { jobs = await api("/api/jobs"); } catch { return; }
   const list = $("#queue");
   if (!jobs.length) {
-    list.innerHTML = `<p class="empty">Nothing waiting. Add a playlist to start.</p>`;
+    list.innerHTML = `<p class="empty">Nothing waiting.</p>`;
   } else {
     const order = { running: 0, queued: 1, failed: 2, done: 3 };
     jobs.sort((a, b) => order[a.status] - order[b.status] || a.added_at - b.added_at);
