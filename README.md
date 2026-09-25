@@ -3,8 +3,8 @@
 **Rip the drums out of your music, play along with a click, and record yourself.**
 
 Rip It Out is a practice tool for drummers. Paste a YouTube link or a whole playlist, and
-it separates every song into a drums track and a "everything except drums" track, finds
-every beat and bar, and builds a click that follows the band (even when the tempo drifts).
+it separates every song into drums, bass, vocals and the other instruments, finds every
+beat, bar and song section (intro, verse, chorus, ...), and builds a click that follows the band (even when the tempo drifts).
 Then play along in your own window with a count-in, record your drums (and yourself on
 camera) and mix your take with the band afterwards.
 
@@ -45,11 +45,11 @@ camera) and mix your take with the band afterwards.
    xattr -dr com.apple.quarantine "/Applications/Rip It Out.app"
    ```
 
-4. Start Rip It Out. The first song you add downloads the separation and beat models
-   (about 400 MB, once).
+4. Start Rip It Out. The first song you add downloads the separation, beat and section
+   models (about 410 MB, once).
 
-Disk space: the app takes about 1.1 GB. Each song needs about 60 to 160 MB in your library
-(lossless FLAC stems), takes with video more.
+Disk space: the app takes about 1.1 GB. Each song needs about 35 MB in your library with
+the default compressed format (140 MB with 24-bit FLAC), takes with video more.
 
 ## How to use it
 
@@ -62,14 +62,19 @@ Each song takes one to two minutes on an M-series Mac. Songs already in your lib
 skipped, so you can add the same playlist again later to pick up new songs. **Stop** ends
 the song being processed, **Stop all** also empties the queue.
 
-**3. Fix songs that came out drum heavy.** If the "no drums" track sounds almost empty
-(typical for drum & bass or EDM, if you added it with the Band style), tick the songs in
-the library and choose **Redo separation as Electronic**. This takes a minute and keeps beats, click
+**3. Fix songs that came out drum heavy.** If the band sounds almost empty without the
+drums (typical for drum & bass or EDM, if you added it with the Band style), tick the songs
+in the library and choose **Redo separation as Electronic**. This takes a minute and keeps beats, click
 and takes.
 
 **4. Play along.** In **Play**, pick a song, set the count-in and the levels (drums down,
-band up, click to taste) and press Play or the space bar. Click on the tempo view to jump;
-with a count-in, playback starts at the beginning of that bar.
+bass, vocals and other up, click to taste) and press Play or the space bar. Click on the
+tempo view to jump; with a count-in, playback starts at the beginning of that bar.
+
+The coloured band above the tempo view shows the song's sections. Click a section to loop
+it, Shift-click another one to extend the loop, or drag across the view to loop any bars
+(the loop snaps to bar lines). **Loop** or the **L** key loops the section you are in.
+Zoom with **+** and **−**, pinch or Cmd-scroll; the scale on the left is in bpm.
 
 The beat grid (click, bar numbers, count-in) is cleaned up automatically: the beat tracker
 sometimes jumps between double and half tempo or loses a beat, and the app evens that out
@@ -98,7 +103,7 @@ you press Stop or the song ends.
 ![Reviewing a take](docs/record.png)
 
 **6. Review and export.** Pick a take on the right. It plays with its own fader
-(**My drums**) next to the original drums, the band and the click. If your hits sit a
+(**My drums**) next to the original drums, the other tracks and the click. If your hits sit a
 little early or late, move **Drums timing** until they line up and save; the video follows.
 **Export audio** writes a WAV, **Export video** an MP4, both with the levels of the faders.
 
@@ -110,14 +115,16 @@ YouTube Downloader*, *Restart Engine* and *Show Log*.
 Processing is local: your recordings and the generated tracks are processed and stored on
 your computer, and there is no Rip It Out server. The app connects to YouTube when it
 downloads source audio, to the model publishers (Meta's `dl.fbaipublicfiles.com` for
-Demucs, JKU Linz's `cloud.cp.jku.at` for beat_this) the first time it needs a model, and to PyPI only when you choose *Update YouTube
+Demucs, JKU Linz's `cloud.cp.jku.at` for beat_this, Hugging Face for the section model)
+the first time it needs a model, and to PyPI only when you choose *Update YouTube
 Downloader*.
 
 | Step | What does it |
 |---|---|
 | Listing a playlist, downloading the audio | [yt-dlp](https://github.com/yt-dlp/yt-dlp), with [Deno](https://deno.com) for YouTube's JavaScript |
 | Decoding to 44.1 kHz | [FFmpeg](https://ffmpeg.org) |
-| Drums / no-drums separation | [Demucs](https://github.com/facebookresearch/demucs) `htdemucs_ft` on the Apple GPU ([PyTorch](https://pytorch.org) with MPS) |
+| Separation into drums, bass, vocals, other | [Demucs](https://github.com/facebookresearch/demucs) `htdemucs_ft` on the Apple GPU ([PyTorch](https://pytorch.org) with MPS) |
+| Song sections | [All-In-One](https://github.com/mir-aidj/all-in-one) (Kim and Nam, 2023, trained on the Harmonix Set), run on the four tracks; borders snapped to bar lines. Included in `stemtool/structure` without its NATTEN and madmom dependencies (see the notes there). |
 | Electronic style | A harmonic/percussive split of the drums track that moves sustained, pitched sound (basses, synths) back to the band. The two tracks always add up to the original mix. |
 | Beats and downbeats | [beat_this](https://github.com/CPJKU/beat_this), then a cleanup that keeps one tempo level, fills lost beats and drops stray ones (`stemtool/grid.py`) |
 | Click (audio and MIDI) | Rendered from the tracked beats |
@@ -136,14 +143,16 @@ folder, logs in `~/Library/Logs/Rip It Out`.
 
 ### Library format
 
-The library is plain files, so other tools (or instance a DAW) can use it:
+The library is plain files, so other tools (for instance a DAW) can use it:
 
 ```
 <library>/
   some-song__<youtube id>/
-    manifest.json      title, artist, group, bpm, beats, downbeats, file names
-    drums.flac         the drums
-    no_drums.flac      everything else
+    manifest.json      title, artist, group, bpm, beats, downbeats, sections, file names
+    drums.m4a          the drums          (.m4a, or .flac with a lossless setting)
+    bass.m4a           the bass
+    vocals.m4a         the vocals
+    other.m4a          everything else
     click.flac         the click
     click.mid          the click as General MIDI percussion
     takes/<date>/
@@ -155,9 +164,14 @@ The library is plain files, so other tools (or instance a DAW) can use it:
   .stemtool-work/      temporary, hidden
 ```
 
-All FLAC files of a song (including `my_drums.flac`) have the same sample rate and length
-and can be started together sample-accurately. `drums.flac + no_drums.flac` add up to the
-original mix. A folder only counts as a song once `manifest.json` exists; songs are built
+All audio files of a song (including `my_drums.flac`) have the same sample rate and
+length and can be started together sample-accurately; that holds for the compressed AAC
+files too, whose encoder delay is recorded in the file and removed by decoders. The four
+tracks add up to the original mix (exactly with lossless files, audibly the same with
+AAC). **Settings > Audio files** chooses the format: AAC 256 kbps (default, about 35 MB
+per song), 16-bit or 24-bit FLAC; **Convert library** brings existing songs to the
+chosen format. Songs made with Rip It Out 0.2 have two tracks (`drums`, `no_drums`)
+until they are converted; `manifest.json` has `"schema": 2` for the four-track layout. A folder only counts as a song once `manifest.json` exists; songs are built
 in the hidden work folder and moved into place in one step, so sync clients never pick up
 half-written songs.
 

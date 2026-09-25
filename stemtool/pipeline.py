@@ -16,12 +16,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
+import logging
+
 import numpy as np
 
-from . import audio, beats, click, grid, library, separation, youtube
+from . import audio, beats, click, grid, library, sections, separation, youtube
 from .config import SAMPLE_RATE, Settings
 
 StageCallback = Callable[[str], None]
+log = logging.getLogger("stemtool")
 
 
 def process(ref: youtube.VideoRef, settings: Settings, on_stage: StageCallback,
@@ -36,7 +39,8 @@ def process(ref: youtube.VideoRef, settings: Settings, on_stage: StageCallback,
 
 
 def reseparate(folder: str, settings: Settings, on_stage: StageCallback, style: str) -> Path:
-    """Redo the separation of a song already in the library, with another style.
+    """Redo the separation of a song already in the library: another style, the
+    four-track layout, or another storage format.
 
     The mix is rebuilt from the existing stems (they add up to it), so nothing is
     downloaded again, and length, beats, click and recorded takes stay valid.
@@ -50,22 +54,34 @@ def reseparate(folder: str, settings: Settings, on_stage: StageCallback, style: 
     try:
         manifest = json.loads((song / library.MANIFEST).read_text(encoding="utf-8"))
         on_stage("Reading stems")
-        drums, sr = audio.read(song / manifest["stems"]["drums"])
-        no_drums, _ = audio.read(song / manifest["stems"]["no_drums"])
-        mix = (drums + no_drums) / float(manifest.get("processing", {}).get("stem_gain") or 1.0)
-        del drums, no_drums
+        mix = None
+        for name in manifest["stems"].values():
+            data, sr = audio.read(song / name)
+            mix = data if mix is None else mix + data
+        mix /= float(manifest.get("processing", {}).get("stem_gain") or 1.0)
 
-        drums, no_drums, gain, share = _separate(mix, sr, settings, style, on_stage)
+        stems, gain, share = _separate(mix, sr, settings, style, on_stage)
+        song_sections = _sections(stems, sr, manifest["downbeats"], manifest["duration_s"], on_stage)
         on_stage("Writing files")
-        audio.write_flac(work / "drums.flac", drums * gain, sr)
-        audio.write_flac(work / "no_drums.flac", no_drums * gain, sr)
+        files = _write_stems(work, stems, gain, sr, settings.stem_format)
+        old = set(manifest["stems"].values())
         with _no_stop():  # a Stop in here would leave stems that no longer add up
-            os.replace(work / "drums.flac", song / manifest["stems"]["drums"])
-            os.replace(work / "no_drums.flac", song / manifest["stems"]["no_drums"])
-            library.update_manifest(song, lambda m: m.setdefault("processing", {}).update(
-                separation_model=settings.separation_model, style=style,
-                stem_gain=round(gain, 4), drum_share=share,
-            ))
+            for filename in files.values():
+                os.replace(work / filename, song / filename)
+
+            def change(m: dict) -> None:
+                m["schema"] = library.SCHEMA_VERSION
+                m["stems"] = files
+                m["stem_format"] = settings.stem_format
+                if song_sections is not None:
+                    m["sections"] = song_sections
+                m.setdefault("processing", {}).update(
+                    separation_model=settings.separation_model, style=style,
+                    stem_gain=round(gain, 4), drum_share=share,
+                )
+            library.update_manifest(song, change)
+            for filename in old - set(files.values()):  # e.g. no_drums.flac, or drums.flac became drums.m4a
+                (song / filename).unlink(missing_ok=True)
         return song
     finally:
         shutil.rmtree(work, ignore_errors=True)
@@ -88,18 +104,32 @@ def _no_stop():
 
 
 def _separate(mix: np.ndarray, sr: int, settings: Settings, style: str, on_stage: StageCallback):
-    """Returns (drums, no_drums, shared_gain, drum_share)."""
-    on_stage("Separating drums")
-    drums, no_drums = separation.separate_drums(
-        mix, sr, settings.separation_model, settings.device, settings.shifts
-    )
+    """Returns (stems, shared_gain, drum_share); stems: drums, bass, vocals, other."""
+    on_stage("Separating")
+    stems = separation.separate(mix, sr, settings.separation_model, settings.device, settings.shifts)
     if style == "electronic":
         on_stage("Cleaning up drums (electronic)")
-        drums, no_drums = separation.refine_electronic(drums, no_drums, sr)
-    # One shared gain for both stems, so drums + no_drums still add up to the mix.
-    peak = float(max(np.abs(drums).max(), np.abs(no_drums).max(), 1e-9))
+        stems = separation.refine_electronic_stems(stems, sr)
+    # One shared gain for all stems, so they still add up to the mix.
+    peak = float(max(max(np.abs(x).max() for x in stems.values()), 1e-9))
     gain = 0.99 / peak if peak > 0.99 else 1.0
-    return drums, no_drums, gain, separation.drum_share(drums, no_drums)
+    rest = stems["bass"] + stems["vocals"] + stems["other"]
+    return stems, gain, separation.drum_share(stems["drums"], rest)
+
+
+def _write_stems(folder: Path, stems: dict[str, np.ndarray], gain: float, sr: int, fmt: str) -> dict[str, str]:
+    return {name: audio.write_stem(folder, name, data * gain, sr, fmt) for name, data in stems.items()}
+
+
+def _sections(stems: dict[str, np.ndarray], sr: int, downbeats: list[float], duration: float,
+              on_stage: StageCallback) -> list[dict] | None:
+    """The song's sections, or None if the section model isn't available (offline)."""
+    on_stage("Finding sections")
+    try:
+        return sections.detect(stems, sr, downbeats, duration)
+    except Exception as exc:  # noqa: BLE001 (sections are nice to have; the song itself is fine)
+        log.warning("Sections not found: %s", exc)
+        return None
 
 
 def _process(ref: youtube.VideoRef, settings: Settings, on_stage: StageCallback, work: Path,
@@ -112,17 +142,19 @@ def _process(ref: youtube.VideoRef, settings: Settings, on_stage: StageCallback,
     audio.decode_to_wav(download, mix_wav, SAMPLE_RATE)
     mix, sr = audio.read(mix_wav)
 
-    drums, no_drums, gain, share = _separate(mix, sr, settings, style, on_stage)
+    stems, gain, share = _separate(mix, sr, settings, style, on_stage)
 
     on_stage("Finding beats")
     raw_beats, raw_downbeats = beats.track(mix.mean(axis=1), sr, settings.beat_checkpoint, settings.device)
     beat_times, downbeat_times, bpb = grid.clean(raw_beats, raw_downbeats)
 
+    song_sections = _sections(stems, sr, downbeat_times, len(mix) / sr, on_stage) or []
+
     on_stage("Writing files")
     song = work / "song"
     song.mkdir()
-    audio.write_flac(song / "drums.flac", drums * gain, sr)
-    audio.write_flac(song / "no_drums.flac", no_drums * gain, sr)
+    files = _write_stems(song, stems, gain, sr, settings.stem_format)
+    del stems
     audio.write_flac(song / "click.flac", click.render_audio(beat_times, downbeat_times, len(mix), sr), sr)
     click.write_midi(song / "click.mid", beat_times, downbeat_times)
 
@@ -146,7 +178,9 @@ def _process(ref: youtube.VideoRef, settings: Settings, on_stage: StageCallback,
         "grid": "clean",
         "beats_raw": raw_beats,  # the tracker's output, to clean again or reset the grid
         "downbeats_raw": raw_downbeats,
-        "stems": {"drums": "drums.flac", "no_drums": "no_drums.flac"},
+        "sections": song_sections,
+        "stems": files,  # drums, bass, vocals, other
+        "stem_format": settings.stem_format,
         "click": {"audio": "click.flac", "midi": "click.mid"},
         "processing": {
             "separation_model": settings.separation_model,
@@ -207,4 +241,16 @@ def regrid(song: Path, action: str, steps: int = 1) -> dict:
         m.setdefault("downbeats_raw", raw_db)
         m.update(beats=new_b, downbeats=new_db, beats_per_bar=bpb, bpm=beats.estimate_bpm(new_b),
                  grid="raw" if action == "reset" else ("clean" if action == "clean" else "edited"))
+        if m.get("sections"):
+            m["sections"] = sections.snap(m["sections"], new_db, m["duration_s"])
     return library.update_manifest(song, change)
+
+
+def analyze_sections(song: Path) -> dict:
+    """Find sections again for a four-track song already in the library."""
+    manifest = json.loads((song / library.MANIFEST).read_text(encoding="utf-8"))
+    if "bass" not in manifest["stems"]:
+        raise RuntimeError("Sections need the four-track layout: convert the song first")
+    stems = {name: audio.read(song / filename)[0] for name, filename in manifest["stems"].items()}
+    found = sections.detect(stems, manifest["sample_rate"], manifest["downbeats"], manifest["duration_s"])
+    return library.update_manifest(song, lambda m: m.__setitem__("sections", found))

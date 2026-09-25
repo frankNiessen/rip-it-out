@@ -28,10 +28,12 @@ def _get_model(name: str):
         return _model
 
 
-def separate_drums(
-    mix: np.ndarray, sample_rate: int, model_name: str, device: str, shifts: int = 1
-) -> tuple[np.ndarray, np.ndarray]:
-    """mix: samples x 2 float32. Returns (drums, no_drums), same shape as mix."""
+STEMS = ("drums", "bass", "vocals", "other")
+
+
+def separate(mix: np.ndarray, sample_rate: int, model_name: str, device: str, shifts: int = 1) -> dict[str, np.ndarray]:
+    """mix: samples x 2 float32. Returns {"drums", "bass", "vocals", "other"}, each
+    shaped like mix; together they add up to Demucs' reconstruction of the mix."""
     import torch
     from demucs.apply import apply_model
 
@@ -51,16 +53,31 @@ def separate_drums(
             model, wav[None], device=device, shifts=shifts, split=True, overlap=0.25, progress=False
         )[0]
     sources = sources * std + mean
-
-    drums_idx = model.sources.index("drums")
-    drums = sources[drums_idx]
-    no_drums = sources.sum(0) - drums  # same as `demucs --two-stems=drums`
+    out = {name: sources[model.sources.index(name)].cpu().numpy().T.copy() for name in STEMS}
 
     if device.startswith("cuda"):
         torch.cuda.empty_cache()
     elif device == "mps":
         torch.mps.empty_cache()
-    return drums.cpu().numpy().T.copy(), no_drums.cpu().numpy().T.copy()
+    return out
+
+
+def refine_electronic_stems(stems: dict[str, np.ndarray], sample_rate: int) -> dict[str, np.ndarray]:
+    """The electronic-style cleanup for four tracks: what refine_electronic moves out
+    of the drums goes to bass below 200 Hz (sub and reese bass) and to other above
+    (synths, stabs). The four tracks still add up to the same mix."""
+    from scipy.signal import butter, sosfiltfilt
+
+    rest = stems["bass"] + stems["vocals"] + stems["other"]
+    kept, _ = refine_electronic(stems["drums"], rest, sample_rate)
+    moved = stems["drums"] - kept
+    low = sosfiltfilt(butter(4, 200, "lowpass", fs=sample_rate, output="sos"), moved, axis=0).astype(np.float32)
+    return {
+        "drums": kept,
+        "bass": stems["bass"] + low,
+        "vocals": stems["vocals"],
+        "other": stems["other"] + (moved - low),
+    }
 
 
 def refine_electronic(

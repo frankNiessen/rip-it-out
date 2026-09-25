@@ -172,18 +172,17 @@ def export(song: Path, take_id: str, gains: dict, with_video: bool) -> dict:
     if b - a < sr // 2:
         raise TakeError("This take doesn't overlap the song")
 
-    sources = {
-        "my_drums": path / take["files"]["my_drums"],
-        "drums": song / manifest["stems"]["drums"],
-        "music": song / manifest["stems"]["no_drums"],
-        "click": song / manifest["click"]["audio"],
-    }
+    # gains are keyed like the app's faders: my_drums, drums, bass, vocals, other, click
+    # (and "music" for songs still in the two-track layout, whose stem is no_drums)
+    sources = {"my_drums": path / take["files"]["my_drums"], "click": song / manifest["click"]["audio"]}
+    for name, filename in manifest["stems"].items():
+        sources["music" if name == "no_drums" else name] = song / filename
     mix = np.zeros((b - a, 2), dtype=np.float32)
     for key, file in sources.items():
         g = float(gains.get(key, 0.0))
         if g > 0:
-            data, _ = sf.read(str(file), start=a, frames=b - a, dtype="float32", always_2d=True)
-            mix[: len(data)] += data[:, :2] * g
+            data = audio.read_range(file, a, b - a)
+            mix += data[:, :2] * g
     peak = float(np.abs(mix).max())
     if peak > 0.99:
         mix *= 0.99 / peak

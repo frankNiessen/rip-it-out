@@ -167,7 +167,7 @@
   @media (max-width: 600px) { .deck-top { grid-template-columns: 1fr; } }
   .counter {
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .3rem;
-    border: 2px solid var(--line); border-radius: 6px; padding: .5rem; min-height: 9.5rem; transition: background-color .08s;
+    border: 2px solid var(--line); border-radius: 6px; padding: .5rem; min-height: 11rem; transition: background-color .08s;
   }
   .counter .num { font: 700 4.2rem/1 var(--display); font-variant-numeric: tabular-nums; }
   .counter .label { font-size: .85rem; color: var(--muted); font-weight: 500; }
@@ -183,8 +183,13 @@
   .counter.counting.flash .num, .counter.counting.flash .label { color: var(--on-accent); }
   .counter.counting.flash .dots i { background: rgba(10, 18, 4, .3); box-shadow: none; }
   .counter.counting.flash .dots i.on { background: var(--on-accent); }
-  .timeline { position: relative; height: 9.5rem; border: 1px solid var(--line); border-radius: 4px; cursor: pointer; background: rgba(4, 8, 10, .75); }
-  .timeline canvas { width: 100%; height: 100%; display: block; }
+  .timeline { position: relative; height: 11rem; border: 1px solid var(--line); border-radius: 4px; cursor: pointer; background: rgba(4, 8, 10, .75); }
+  .timeline canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+  .caption .zoom { display: flex; gap: .25rem; }
+  .caption .zoom .btn.quiet { padding: .05rem .5rem; font-size: .85rem; }
+  .caption { align-items: center; }
+  .caption .cap-hint { margin-left: auto; }
+  .loop-btn.on { border-color: var(--accent); color: var(--on-accent); background: var(--accent); }
   .caption { display: flex; justify-content: space-between; gap: 1rem; font-size: .85rem; color: var(--muted); margin: .35rem 0 .9rem; font-variant-numeric: tabular-nums; }
   .transport { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem 1rem; }
   .transport label { display: flex; align-items: center; gap: .4rem; font-size: .92rem; }
@@ -392,6 +397,16 @@
     </form>
     <p class="note" id="lib-note" aria-live="polite"></p>
 
+    <h2 style="margin-top:2rem">Audio files</h2>
+    <p class="hint">How the separated tracks (drums, bass, vocals, other) are stored. Compressed files take about a
+      quarter of the space and sound the same for practice; lossless is for further studio work. Your own recordings
+      are always kept lossless.</p>
+    <div class="lib-form">
+      <select id="fmt" aria-label="Audio format"></select>
+      <button class="btn quiet" id="convert" hidden>Convert library</button>
+    </div>
+    <p class="note" id="fmt-note" aria-live="polite"></p>
+
     <h2 style="margin-top:2rem">About</h2>
     <dl class="about" id="about"></dl>
   </section>
@@ -447,11 +462,31 @@ async function loadSettings() {
   $("#lib-choose").hidden = !desktop || s.library_locked;
   $("#lib-note").className = "note";
   $("#lib-note").textContent = s.library_locked ? "Set by the STEMTOOL_LIBRARY environment variable, change it there." : "";
+  $("#fmt").innerHTML = Object.entries(s.formats).map(([k, label]) => `<option value="${esc(k)}">${esc(label)}</option>`).join("");
+  $("#fmt").value = s.stem_format;
+  showConvert(s.to_convert);
   $("#about").innerHTML = [
     ["Version", s.version], ["Separation model", s.separation_model], ["Device", s.device],
     ["Settings file", s.config_file],
   ].map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("");
 }
+function showConvert(n) {
+  $("#convert").hidden = !n;
+  $("#convert").textContent = `Convert library (${n} ${n === 1 ? "song" : "songs"})`;
+  $("#fmt-note").className = "note";
+  $("#fmt-note").textContent = n ? "Converting separates each song again into four tracks in this format, with sections. "
+    + "About a minute per song, nothing is downloaded, beats and takes stay." : "Every song is in this format.";
+}
+$("#fmt").addEventListener("change", async () => {
+  try { const s = await api("/api/settings", { method: "PUT", body: JSON.stringify({ stem_format: $("#fmt").value }) }); showConvert(s.to_convert); }
+  catch (err) { $("#fmt-note").className = "note error"; $("#fmt-note").textContent = err.message; }
+});
+$("#convert").addEventListener("click", async () => {
+  const r = await api("/api/library/convert", { method: "POST" });
+  $("#fmt-note").textContent = `${r.queued} ${r.queued === 1 ? "song" : "songs"} queued. Progress is in the Library tab; you can stop it there.`;
+  $("#convert").hidden = true;
+  refreshJobs();
+});
 $("#lib-choose").addEventListener("click", async () => {
   const chosen = await desktop.chooseFolder($("#lib-path").value);
   if (chosen) { $("#lib-path").value = chosen; $("#lib-form").requestSubmit(); }
@@ -675,7 +710,8 @@ async function selectSong(folder) {
   try {
     const m = await api(`/api/library/${encodeURIComponent(folder)}`);
     audioCtx();
-    const names = { drums: m.stems.drums, music: m.stems.no_drums, click: m.click.audio };
+    const names = { click: m.click.audio };
+    for (const [stem, file] of Object.entries(m.stems)) names[stem === "no_drums" ? "music" : stem] = file;
     const buffers = {};
     await Promise.all(Object.entries(names).map(async ([k, file]) => {
       const data = await (await fetch(fileUrl(folder, file))).arrayBuffer();
@@ -761,39 +797,61 @@ const visualNow = () => {
 const engine = {
   song: null, gains: {}, sources: [], playing: false, offset: 0, tAudio: 0, pos0: 0,
   plan: null, take: null, takeShift: 0, withTake: false, onEnded: null, ticks: null,
+  loop: null, // { a, b } in seconds on bar lines, or null
   init() {
-    for (const k of ["drums", "music", "click", "take", "count"]) { this.gains[k] = ctx.createGain(); this.gains[k].connect(ctx.destination); }
+    for (const k of [...ALL_GAINS, "count"]) { this.gains[k] = ctx.createGain(); this.gains[k].connect(ctx.destination); }
     this.gains.count.gain.value = 0.9;
     this.ticks = { hi: makeTick(1760), lo: makeTick(1100) };
   },
-  load(song) { this.stop(); this.song = song; this.offset = 0; },
+  load(song) { this.stop(); if (this.song?.folder !== song.folder) this.loop = null; this.song = song; this.offset = 0; },
   get duration() { return this.song ? this.song.m.duration_s : 0; },
   setGain(k, v) { if (this.gains[k]) this.gains[k].gain.value = v; },
   position(visual = true) {
     if (!this.playing) return this.offset;
     const now = visual ? visualNow() : ctx.currentTime;
-    return Math.max(0, Math.min(this.duration, this.pos0 + now - this.tAudio));
+    let pos = this.pos0 + now - this.tAudio;
+    const L = this.activeLoop;
+    if (L && pos >= L.b) pos = L.a + ((pos - L.a) % (L.b - L.a)); // the sources wrap the same way
+    return Math.max(0, Math.min(this.duration, pos));
+  },
+  setLoop(loop) {
+    const was = this.playing, pos = this.position(false);
+    if (was) this.stop();
+    this.loop = loop && loop.b - loop.a > 0.2 ? loop : null;
+    if (this.loop && (pos < this.loop.a || pos >= this.loop.b)) this.offset = this.loop.a;
+    else this.offset = pos;
+    if (was) this.play({ countInBars: 0 });
   },
   play({ countInBars = 0 } = {}) {
     if (this.playing || !this.song) return null;
     ctx.resume();
     const { m, buffers, bpb } = this.song;
-    const from = this.offset >= this.duration - 0.05 ? 0 : this.offset;
+    const L = this.loop;
+    let from = this.offset >= this.duration - 0.05 ? 0 : this.offset;
+    if (L && (from < L.a || from >= L.b)) from = L.a;
     const plan = planStart(m, bpb, from, countInBars);
+    if (L && plan.pos < L.a) plan.pos = L.a; // the count-in may not snap out of the loop
     const now = ctx.currentTime;
     const lead = plan.clicks.length ? Math.max(0, plan.pos - plan.clicks[0].s) : 0;
     const tAudio = now + 0.12 + lead;
-    const play = (buf, gainKey, when, off) => {
+    const play = (buf, gainKey, when, off, shift = 0) => {
       if (off < 0) { when -= off; off = 0; }
       if (off >= buf.duration) return;
-      const s = ctx.createBufferSource(); s.buffer = buf; s.connect(this.gains[gainKey]); s.start(when, off); this.sources.push(s);
+      const s = ctx.createBufferSource(); s.buffer = buf; s.connect(this.gains[gainKey]);
+      if (L) { // every track loops the same stretch, sample-accurately
+        s.loop = true; s.loopStart = Math.max(0, L.a - shift); s.loopEnd = Math.max(s.loopStart + 0.01, L.b - shift);
+      }
+      s.start(when, off); this.sources.push(s);
     };
-    for (const k of ["drums", "music", "click"]) play(buffers[k], k, tAudio, plan.pos);
-    if (this.withTake && this.take) play(this.take, "take", tAudio, plan.pos - this.takeShift);
+    for (const [k, buf] of Object.entries(buffers)) play(buf, k, tAudio, plan.pos);
+    if (this.withTake && this.take) play(this.take, "take", tAudio, plan.pos - this.takeShift, this.takeShift);
+    const ticks = { hi: this.ticks.hi, lo: this.ticks.lo };
     for (const c of plan.clicks) {
       c.t = tAudio + (c.s - plan.pos);
-      play(c.down ? this.ticks.hi : this.ticks.lo, "count", c.t, 0);
+      const tick = ctx.createBufferSource(); tick.buffer = c.down ? ticks.hi : ticks.lo;
+      tick.connect(this.gains.count); tick.start(c.t); this.sources.push(tick);
     }
+    this.activeLoop = L;
     plan.end = plan.clicks.length ? tAudio + (plan.target - plan.pos) : 0;
     this.plan = plan; this.tAudio = tAudio; this.pos0 = plan.pos; this.playing = true;
     return { tAudio, pos: plan.pos };
@@ -815,7 +873,7 @@ const engine = {
     return was;
   },
   checkEnd() {
-    if (this.playing && this.pos0 + ctx.currentTime - this.tAudio >= this.duration) {
+    if (this.playing && !this.activeLoop && this.pos0 + ctx.currentTime - this.tAudio >= this.duration) {
       this.stop(); this.offset = this.duration;
       if (this.onEnded) this.onEnded();
     }
@@ -823,28 +881,37 @@ const engine = {
 };
 
 // ---- decks (the player UI; Play and Record each have one) ---------------------
-const CHANNELS = {
-  play: [["drums", "Drums", 0], ["music", "Music", 1], ["click", "Click", 0.8]],
-  record: [["take", "My drums", 1], ["drums", "Original drums", 0], ["music", "Music", 1], ["click", "Click", 0.8]],
+// Faders per song layout: four tracks, or two for songs not converted yet ("music" is no_drums).
+const STEM_FADERS = {
+  4: [["drums", "Drums", 0], ["bass", "Bass", 1], ["vocals", "Vocals", 1], ["other", "Other", 1]],
+  2: [["drums", "Drums", 0], ["music", "Music", 1]],
 };
+const ALL_GAINS = ["take", "drums", "bass", "vocals", "other", "music", "click"];
+function channelsFor(kind, tracks) {
+  const stems = STEM_FADERS[tracks].map(([k, label, v]) => [k, kind === "record" && k === "drums" ? "Original drums" : label, v]);
+  return [...(kind === "record" ? [["take", "My drums", 1]] : []), ...stems, ["click", "Click", 0.8]];
+}
+const DEFAULT_GAINS = { take: 1, drums: 0, bass: 1, vocals: 1, other: 1, music: 1, click: 0.8 };
 
 function makeDeck(kind, root) {
-  const gains = store.get(`gains.${kind}`, Object.fromEntries(CHANNELS[kind].map(([k, , v]) => [k, v])));
+  const gains = { ...DEFAULT_GAINS, ...store.get(`gains.${kind}`, {}) };
   root.innerHTML = `
     <div class="deck">
       <div class="deck-top">
         <div class="counter" aria-live="off"><span class="num">&ndash;</span><span class="label">&nbsp;</span><span class="dots"></span></div>
         <div class="timeline" title="Click to jump here"><canvas></canvas></div>
       </div>
-      <div class="caption"><span class="pos">0:00 / 0:00</span><span class="cap-hint">Tempo per beat, bar lines at downbeats</span></div>
+      <div class="caption"><span class="pos">0:00 / 0:00</span><span class="cap-hint"></span>
+        <span class="zoom"><button class="btn quiet" data-zoom="out" aria-label="Zoom out">−</button><button class="btn quiet" data-zoom="in" aria-label="Zoom in">+</button><button class="btn quiet" data-zoom="fit">Fit</button></span></div>
       <div class="transport">
         ${kind === "record" ? `<button class="btn rec">Record</button><span class="recstate" hidden><span class="recording-dot"></span><span class="rectime">0:00</span></span>` : ""}
         <button class="btn ${kind === "record" ? "quiet" : ""} play" disabled>Play</button>
         <button class="btn quiet rewind" disabled>To start</button>
+        <button class="btn quiet loop-btn" aria-pressed="false" title="Loop the current section (L)">Loop</button>
         <label>Count-in <select class="countin">
           <option value="0">Off</option><option value="1">1 bar</option><option value="2">2 bars</option>
         </select></label>
-        <span class="hint">Space plays and pauses</span>
+        <span class="hint">Space plays, L loops</span>
         ${kind === "play" ? `<span class="grid-tools" title="Fix the beat grid if the click or bar numbers are off">
           <span class="hint">Bar line</span>
           <button class="btn quiet" data-grid="shift" data-steps="-1" aria-label="Move the bar line one beat earlier">◂</button>
@@ -855,10 +922,7 @@ function makeDeck(kind, root) {
           <button class="btn quiet" data-grid="clean" title="Back to the automatic grid">Undo edits</button>
         </span>` : ""}
       </div>
-      <div class="mixer">
-        ${CHANNELS[kind].map(([k, label]) => `<label class="${k === "take" ? "mine" : ""}" data-ch="${k}" ${k === "take" ? "hidden" : ""}>${label}
-          <input type="range" min="0" max="1" step="0.01" value="${gains[k] ?? 1}" data-gain="${k}"></label>`).join("")}
-      </div>
+      <div class="mixer"></div>
     </div>`;
   const q = (s) => $(s, root);
   const counter = q(".counter"), canvas = q("canvas"), playBtn = q(".play"), countSel = q(".countin");
@@ -867,13 +931,25 @@ function makeDeck(kind, root) {
 
   const deck = {
     kind, root, gains,
+    view: { start: 0, span: null }, // span null: the whole song
+    dragSel: null,
     get countIn() { return +countSel.value; },
     activate() {
       engine.withTake = kind === "record";
-      for (const [k] of CHANNELS.play.concat(CHANNELS.record)) engine.setGain(k, gains[k] ?? 0);
+      for (const k of ALL_GAINS) engine.setGain(k, kind === "play" && k === "take" ? 0 : gains[k] ?? DEFAULT_GAINS[k]);
     },
-    clear() { playBtn.disabled = q(".rewind").disabled = true; if (q(".rec")) q(".rec").disabled = true; },
+    clear() {
+      playBtn.disabled = q(".rewind").disabled = true; if (q(".rec")) q(".rec").disabled = true;
+      deck.view.start = 0; deck.view.span = null;
+    },
+    renderMixer() {
+      const tracks = current?.m.stems.bass ? 4 : 2;
+      const takeShown = !!q('[data-ch="take"]') && !q('[data-ch="take"]').hidden;
+      q(".mixer").innerHTML = channelsFor(kind, tracks).map(([k, label]) => `<label class="${k === "take" ? "mine" : ""}" data-ch="${k}" ${k === "take" && !takeShown ? "hidden" : ""}>${label}
+        <input type="range" min="0" max="1" step="0.01" value="${gains[k] ?? DEFAULT_GAINS[k]}" data-gain="${k}"></label>`).join("");
+    },
     render() {
+      deck.renderMixer();
       const ok = !!current;
       playBtn.disabled = q(".rewind").disabled = !ok;
       if (q(".rec")) q(".rec").disabled = !ok;
@@ -887,10 +963,15 @@ function makeDeck(kind, root) {
     draw() {
       if (!current) return;
       const m = current.m, pos = engine.position();
-      drawTimeline(canvas, m, pos, kind === "record" ? selectedTake : null);
+      follow(deck.view, pos, m.duration_s);
+      drawTimeline(canvas, m, pos, kind === "record" ? selectedTake : null, deck.view, deck.dragSel);
       q(".pos").textContent = `${fmtTime(pos)} / ${fmtTime(m.duration_s)}`;
       playBtn.textContent = engine.playing ? "Pause" : "Play";
-      q(".cap-hint").textContent = deck.countIn ? "With count-in, playback starts at the bar line" : "Tempo per beat, bar lines at downbeats";
+      const L = engine.loop;
+      q(".loop-btn").setAttribute("aria-pressed", String(!!L));
+      q(".loop-btn").classList.toggle("on", !!L);
+      q(".cap-hint").textContent = L ? `Looping bars ${barOf(m, L.a)} to ${barOf(m, L.b) - 1}${sectionName(m, L)}`
+        : "Drag across the view to loop bars, click a section to loop it";
       drawCounter(counter, m);
     },
   };
@@ -904,12 +985,16 @@ function makeDeck(kind, root) {
   });
   playBtn.addEventListener("click", () => deck.toggle());
   q(".rewind").addEventListener("click", () => { const was = engine.seek(0); if (was) engine.play({ countInBars: deck.countIn }); });
-  q(".timeline").addEventListener("click", (e) => {
-    if (!current || recording) return;
-    const r = e.currentTarget.getBoundingClientRect();
-    const was = engine.seek(((e.clientX - r.left) / r.width) * current.m.duration_s);
-    if (was) engine.play({ countInBars: deck.countIn });
+  setupTimeline(deck, q(".timeline"));
+  q(".zoom").addEventListener("click", (e) => {
+    const z = e.target.dataset.zoom;
+    if (!z || !current) return;
+    const d = current.m.duration_s, v = deck.view, span = v.span || d, center = engine.position();
+    if (z === "fit") { v.span = null; v.start = 0; return; }
+    v.span = Math.min(d, Math.max(MIN_SPAN, z === "in" ? span / 2 : span * 2));
+    if (v.span >= d) { v.span = null; v.start = 0; } else v.start = clampStart(center - v.span / 2, v.span, d);
   });
+  q(".loop-btn").addEventListener("click", () => toggleLoop());
   if (q(".rec")) q(".rec").addEventListener("click", () => (recording ? stopRecording() : startRecording()));
   root.addEventListener("click", (e) => {
     const b = e.target.closest("[data-grid]");
@@ -973,7 +1058,111 @@ function drawCounter(el, m) {
   dots.forEach((d, i) => d.classList.toggle("on", beat !== null && i < beat));
 }
 
-function drawTimeline(canvas, m, position, take) {
+// ---- tempo view: zoom, axis, sections, loops -----------------------------------
+const AXIS_W = 40, SECTION_H = 20, BARS_H = 16, MIN_SPAN = 4;
+const SECTION_COLORS = ["#c6f432", "#3ee88a", "#c69cf5", "#ffb347", "#4fd1e8", "#ff7eb6", "#e8e46f", "#8fa8ff"];
+
+function clampStart(start, span, duration) { return Math.max(0, Math.min(duration - span, start)); }
+function viewRange(view, duration) {
+  const span = view.span || duration;
+  return [view.span ? view.start : 0, (view.span ? view.start : 0) + span];
+}
+// Keep the playhead in sight while playing zoomed in.
+function follow(view, pos, duration) {
+  if (!view.span || !engine.playing) return;
+  const [v0, v1] = viewRange(view, duration);
+  if (pos < v0 || pos > v1 - view.span * 0.1) view.start = clampStart(pos - view.span * 0.2, view.span, duration);
+}
+function barOf(m, t) { return lastLE(m.downbeats, t + 0.02) + 1; }
+const KIND_COLORS = { verse: "#3ee88a", chorus: "#c6f432", bridge: "#c69cf5", inst: "#ffb347", solo: "#ff7eb6",
+  break: "#6d7f86", intro: "#9bb0b0", outro: "#9bb0b0" };
+function sectionColor(sec) {
+  return KIND_COLORS[sec.kind] || SECTION_COLORS[((sec.label || "A").charCodeAt(0) - 65) % SECTION_COLORS.length] || SECTION_COLORS[0];
+}
+function sectionName(m, L) {
+  const hit = (m.sections || []).filter((sec) => sec.start >= L.a - 0.05 && sec.end <= L.b + 0.05);
+  return hit.length ? ` (${hit.map((sec) => sec.label).join(" ")})` : "";
+}
+function snapToBar(m, t) {
+  const db = m.downbeats; if (!db.length) return t;
+  const i = lastLE(db, t);
+  const a = db[Math.max(0, i)], b = db[Math.min(db.length - 1, i + 1)];
+  return t - a < b - t ? a : b;
+}
+
+function toggleLoop() {
+  if (!current || recording) return;
+  if (engine.loop) { engine.setLoop(null); return; }
+  const m = current.m, pos = engine.position(false);
+  const sec = (m.sections || []).find((x) => pos >= x.start && pos < x.end);
+  if (sec) { engine.setLoop({ a: sec.start, b: sec.end }); return; }
+  const i = Math.max(0, lastLE(m.downbeats, pos + 0.02));
+  engine.setLoop({ a: m.downbeats[i], b: m.downbeats[Math.min(m.downbeats.length - 1, i + 4)] ?? m.duration_s });
+}
+
+function setupTimeline(deck, el) {
+  let down = null;
+  const toTime = (e) => {
+    const r = el.getBoundingClientRect(), m = current.m;
+    const [v0, v1] = viewRange(deck.view, m.duration_s);
+    const frac = (e.clientX - r.left - AXIS_W) / (r.width - AXIS_W);
+    return Math.max(0, Math.min(m.duration_s, v0 + frac * (v1 - v0)));
+  };
+  el.addEventListener("pointerdown", (e) => {
+    if (!current || recording || e.button !== 0) return;
+    const r = el.getBoundingClientRect();
+    down = { x: e.clientX, t: toTime(e), inSections: e.clientY - r.top < SECTION_H, shift: e.shiftKey };
+    el.setPointerCapture(e.pointerId);
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (!down) return;
+    if (Math.abs(e.clientX - down.x) > 5 && !down.inSections) {
+      const m = current.m, a = snapToBar(m, Math.min(down.t, toTime(e))), b = snapToBar(m, Math.max(down.t, toTime(e)));
+      deck.dragSel = b > a ? { a, b } : null;
+    }
+  });
+  el.addEventListener("pointerup", (e) => {
+    if (!down) return;
+    const start = down; down = null;
+    const m = current.m, t = toTime(e);
+    if (deck.dragSel) { engine.setLoop(deck.dragSel); deck.dragSel = null; return; }
+    if (start.inSections) {
+      const sec = (m.sections || []).find((x) => t >= x.start && t < x.end);
+      if (!sec) return;
+      const L = engine.loop;
+      if (start.shift && L) engine.setLoop({ a: Math.min(L.a, sec.start), b: Math.max(L.b, sec.end) });
+      else if (L && Math.abs(L.a - sec.start) < 0.05 && Math.abs(L.b - sec.end) < 0.05) engine.setLoop(null);
+      else engine.setLoop({ a: sec.start, b: sec.end });
+      return;
+    }
+    const L = engine.loop;
+    if (L && (t < L.a || t >= L.b)) engine.loop = null; // jumping out of the loop ends it
+    const was = engine.seek(t);
+    if (was) engine.play({ countInBars: deck.countIn });
+  });
+  el.addEventListener("wheel", (e) => {
+    if (!current) return;
+    const d = current.m.duration_s, v = deck.view;
+    if (e.ctrlKey || e.metaKey) { // pinch or Cmd+scroll: zoom around the pointer
+      e.preventDefault();
+      const t = toTime(e), span = v.span || d;
+      const next = Math.min(d, Math.max(MIN_SPAN, span * Math.exp(e.deltaY * 0.01)));
+      const [v0] = viewRange(v, d);
+      if (next >= d) { v.span = null; v.start = 0; return; }
+      v.start = clampStart(t - ((t - v0) / span) * next, next, d); v.span = next;
+    } else if (v.span && Math.abs(e.deltaX) > Math.abs(e.deltaY)) { // sideways swipe: scroll
+      e.preventDefault();
+      v.start = clampStart(v.start + (e.deltaX / el.clientWidth) * v.span, v.span, d);
+    }
+  }, { passive: false });
+}
+
+function niceStep(range) {
+  for (const step of [1, 2, 5, 10, 20, 50]) if (range / step <= 4) return step;
+  return 100;
+}
+
+function drawTimeline(canvas, m, position, take, view, dragSel) {
   const dpr = window.devicePixelRatio || 1;
   const w = canvas.clientWidth, h = canvas.clientHeight;
   if (!w || !h) return;
@@ -982,38 +1171,107 @@ function drawTimeline(canvas, m, position, take) {
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.clearRect(0, 0, w, h);
   const css = getComputedStyle(document.documentElement);
-  const x = (t) => (t / m.duration_s) * w;
+  const col = (name) => css.getPropertyValue(name).trim();
+  const [v0, v1] = viewRange(view, m.duration_s);
+  const plotW = w - AXIS_W;
+  const x = (t) => AXIS_W + ((t - v0) / (v1 - v0)) * plotW;
+  const top = SECTION_H + 4, bottom = h - BARS_H;
+  g.font = "11px Barlow, system-ui, sans-serif";
+
+  // sections band
+  for (const sec of m.sections || []) {
+    const a = Math.max(x(sec.start), AXIS_W), b = Math.min(x(sec.end), w);
+    if (b <= AXIS_W || a >= w) continue;
+    g.fillStyle = sectionColor(sec); g.globalAlpha = 0.28;
+    g.fillRect(a + 1, 1, b - a - 2, SECTION_H - 2);
+    g.globalAlpha = 1;
+    if (b - a > 18) {
+      g.fillStyle = sectionColor(sec);
+      let text = sec.label;
+      while (text.length > 1 && g.measureText(text).width > b - a - 8) text = text.slice(0, -1); // "Chorus 2" becomes "Chor" if narrow
+      g.fillText(text, a + 5, 14);
+    }
+  }
 
   if (take) {
     g.fillStyle = "rgba(255, 61, 110, .14)";
     const a = Math.max(0, take.start_s), b = Math.min(m.duration_s, take.start_s + take.captured_s);
-    g.fillRect(x(a), 0, x(b) - x(a), h);
+    g.fillRect(Math.max(AXIS_W, x(a)), top, Math.max(0, x(b) - Math.max(AXIS_W, x(a))), bottom - top);
   }
-  g.strokeStyle = css.getPropertyValue("--line"); g.lineWidth = 1;
-  for (const d of m.downbeats) { g.beginPath(); g.moveTo(Math.round(x(d)) + .5, h - 14); g.lineTo(Math.round(x(d)) + .5, h); g.stroke(); }
 
+  // beats and bars at the bottom; bar numbers when there is room
+  const barPx = m.downbeats.length > 1 ? (plotW * (m.downbeats[1] - m.downbeats[0])) / (v1 - v0) : 0;
+  const every = barPx > 26 ? 1 : barPx > 13 ? 2 : barPx > 6 ? 4 : barPx > 3 ? 8 : 16;
+  if ((m.beats.length > 1) && (plotW * (m.beats[1] - m.beats[0])) / (v1 - v0) > 6) {
+    g.strokeStyle = col("--line"); g.globalAlpha = 0.5;
+    for (const b of m.beats) { if (b < v0 || b > v1) continue; const px = Math.round(x(b)) + .5; g.beginPath(); g.moveTo(px, bottom); g.lineTo(px, bottom + 4); g.stroke(); }
+    g.globalAlpha = 1;
+  }
+  g.strokeStyle = col("--line"); g.fillStyle = col("--muted");
+  m.downbeats.forEach((d, i) => {
+    if (d < v0 || d > v1) return;
+    const px = Math.round(x(d)) + .5;
+    g.beginPath(); g.moveTo(px, bottom); g.lineTo(px, bottom + 8); g.stroke();
+    if (i % every === 0) g.fillText(String(i + 1), px + 2, h - 2);
+  });
+
+  // tempo curve with a bpm axis
   const pts = [];
   for (let i = 1; i < m.beats.length; i++) {
     const dt = m.beats[i] - m.beats[i - 1];
     if (dt > 0) pts.push([(m.beats[i] + m.beats[i - 1]) / 2, 60 / dt]);
   }
   if (pts.length > 1) {
-    const sorted = pts.map((p) => p[1]).sort((a, b) => a - b);
-    const lo = sorted[Math.floor(sorted.length * .02)] - 4, hi = sorted[Math.floor(sorted.length * .98)] + 4;
-    const y = (bpm) => 8 + (1 - (Math.min(hi, Math.max(lo, bpm)) - lo) / (hi - lo)) * (h - 30);
-    g.strokeStyle = css.getPropertyValue("--beat"); g.lineWidth = 1.5; g.beginPath();
-    g.shadowColor = css.getPropertyValue("--beat"); g.shadowBlur = 8;
-    pts.forEach(([t, bpm], i) => (i ? g.lineTo(x(t), y(bpm)) : g.moveTo(x(t), y(bpm))));
-    g.stroke();
-    g.shadowBlur = 0;
+    const visible = pts.filter(([t]) => t >= v0 && t <= v1).map((p) => p[1]).sort((a, b) => a - b);
+    const src = visible.length > 4 ? visible : pts.map((p) => p[1]).sort((a, b) => a - b);
+    let lo = src[Math.floor(src.length * .02)], hi = src[Math.floor(src.length * .98)];
+    const mid = (lo + hi) / 2, half = Math.max(6, (hi - lo) / 2 + 2); // at least ±6 bpm, so small wobbles look small
+    lo = mid - half; hi = mid + half;
+    const y = (bpm) => top + 4 + (1 - (Math.min(hi, Math.max(lo, bpm)) - lo) / (hi - lo)) * (bottom - top - 8);
+    const step = niceStep(hi - lo);
+    g.fillStyle = col("--muted"); g.strokeStyle = col("--line");
+    g.textAlign = "right";
+    for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {
+      const py = Math.round(y(v)) + .5;
+      g.globalAlpha = 0.35; g.beginPath(); g.moveTo(AXIS_W, py); g.lineTo(w, py); g.stroke(); g.globalAlpha = 1;
+      g.fillText(String(v), AXIS_W - 6, py + 4);
+    }
+    g.textAlign = "left";
+    g.save(); g.fillText("bpm", 4, top + 10); g.restore();
+    g.save(); g.beginPath(); g.rect(AXIS_W, 0, plotW, h); g.clip();
+    g.strokeStyle = col("--beat"); g.lineWidth = 1.5; g.beginPath();
+    g.shadowColor = col("--beat"); g.shadowBlur = 8;
+    let started = false;
+    for (const [t, bpm] of pts) {
+      if (t < v0 - 2 || t > v1 + 2) continue;
+      started ? g.lineTo(x(t), y(bpm)) : g.moveTo(x(t), y(bpm)); started = true;
+    }
+    g.stroke(); g.restore();
   }
-  g.fillStyle = css.getPropertyValue(recording ? "--rec" : "--brass");
-  g.fillRect(Math.round(x(position)) - 1, 0, 2, h);
+
+  // loop (or the one being dragged): dim the rest, bracket the loop
+  const L = dragSel || engine.loop;
+  if (L) {
+    g.fillStyle = "rgba(4, 8, 10, .55)";
+    const a = Math.max(AXIS_W, x(L.a)), b = Math.min(w, x(L.b));
+    if (a > AXIS_W) g.fillRect(AXIS_W, top, a - AXIS_W, bottom - top);
+    if (b < w) g.fillRect(b, top, w - b, bottom - top);
+    g.fillStyle = col("--accent");
+    for (const px of [x(L.a), x(L.b)]) if (px >= AXIS_W && px <= w) g.fillRect(Math.round(px) - 1, top, 2, bottom - top);
+  }
+
+  const px = x(position);
+  if (px >= AXIS_W && px <= w) {
+    g.fillStyle = col(recording ? "--rec" : "--brass");
+    g.fillRect(Math.round(px) - 1, 0, 2, h);
+  }
 }
 
 const decks = { play: makeDeck("play", $("#play-deck")), record: makeDeck("record", $("#rec-deck")) };
 
 document.addEventListener("keydown", (e) => {
+  if (e.code === "KeyL" && (activeTab === "play" || activeTab === "record") && !e.repeat
+      && !e.metaKey && !e.ctrlKey && !e.target.closest("input, select, textarea")) { toggleLoop(); return; }
   if (e.code !== "Space" || activeTab === "library" || e.repeat) return;
   if (e.target.closest("input, select, textarea, button, summary, a")) return;
   e.preventDefault();
@@ -1348,6 +1606,7 @@ async function startRecording() {
   if (!current || recording) return;
   if (!input.stream) { $("#setup").open = true; setupSummary(); if (navigator.mediaDevices) alert("Pick your input in Setup first."); return; }
   engine.pause();
+  engine.loop = null; // a take is one pass through the song
   unloadTake();
   const deck = decks.record;
   deck.activate();
@@ -1529,7 +1788,7 @@ function renderTakePanel() {
     const g = decks.record.gains;
     try {
       const r = await api(`/api/library/${encodeURIComponent(current.folder)}/takes/${encodeURIComponent(t.id)}/export`, {
-        method: "POST", body: JSON.stringify({ video, gains: { my_drums: g.take ?? 1, drums: g.drums ?? 0, music: g.music ?? 1, click: g.click ?? 0 } }) });
+        method: "POST", body: JSON.stringify({ video, gains: { my_drums: g.take ?? 1, drums: g.drums ?? 0, bass: g.bass ?? 1, vocals: g.vocals ?? 1, other: g.other ?? 1, music: g.music ?? 1, click: g.click ?? 0 } }) });
       const v = Date.now();
       const base = (f) => `${fileUrl(current.folder, "takes", t.id, f)}?v=${v}`;
       note.innerHTML = `Ready: <a href="${base(r.audio)}" download>${esc(r.audio)}</a>${r.video ? ` · <a href="${base(r.video)}" download>${esc(r.video)}</a>` : ""}`;

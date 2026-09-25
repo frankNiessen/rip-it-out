@@ -78,7 +78,7 @@ class JobManager:
         return {"found": len(refs), "added": added, "already_in_library": already, "already_queued": pending,
                 "group": group}
 
-    def reseparate(self, folder: str, style: str) -> bool:
+    def reseparate(self, folder: str, style: str, note: str | None = None) -> bool:
         manifest = library.read_manifest(self.settings.library_dir, folder)
         if manifest is None:
             return False
@@ -87,7 +87,7 @@ class JobManager:
             existing = self._jobs.get(video_id)
             if existing and existing.status in (QUEUED, RUNNING):
                 return False
-            title = f"{manifest.get('title') or folder} (redo as {style})"
+            title = f"{manifest.get('title') or folder} ({note or f'redo as {style}'})"
             self._jobs[video_id] = Job(video_id, title, manifest.get("source_url", ""), style,
                                        reseparate=folder)
             self._queue.put(video_id)

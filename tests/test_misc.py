@@ -60,3 +60,21 @@ def test_license_check_flags_gpl_but_not_lgpl():
     assert not mod.is_gpl("LGPL-2.1-or-later")
     assert not mod.is_gpl("GNU Lesser General Public License v3 (LGPLv3)")
     assert not mod.is_gpl("MIT")
+
+
+@pytest.mark.parametrize("fmt", ["aac256", "flac16", "flac24"])
+def test_stem_formats_keep_length_and_alignment(tmp_path, fmt):
+    import shutil
+
+    from stemtool import audio
+
+    if fmt == "aac256" and not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg not installed")
+    rng = np.random.default_rng(0)
+    x = (rng.standard_normal((44100 * 5, 2)) * 0.1).astype(np.float32)
+    x[44100 * 2] = 0.9  # a click at exactly 2 s
+    name = audio.write_stem(tmp_path, "drums", x, 44100, fmt)
+    y, sr = audio.read(tmp_path / name)
+    assert sr == 44100 and len(y) == len(x)
+    assert abs(int(np.argmax(np.abs(y[:, 0]))) - 44100 * 2) <= 1
+    assert np.allclose(audio.read_range(tmp_path / name, 44100, 100), y[44100:44100 + 100])

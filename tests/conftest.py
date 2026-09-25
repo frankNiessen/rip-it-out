@@ -23,15 +23,17 @@ def make_song(library: Path, folder: str = "test-song__abc123", video_id: str = 
     rng = np.random.default_rng(0)
     drums = (rng.standard_normal((n, 2)) * 0.05).astype(np.float32)
     music = (rng.standard_normal((n, 2)) * 0.05).astype(np.float32)
-    for name, data in (("drums.flac", drums), ("no_drums.flac", music), ("click.flac", np.zeros((n, 2), np.float32))):
-        sf.write(str(song / name), data, SR, subtype="PCM_24")
+    stems = {"drums": drums, "bass": music * 0.5, "vocals": music * 0.25, "other": music * 0.25}
+    for name, data in stems.items():
+        sf.write(str(song / f"{name}.flac"), data, SR, subtype="PCM_24")
+    sf.write(str(song / "click.flac"), np.zeros((n, 2), np.float32), SR, subtype="PCM_24")
     (song / "click.mid").write_bytes(b"")
     beats = [round(0.5 + i * 60 / BPM, 4) for i in range(int((SECONDS - 1) * BPM / 60))]
     manifest = {
-        "schema": 1, "video_id": video_id, "source_url": f"https://www.youtube.com/watch?v={video_id}",
+        "schema": 2, "stem_format": "flac24", "video_id": video_id, "source_url": f"https://www.youtube.com/watch?v={video_id}",
         "title": "Test Song", "artist": "Test", "group": "", "sample_rate": SR, "num_samples": n,
         "duration_s": SECONDS, "bpm": BPM, "beats_per_bar": 4, "beats": beats, "downbeats": beats[::4],
-        "stems": {"drums": "drums.flac", "no_drums": "no_drums.flac"},
+        "stems": {name: f"{name}.flac" for name in stems},
         "click": {"audio": "click.flac", "midi": "click.mid"},
         "processing": {"separation_model": "htdemucs_ft", "style": "standard", "stem_gain": 1.0},
     }

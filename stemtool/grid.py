@@ -22,6 +22,8 @@ import numpy as np
 from .beats import beats_per_bar
 
 WIDE_HALF_WINDOW = 8  # where the tracked beats wobble (breakdowns, intros), a steadier fit
+SMOOTH_HALF_WINDOW = 3  # beats on each side for smoothing out the tracker's 20 ms raster
+RASTER_NOISE = 0.010  # seconds: residuals below this are raster noise, not playing
 WOBBLE_SPAN = 3  # beats on each side when judging wobble
 WOBBLE = 0.06  # typical change in beat length from one beat to the next, as a share of a beat
 PHASE_CHANGE_BARS = 8  # the bar phase changes only if the tracker agrees this many times in a row
@@ -43,7 +45,7 @@ def number_beats(beats: np.ndarray, period: float) -> tuple[np.ndarray, np.ndarr
         # A real tempo change (an intro or bridge at another tempo): from this beat on the
         # tracker shows a steady pulse on the same metrical level. Follow it right away.
         steady = raw_gaps[i:i + 4]
-        if len(steady) == 4 and steady.max() / steady.min() < 1.08:
+        if len(steady) == 4 and steady.min() > 0 and steady.max() / steady.min() < 1.08:
             m = float(np.median(steady))
             if 0.7 * period < m < 1.4 * period and abs(m / local - 1) > 0.08:
                 local, recent = m, [m]
@@ -73,6 +75,17 @@ def _fit(uniq: np.ndarray, times: np.ndarray, target: int, half: int) -> float:
     return float(slope * target + intercept)
 
 
+def _fit_residual(uniq: np.ndarray, times: np.ndarray, target: int, half: int) -> tuple[float, float]:
+    """Like _fit, plus the RMS distance (seconds) of the tracked beats from the line."""
+    lo = np.searchsorted(uniq, target - half)
+    hi = np.searchsorted(uniq, target + half, side="right")
+    x, y = uniq[lo:hi].astype(float), times[lo:hi]
+    if len(x) < 4:
+        return _fit(uniq, times, target, half), float("inf")
+    slope, intercept = np.polyfit(x, y, 1)
+    return float(slope * target + intercept), float(np.sqrt(np.mean((y - (slope * x + intercept)) ** 2)))
+
+
 def _wobbly(times: np.ndarray, numbers: np.ndarray, period: float) -> np.ndarray:
     """Per kept beat: do the tracked beats around it jitter back and forth? A tempo
     change is one step in the beat length; wobble is many steps in a row."""
@@ -97,6 +110,14 @@ def rebuild(times: np.ndarray, numbers: np.ndarray, period: float) -> np.ndarray
         j = int(np.clip(np.searchsorted(numbers, target), 0, len(numbers) - 1))
         if wobbly[j] or (j > 0 and wobbly[j - 1]):
             out[k] = _fit(numbers, times, int(target), WIDE_HALF_WINDOW)
+        else:
+            # The tracker reports beats on a 20 ms raster. Where the beats around this
+            # one only differ from a straight line by that raster noise, use the line:
+            # an even click and a calm tempo curve. A real push or tempo change leaves
+            # a bigger residual and the tracked beat stays as it is.
+            fitted, residual = _fit_residual(numbers, times, int(target), SMOOTH_HALF_WINDOW)
+            if residual < RASTER_NOISE:
+                out[k] = fitted
     return np.maximum.accumulate(out)
 
 

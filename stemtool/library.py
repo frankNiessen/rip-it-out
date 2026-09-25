@@ -14,7 +14,7 @@ from typing import Iterator
 from . import grid
 
 MANIFEST = "manifest.json"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # 2: four stems (drums, bass, vocals, other), stem_format
 TAKES_DIR = "takes"
 
 
@@ -54,6 +54,8 @@ def list_songs(library_dir: Path) -> list[dict]:
                 "created_at": m.get("created_at"),
                 "style": processing.get("style", "standard"),
                 "grid": m.get("grid", "raw"),
+                "tracks": 4 if "bass" in m.get("stems", {}) else 2,
+                "stem_format": m.get("stem_format", "flac24"),
                 "grid_uneven": grid.uneven_fraction(m.get("beats", []), m.get("downbeats", [])),
                 "drum_share": processing.get("drum_share"),
                 "takes": sum(1 for t in takes.glob("*/take.json")) if takes.is_dir() else 0,

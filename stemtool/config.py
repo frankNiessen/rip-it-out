@@ -30,6 +30,7 @@ class Settings:
     beat_checkpoint: str
     device_setting: str  # "auto", "cuda", "cpu", ...
     shifts: int
+    stem_format: str = "aac256"  # see audio.FORMATS
 
     @property
     def work_dir(self) -> Path:
@@ -100,4 +101,5 @@ def load_settings() -> Settings:
         beat_checkpoint=os.environ.get("STEMTOOL_BEAT_CHECKPOINT", "final0"),
         device_setting=os.environ.get("STEMTOOL_DEVICE", "auto"),
         shifts=int(os.environ.get("STEMTOOL_SHIFTS", "1")),
+        stem_format=read_config().get("stem_format") or "aac256",
     )

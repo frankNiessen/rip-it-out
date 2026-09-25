@@ -38,3 +38,12 @@ def test_grid_edit_rewrites_beats_and_click(client, song):
     assert (song / "click.mid").stat().st_size > 0
     reset = client.post("/api/library/grid", json={"folders": ["test-song__abc123"], "action": "reset"}).json()
     assert reset["manifest"]["downbeats"] == before["downbeats"]
+
+
+def test_format_setting_and_conversion(client):
+    status = client.get("/api/status").json()
+    assert status["stem_format"] == "aac256" and "flac16" in status["formats"]
+    assert status["to_convert"] == 1  # the test song is stored as 24-bit FLAC
+    r = client.put("/api/settings", json={"stem_format": "flac24"})
+    assert r.status_code == 200 and r.json()["to_convert"] == 0
+    assert client.put("/api/settings", json={"stem_format": "mp3"}).status_code == 400

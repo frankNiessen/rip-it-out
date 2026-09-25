@@ -17,6 +17,8 @@ is GPL or AGPL licensed, or if the bundled ffmpeg is not a plain LGPL 2.1 build.
 | PyTorch, torchaudio | BSD-3-Clause and others | https://github.com/pytorch/pytorch |
 | Demucs | MIT | https://github.com/facebookresearch/demucs |
 | beat_this | MIT | https://github.com/CPJKU/beat_this |
+| All-In-One (model code in `stemtool/structure`; weights downloaded on first use) | MIT, see `stemtool/structure/LICENSE` | https://github.com/mir-aidj/all-in-one, weights https://huggingface.co/taejunkim/allinone |
+| Neighborhood attention in plain PyTorch (`natten_torch.py`), from pull request mir-aidj/all-in-one#39 | MIT | https://github.com/mir-aidj/all-in-one/pull/39 |
 | yt-dlp, yt-dlp-ejs | Unlicense | https://github.com/yt-dlp/yt-dlp |
 | python-soxr (resampling, used by beat_this) | LGPL 2.1 or later | https://github.com/dofuuz/python-soxr |
 | lameenc (MP3 encoding, a Demucs dependency) | LGPL 3.0 or later | https://github.com/chrisstaite/lameenc |
@@ -28,7 +30,7 @@ Python extension modules). Their source code is available at the links above.
 
 yt-dlp's optional `mutagen` dependency (GPL) is deliberately not installed.
 
-Model weights (Demucs, beat_this) are not included. They are downloaded from
+Model weights (Demucs, beat_this, All-In-One) are not included. They are downloaded from
 their publishers on first use and stored in `~/.cache`.
 
 The full license texts of the Python packages are in their `*.dist-info`

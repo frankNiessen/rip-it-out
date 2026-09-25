@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from yt_dlp.utils import DownloadError
 
-from . import __version__, config, library, pipeline, takes, youtube
+from . import __version__, audio, config, library, pipeline, takes, youtube
 from .config import STYLES, load_settings
 from .jobs import JobManager
 
@@ -37,7 +37,8 @@ app = FastAPI(title="Rip It Out", lifespan=lifespan)
 
 
 class SettingsUpdate(BaseModel):
-    library_dir: str
+    library_dir: str | None = None
+    stem_format: str | None = None
 
 
 class SubmitRequest(BaseModel):
@@ -106,13 +107,30 @@ def status() -> dict:
         "separation_model": settings.separation_model,
         "device": settings.device_setting,
         "styles": list(STYLES),
+        "stem_format": settings.stem_format,
+        "formats": {key: spec["label"] for key, spec in audio.FORMATS.items()},
+        "to_convert": len(_songs_to_convert()),
     }
+
+
+def _songs_to_convert() -> list[dict]:
+    """Songs not yet in the four-track layout, or stored in another format than the setting."""
+    return [s for s in library.list_songs(settings.library_dir)
+            if s["tracks"] != 4 or s["stem_format"] != settings.stem_format]
 
 
 @app.put("/api/settings")
 def update_settings(req: SettingsUpdate) -> dict:
-    """Switch the library folder. Takes effect immediately and is saved."""
+    """Switch the library folder or the storage format. Takes effect immediately and is saved."""
     global settings
+    if req.stem_format is not None:
+        if req.stem_format not in audio.FORMATS:
+            raise HTTPException(400, f"Unknown format {req.stem_format!r}")
+        config.write_config({"stem_format": req.stem_format})
+        settings = replace(settings, stem_format=req.stem_format)
+        manager.settings = settings
+    if req.library_dir is None:
+        return status()
     if config.library_locked():
         raise HTTPException(409, "The library is set by the STEMTOOL_LIBRARY environment variable")
     raw = req.library_dir.strip()
@@ -215,6 +233,13 @@ def regrid(req: GridRequest) -> dict:
         song = _song(folder)
         changed.append(pipeline.regrid(song, req.action, req.steps))
     return {"changed": len(changed), "manifest": changed[0] if len(changed) == 1 else None}
+
+
+@app.post("/api/library/convert")
+def convert_library() -> dict:
+    """Queue every song that isn't in four tracks and the chosen format yet (each keeps its style)."""
+    queued = sum(manager.reseparate(s["folder"], s["style"], note="converting") for s in _songs_to_convert())
+    return {"queued": queued}
 
 
 @app.post("/api/library/reseparate")

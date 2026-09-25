@@ -46,6 +46,6 @@ def test_changing_the_latency_moves_the_take(tmp_path, song):
 def test_export_audio_covers_the_recorded_range(tmp_path, song):
     raw = record(tmp_path, song, capture_start_s=3.0, latency_ms=0)
     take = takes.create(song, tmp_path / "work", {"capture_start_s": 3.0, "latency_ms": 0}, raw, None, None)
-    result = takes.export(song, take["id"], {"my_drums": 1, "music": 1}, with_video=False)
+    result = takes.export(song, take["id"], {"my_drums": 1, "bass": 1, "vocals": 1, "other": 1}, with_video=False)
     info = sf.info(str(song / "takes" / take["id"] / result["audio"]))
     assert abs(info.duration - 4.0) < 0.01
