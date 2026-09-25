@@ -833,7 +833,9 @@ const engine = {
     if (L && plan.pos < L.a) plan.pos = L.a; // the count-in may not snap out of the loop
     const now = ctx.currentTime;
     const lead = plan.clicks.length ? Math.max(0, plan.pos - plan.clicks[0].s) : 0;
-    const tAudio = now + 0.12 + lead;
+    // With a count-in its clicks are the first sounds after silence: give the output a
+    // moment (some USB interfaces swallow the first fraction of a second).
+    const tAudio = now + (plan.clicks.length ? 0.3 : 0.12) + lead;
     const play = (buf, gainKey, when, off, shift = 0) => {
       if (off < 0) { when -= off; off = 0; }
       if (off >= buf.duration) return;
@@ -955,9 +957,11 @@ function makeDeck(kind, root) {
       if (q(".rec")) q(".rec").disabled = !ok;
       q(".dots").innerHTML = ok ? Array.from({ length: current.bpb }, (_, i) => `<i class="${i ? "" : "down"}"></i>`).join("") : "";
     },
-    toggle() {
+    async toggle() {
       if (!current) return;
-      if (engine.playing) engine.pause(); else { deck.activate(); engine.play({ countInBars: deck.countIn }); }
+      if (engine.playing) { engine.pause(); return; }
+      if (ctx.state !== "running") await ctx.resume(); // schedule only once the audio clock runs
+      deck.activate(); engine.play({ countInBars: deck.countIn });
     },
     showTake(on) { q('[data-ch="take"]') && (q('[data-ch="take"]').hidden = !on); },
     draw() {
@@ -1607,6 +1611,7 @@ async function startRecording() {
   if (!input.stream) { $("#setup").open = true; setupSummary(); if (navigator.mediaDevices) alert("Pick your input in Setup first."); return; }
   engine.pause();
   engine.loop = null; // a take is one pass through the song
+  if (ctx.state !== "running") await ctx.resume();
   unloadTake();
   const deck = decks.record;
   deck.activate();
