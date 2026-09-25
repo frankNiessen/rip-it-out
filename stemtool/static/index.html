@@ -224,7 +224,9 @@
   .rec-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(16rem, 24rem); gap: 1.5rem; margin-top: 1.5rem; align-items: start; }
   @media (max-width: 900px) { .rec-grid { grid-template-columns: 1fr; } }
   .videobox { background: #04070a; border: 1px solid rgba(198, 156, 245, .3); border-radius: 6px; aspect-ratio: 16 / 9; display: grid; place-items: center; overflow: hidden; color: #8a97a3; font-size: .9rem; }
+  .videobox { position: relative; }
   .videobox video { width: 100%; height: 100%; object-fit: contain; }
+  .cropbox { position: absolute; border: 2px solid var(--accent); box-shadow: 0 0 0 9999px rgba(4, 8, 10, .6); cursor: move; touch-action: none; }
   .takes { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
   .takes li { border-bottom: 1px solid var(--line); }
   .takes li > button { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; padding: .55rem .4rem; display: flex; justify-content: space-between; gap: .75rem; }
@@ -381,7 +383,8 @@
 
   <div class="rec-grid">
     <div>
-      <div class="videobox" id="videobox"><span id="video-msg">No camera selected</span><video id="video" playsinline muted hidden></video></div>
+      <div class="videobox" id="videobox"><span id="video-msg">No camera selected</span><video id="video" playsinline muted hidden></video>
+        <div class="cropbox" id="cropbox" hidden></div></div>
     </div>
     <section style="margin-top:0">
       <h2>Takes</h2>
@@ -1760,6 +1763,7 @@ $("#takes").addEventListener("click", (e) => {
 });
 
 function unloadTake() {
+  crop.setAspect("");
   selectedTake = null; takeBase = null;
   engine.take = null; engine.takeShift = 0;
   decks.record?.showTake(false);
@@ -1801,11 +1805,26 @@ function renderTakePanel() {
     <div class="row"><button class="btn quiet" id="tk-save" disabled>Save timing</button>
       <span class="hint">Move Drums timing until your hits sit on the original. Higher means earlier.</span></div>
     <div class="row">
+      <label>Range <select id="tk-range">
+        <option value="take">Whole take</option><option value="loop">Current loop</option><option value="custom">From / to</option>
+      </select></label>
+      <span id="tk-custom" hidden><input id="tk-from" type="text" size="6" aria-label="From (m:ss)"> to
+        <input id="tk-to" type="text" size="6" aria-label="To (m:ss)"></span>
+    </div>
+    ${hasVideo ? `<div class="row">
+      <label>Picture <select id="tk-aspect">
+        <option value="">Original</option><option value="16:9">16:9</option><option value="9:16">9:16 (phone)</option>
+        <option value="1:1">1:1 (square)</option><option value="4:5">4:5</option>
+      </select></label>
+      <label id="tk-size-l" hidden>Size <input type="range" id="tk-size" min="0.3" max="1" step="0.01" value="1"></label>
+      <span class="hint" id="tk-crop-hint" hidden>Drag the frame on the video</span>
+    </div>` : ""}
+    <div class="row">
       <button class="btn quiet" id="tk-exp-a">Export audio</button>
       ${hasVideo ? `<button class="btn quiet" id="tk-exp-v">Export video</button>` : ""}
       <button class="btn quiet danger" id="tk-del">Delete take</button>
     </div>
-    <p class="hint" style="margin:0">Export uses the slider levels above (My drums, Original drums, Music, Click) over the recorded range.</p>
+    <p class="hint" style="margin:0">Export uses the fader levels above.</p>
     <p class="note take-note" aria-live="polite"></p>`;
   const lat = $("#tk-lat"), vid = $("#tk-vid"), save = $("#tk-save");
   const dirty = () => { save.disabled = +lat.value === t.latency_ms && (!vid || +vid.value === t.video.nudge_ms); };
@@ -1836,14 +1855,24 @@ function renderTakePanel() {
     $$("#tk-exp-a, #tk-exp-v").forEach((b) => { b.disabled = true; });
     const g = decks.record.gains;
     try {
+      const range = exportRange(t);
       const r = await api(`/api/library/${encodeURIComponent(current.folder)}/takes/${encodeURIComponent(t.id)}/export`, {
-        method: "POST", body: JSON.stringify({ video, gains: { my_drums: g.take ?? 1, drums: g.drums ?? 0, bass: g.bass ?? 1, vocals: g.vocals ?? 1, other: g.other ?? 1, music: g.music ?? 1, click: g.click ?? 0 } }) });
+        method: "POST", body: JSON.stringify({ video, ...range, crop: video ? crop.rect() : null,
+          gains: { my_drums: g.take ?? 1, drums: g.drums ?? 0, bass: g.bass ?? 1, vocals: g.vocals ?? 1, other: g.other ?? 1, music: g.music ?? 1, click: g.click ?? 0 } }) });
       const v = Date.now();
       const base = (f) => `${fileUrl(current.folder, "takes", t.id, f)}?v=${v}`;
       note.innerHTML = `Ready: <a href="${base(r.audio)}" download>${esc(r.audio)}</a>${r.video ? ` · <a href="${base(r.video)}" download>${esc(r.video)}</a>` : ""}`;
     } catch (err) { note.className = "note take-note error"; note.textContent = err.message; }
     $$("#tk-exp-a, #tk-exp-v").forEach((b) => { b.disabled = false; });
   };
+  const takeEnd = t.start_s + t.captured_s;
+  $("#tk-from").value = fmtTime(Math.max(0, t.start_s)); $("#tk-to").value = fmtTime(takeEnd);
+  $("#tk-range").addEventListener("change", () => { $("#tk-custom").hidden = $("#tk-range").value !== "custom"; });
+  $("#tk-aspect")?.addEventListener("change", () => {
+    crop.setAspect($("#tk-aspect").value);
+    $("#tk-size-l").hidden = $("#tk-crop-hint").hidden = !$("#tk-aspect").value;
+  });
+  $("#tk-size")?.addEventListener("input", () => crop.setSize(+$("#tk-size").value));
   $("#tk-exp-a").addEventListener("click", () => doExport(false));
   $("#tk-exp-v")?.addEventListener("click", () => doExport(true));
   $("#tk-del").addEventListener("click", async () => {
@@ -1866,6 +1895,80 @@ function showLivePreview() {
   $("#video-msg").textContent = "No camera selected";
   if (hasCam) videoEl.play().catch(() => {});
 }
+// Export range: the whole take, the current loop, or typed times (m:ss), in song time.
+function parseTime(text) {
+  const m = String(text).trim().match(/^(?:(\d+):)?(\d+(?:\.\d+)?)$/);
+  return m ? (+(m[1] || 0)) * 60 + (+m[2]) : NaN;
+}
+function exportRange(t) {
+  const mode = $("#tk-range").value;
+  if (mode === "loop") {
+    if (!engine.loop) throw new Error("There is no loop: set one on the tempo view first.");
+    return { start_s: engine.loop.a, end_s: engine.loop.b };
+  }
+  if (mode === "custom") {
+    const a = parseTime($("#tk-from").value), b = parseTime($("#tk-to").value);
+    if (!(b > a)) throw new Error("Type the range as m:ss, for example 1:05 to 2:30.");
+    return { start_s: a, end_s: b };
+  }
+  return {};
+}
+
+// Picture crop for the video export: a frame with a fixed aspect ratio over the take's
+// video, dragged into place. Kept as fractions of the picture, so it fits any resolution.
+const crop = (() => {
+  const box = $("#cropbox");
+  let aspect = 0, size = 1, cx = 0.5, cy = 0.5, drag = null;
+  const video = () => ({ w: videoEl.videoWidth || 16, h: videoEl.videoHeight || 9 });
+  function frame() { // the crop in video pixels
+    const { w: vw, h: vh } = video();
+    let w = vw, h = vh;
+    if (vw / vh > aspect) w = vh * aspect; else h = vw / aspect;
+    w *= size; h *= size;
+    const x = Math.min(vw - w, Math.max(0, cx * vw - w / 2)), y = Math.min(vh - h, Math.max(0, cy * vh - h / 2));
+    return { x, y, w, h, vw, vh };
+  }
+  function shown() { // where the video is drawn inside the box (object-fit: contain)
+    const { w: vw, h: vh } = video(), bw = videoEl.clientWidth, bh = videoEl.clientHeight;
+    const scale = Math.min(bw / vw, bh / vh);
+    return { left: videoEl.offsetLeft + (bw - vw * scale) / 2, top: videoEl.offsetTop + (bh - vh * scale) / 2, scale };
+  }
+  function draw() {
+    box.hidden = !aspect || videoEl.hidden;
+    if (box.hidden) return;
+    const f = frame(), s = shown();
+    Object.assign(box.style, { left: `${s.left + f.x * s.scale}px`, top: `${s.top + f.y * s.scale}px`,
+      width: `${f.w * s.scale}px`, height: `${f.h * s.scale}px` });
+  }
+  box.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY, cx, cy }; box.setPointerCapture(e.pointerId); });
+  box.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const f = frame(), s = shown();
+    cx = drag.cx + (e.clientX - drag.x) / (s.scale * f.vw);
+    cy = drag.cy + (e.clientY - drag.y) / (s.scale * f.vh);
+    const nf = frame(); cx = (nf.x + nf.w / 2) / nf.vw; cy = (nf.y + nf.h / 2) / nf.vh; // stay inside
+    draw();
+  });
+  box.addEventListener("pointerup", () => { drag = null; });
+  window.addEventListener("resize", draw);
+  videoEl.addEventListener("loadedmetadata", draw);
+  return {
+    setAspect(value) {
+      const [a, b] = value ? value.split(":").map(Number) : [0, 1];
+      aspect = a / b; size = 1; cx = cy = 0.5;
+      if ($("#tk-size")) $("#tk-size").value = 1;
+      draw();
+    },
+    setSize(v) { size = v; draw(); },
+    rect() {
+      if (!aspect) return null;
+      const f = frame();
+      return { x: f.x / f.vw, y: f.y / f.vh, w: f.w / f.vw, h: f.h / f.vh };
+    },
+    draw,
+  };
+})();
+
 function showTakeVideo() {
   const t = selectedTake;
   if (!t?.video) { showLivePreview(); return; }

@@ -112,6 +112,9 @@ you press Stop or the song ends.
 (**My drums**) next to the original drums, the other tracks and the click. If your hits sit a
 little early or late, move **Drums timing** until they line up and save; the video follows.
 **Export audio** writes a WAV, **Export video** an MP4, both with the levels of the faders.
+**Range** exports the whole take, the current loop (a section, for example) or a stretch
+you type in. For video, **Picture** crops to 16:9, 9:16 (for a phone), 1:1 or 4:5: drag
+the frame on the video to place it and use **Size** to zoom in.
 
 The **Library** menu has *Show Library in Finder*, *Update YouTube Downloader*, *Reset
 YouTube Downloader*, *Restart Engine* and *Show Log*.
