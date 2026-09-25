@@ -76,7 +76,7 @@ sometimes jumps between double and half tempo or loses a beat, and the app evens
 while keeping the song's real tempo changes. If the "1" still sits on the wrong beat, or
 the whole song is counted twice as fast or slow as you feel it, fix it next to the
 transport: **Bar line ◂ ▸** moves every bar line by a beat, **×2** and **½** change the
-tempo level, **Rebuild** starts over from the tracker's result.
+tempo level, **Undo edits** goes back to the automatic grid.
 
 If you unplug your audio interface, playback moves to the Mac's default output, and back
 to the interface when you plug it in again.

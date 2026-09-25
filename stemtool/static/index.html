@@ -657,6 +657,7 @@ $$(".song-pick").forEach((sel) => sel.addEventListener("change", () => { if (!re
 
 function showSongMeta() {
   const m = current.m;
+  updateGridTools();
   const source = m.source_url ? ` · <a href="${esc(m.source_url)}" target="_blank" rel="noopener">Source</a>` : "";
   const meta = `${m.bpm ? Math.round(m.bpm) + " bpm · " : ""}${current.bpb}/4 · ${fmtTime(m.duration_s)}${source}`;
   $$(".songbar .meta").forEach((el) => { el.innerHTML = meta; });
@@ -851,7 +852,7 @@ function makeDeck(kind, root) {
           <span class="hint">Tempo</span>
           <button class="btn quiet" data-grid="double" aria-label="Double the tempo">×2</button>
           <button class="btn quiet" data-grid="half" aria-label="Halve the tempo">½</button>
-          <button class="btn quiet" data-grid="clean" title="Rebuild the grid from the beat tracker">Rebuild</button>
+          <button class="btn quiet" data-grid="clean" title="Back to the automatic grid">Undo edits</button>
         </span>` : ""}
       </div>
       <div class="mixer">
@@ -933,7 +934,14 @@ async function editGrid(action, steps, button) {
     showSongMeta();
     if (was) engine.play({ countInBars: 0 });
   } catch (err) { alert(err.message); }
-  finally { $$("[data-grid]").forEach((b) => { b.disabled = false; }); }
+  finally { $$("[data-grid]").forEach((b) => { b.disabled = false; }); updateGridTools(); }
+}
+
+// "Undo edits" only makes sense after a manual edit: rebuilding the automatic grid
+// from the same tracker output always gives the same result.
+function updateGridTools() {
+  const undo = $('[data-grid="clean"]');
+  if (undo) undo.disabled = !current || current.m.grid !== "edited";
 }
 
 function drawCounter(el, m) {
