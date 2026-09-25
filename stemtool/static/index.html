@@ -169,7 +169,7 @@
   .deck { padding: 1rem; }
   .deck-top { display: grid; grid-template-columns: 10rem 1fr; gap: 1rem; }
   @media (max-width: 600px) { .deck-top { grid-template-columns: 1fr; } }
-  /* the beat counter: a backlit LCD, readable from the drum stool */
+  /* the beat counter: a backlit LCD, readable from where you play */
   .counter {
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .4rem;
     background: var(--lcd); border: 1px solid #253019; border-radius: 3px; padding: .6rem; min-height: 11rem;
@@ -344,7 +344,7 @@
   </div>
 
   <details class="setup" id="setup">
-    <summary>Setup <small id="setup-summary">Pick your drum module as input</small></summary>
+    <summary>Setup <small id="setup-summary">Pick your audio interface as input</small></summary>
     <div class="setup-body">
       <div id="setup-enable">
         <p class="hint" style="margin-top:0">The browser needs permission to use your audio interface (and camera).</p>
@@ -354,7 +354,7 @@
         Browsers only allow audio input and camera on localhost or HTTPS, not on this address.
         Open <a id="local-link" href="#"></a> on the computer running Rip It Out to record.
       </p>
-      <label class="field" data-needs-input><span>Drums input</span>
+      <label class="field" data-needs-input><span>Input</span>
         <select id="in-dev"></select>
         <div class="meter" aria-hidden="true"><i id="meter"></i></div>
       </label>
@@ -372,9 +372,9 @@
         <span id="lat-note"></span>
       </div>
       <p class="explain" data-needs-input>
-        You hear your live kit directly through the module, so the computer doesn't play your input back.
-        Turn off any USB loopback on the module, or the backing track ends up in your recording.
-        Calibrate plays 20 clicks: listen to the first 4, then hit a pad exactly with the rest.
+        You hear yourself directly through your interface, drum module or amp, so the computer doesn't play your
+        input back. Turn off any USB loopback on the interface, or the backing track ends up in your recording.
+        Calibrate plays 20 clicks: listen to the first 4, then play a short note or hit exactly with the rest.
       </p>
     </div>
   </details>
@@ -704,7 +704,7 @@ $("#sel-move").addEventListener("click", async () => {
 $$("[data-redo]").forEach((b) => b.addEventListener("click", async () => {
   const style = b.dataset.redo;
   const n = selected.size;
-  if (!confirm(`Redo the drum separation of ${n} ${n === 1 ? "song" : "songs"} as ${style === "electronic" ? "Electronic" : "Band"}? The stems are replaced; beats, click and takes stay.`)) return;
+  if (!confirm(`Redo the separation of ${n} ${n === 1 ? "song" : "songs"} as ${style === "electronic" ? "Electronic" : "Band"}? The stems are replaced; beats, click and takes stay.`)) return;
   const r = await api("/api/library/reseparate", { method: "POST", body: JSON.stringify({ folders: [...selected], style }) });
   selected.clear(); renderLibrary(); refreshJobs();
   $("#add-note").className = "note"; $("#add-note").textContent = `${r.queued} queued for new separation.`;
@@ -929,15 +929,14 @@ const engine = {
 // ---- decks (the player UI; Play and Record each have one) ---------------------
 // Faders per song layout: four tracks, or two for songs not converted yet ("music" is no_drums).
 const STEM_FADERS = {
-  4: [["drums", "Drums", 0], ["bass", "Bass", 1], ["vocals", "Vocals", 1], ["other", "Other", 1]],
-  2: [["drums", "Drums", 0], ["music", "Music", 1]],
+  4: [["drums", "Drums", 1], ["bass", "Bass", 1], ["vocals", "Vocals", 1], ["other", "Other", 1]],
+  2: [["drums", "Drums", 1], ["music", "Music", 1]],
 };
 const ALL_GAINS = ["take", "drums", "bass", "vocals", "other", "music", "click"];
 function channelsFor(kind, tracks) {
-  const stems = STEM_FADERS[tracks].map(([k, label, v]) => [k, kind === "record" && k === "drums" ? "Original drums" : label, v]);
-  return [...(kind === "record" ? [["take", "My drums", 1]] : []), ...stems, ["click", "Click", 0.8]];
+  return [...(kind === "record" ? [["take", "My take", 1]] : []), ...STEM_FADERS[tracks], ["click", "Click", 0.8]];
 }
-const DEFAULT_GAINS = { take: 1, drums: 0, bass: 1, vocals: 1, other: 1, music: 1, click: 0.8 };
+const DEFAULT_GAINS = { take: 1, drums: 1, bass: 1, vocals: 1, other: 1, music: 1, click: 0.8 };
 
 function makeDeck(kind, root) {
   const gains = { ...DEFAULT_GAINS, ...store.get(`gains.${kind}`, {}) };
@@ -1601,7 +1600,7 @@ $("#calibrate").addEventListener("click", async () => {
   const cap = captureStart();
   const timer = setInterval(() => {
     const k = Math.floor((ctx.currentTime - t0) / interval);
-    note.textContent = k < 0 ? "Get ready…" : k < listen ? `Listen… ${k + 1}` : `Hit a pad with every click (${Math.min(n, k + 1) - listen} of ${n - listen})`;
+    note.textContent = k < 0 ? "Get ready…" : k < listen ? `Listen… ${k + 1}` : `Play along with every click (${Math.min(n, k + 1) - listen} of ${n - listen})`;
   }, 50);
   await new Promise((r) => setTimeout(r, (t0 - ctx.currentTime + n * interval + 0.5) * 1000));
   clearInterval(timer);
@@ -1621,12 +1620,12 @@ $("#calibrate").addEventListener("click", async () => {
     const o = onsets.find((t) => t > c - 0.08 && t < c + 0.35);
     if (o !== undefined) deltas.push(o - c);
   }
-  if (deltas.length < 8) { note.textContent = `Only ${deltas.length} hits matched the clicks. Try again, one hit per click.`; return; }
+  if (deltas.length < 8) { note.textContent = `Only ${deltas.length} notes matched the clicks. Try again: one short note or hit per click.`; return; }
   const med = median(deltas), spread = median(deltas.map((d) => Math.abs(d - med)));
   const ms = Math.round(med * 1000);
   $("#latency").value = ms; store.set(latencyKey(), ms);
   setupSummary();
-  note.textContent = `Measured ${ms} ms from ${deltas.length} hits (your timing varied by about ±${Math.round(spread * 1000)} ms).`;
+  note.textContent = `Measured ${ms} ms from ${deltas.length} notes (your timing varied by about ±${Math.round(spread * 1000)} ms).`;
 });
 
 // ---- recording ------------------------------------------------------------------
@@ -1804,12 +1803,12 @@ function renderTakePanel() {
   const hasVideo = !!t.video;
   panel.innerHTML = `
     <div class="row">
-      <label>Drums timing <input type="range" min="0" max="250" step="1" value="${t.latency_ms}" id="tk-lat"><output id="tk-lat-o">${Math.round(t.latency_ms)} ms</output></label>
+      <label title="If your playing sits early or late against the song, move this until it lines up. Higher means earlier.">Timing <input type="range" min="0" max="250" step="1" value="${t.latency_ms}" id="tk-lat"><output id="tk-lat-o">${Math.round(t.latency_ms)} ms</output></label>
     </div>
     ${hasVideo ? `<div class="row"><label>Video timing <input type="range" min="-300" max="300" step="5" value="${t.video.nudge_ms}" id="tk-vid"><output id="tk-vid-o">${t.video.nudge_ms} ms</output></label>
       <span class="hint">${t.video.sync === "audio" ? "Synced by sound" : "Synced by clock"}</span></div>` : ""}
     <div class="row"><button class="btn quiet" id="tk-save" disabled>Save timing</button>
-      <span class="hint">Move Drums timing until your hits sit on the original. Higher means earlier.</span></div>
+</div>
     <div class="row">
       <label>Export <select id="tk-range">
         <option value="take">Whole take</option><option value="custom">Trimmed</option><option value="loop">Current loop</option>

@@ -1,13 +1,13 @@
 # Rip It Out
 
-**Rip the drums out of your music, play along with a click, and record yourself.**
+**Take a song apart, practice your part, record yourself.**
 
-Rip It Out is a practice tool for drummers. Paste a YouTube link or a whole playlist, or
-drop in your own audio files, and
-it separates every song into drums, bass, vocals and the other instruments, finds every
-beat, bar and song section (intro, verse, chorus, ...), and builds a click that follows the band (even when the tempo drifts).
-Then play along in your own window with a count-in, record your drums (and yourself on
-camera) and mix your take with the band afterwards.
+Rip It Out is a practice tool for musicians. Paste a YouTube link or a whole playlist, or
+drop in your own audio files, and it splits every song into drums, bass, vocals and
+everything else, finds every beat, bar and section (intro, verse, chorus, ...), and builds
+a click that follows the band, even where the tempo drifts. Then turn your part down and
+play along: with a count-in, loops for the hard sections, and a recording of yourself (on
+camera too, if you like) that you can mix with the band afterwards.
 
 ![The library, grouped into playlists](docs/library.png)
 
@@ -17,21 +17,25 @@ camera) and mix your take with the band afterwards.
 
 ## Features
 
-- **Drum separation** with Demucs, the best open model for this. Two styles: *Band* for
-  rock, pop and funk, and *Electronic* for drum & bass, EDM and anything with heavy synth
-  bass, which a plain separation mistakes for drums.
-- **Beat and bar tracking** (beat_this) and a **click track** that sits on the real beats,
-  as audio and as a MIDI file.
-- **Play along** with a mixer for drums, band and click, a tempo view, a big beat and bar
-  counter and a **count-in** of one or two bars.
-- **Record** from any audio interface, for example an electronic drum module, optionally
-  with video from a camera. Latency is measured once with a short calibration, so your
-  take lines up with the song to the millisecond.
-- **Review and export** your takes: your drums against the original, timing nudge,
-  export as WAV or as MP4 video with the mix you like (click off, of course).
-- **Library** in a plain folder you choose: groups (from playlist names or your own),
-  search, queue with stop, no duplicates when you add a playlist again. Put it in
-  iCloud Drive, Nextcloud or Dropbox to have it on your other devices.
+- **Four tracks per song:** drums, bass, vocals, and everything else (guitars, keys,
+  synths) in a fourth, each with its own fader. Separation by Demucs, in two styles:
+  *Band* for rock, pop and funk, and *Electronic* for drum & bass, EDM and anything with
+  heavy synth bass, which a plain separation mistakes for drums.
+- **Beats, bars and sections:** beat and bar tracking (beat_this), a **click track** on
+  the real beats (audio and MIDI), and the song's sections (intro, verse, chorus, bridge,
+  ...) from a trained structure model.
+- **Play along** with a mixer, a tempo view, a big beat and bar counter, a **count-in**
+  of one or two bars, and **loops** for a section or any bars.
+- **Record** from any audio interface (for a guitar or bass, a microphone, or an
+  electronic drum kit connected by USB), optionally with video from a camera. Latency is
+  measured once with a short calibration, so your take lines up with the song to the
+  millisecond.
+- **Review and export** your takes against the original, with a timing nudge; export
+  the whole take, a trimmed part or a loop as WAV or as MP4 video, with the mix you like.
+- **Library** in a plain folder you choose: your own files or YouTube, groups (from
+  playlist names or your own), search, queue with stop, no duplicates when you add a
+  playlist again. Put it in iCloud Drive, Nextcloud or Dropbox to have it on your other
+  devices.
 
 ![Count-in before the song starts](docs/play-countin.png)
 
@@ -68,13 +72,13 @@ OGG, MP4, MOV, ...) onto the Library tab, or click the box under **Add**. Title 
 come from the file's tags, or from a name like `Artist - Title.mp3`. A file you add
 twice is recognized by its content.
 
-**3. Fix songs that came out drum heavy.** If the band sounds almost empty without the
-drums (typical for drum & bass or EDM, if you added it with the Band style), tick the songs
-in the library and choose **Redo separation as Electronic**. This takes a minute and keeps beats, click
-and takes.
+**3. Electronic music.** If the drums took the basses and synths along (typical for
+drum & bass or EDM added with the Band style, so bass and other sound almost empty), tick
+the songs in the library and choose **Redo separation as Electronic**. This takes a
+minute and keeps beats, click and takes.
 
-**4. Play along.** In **Play**, pick a song, set the count-in and the levels (drums down,
-bass, vocals and other up, click to taste) and press Play or the space bar. Click on the
+**4. Play along.** In **Play**, pick a song, set the count-in and the levels (turn your
+own instrument down, the click to taste) and press Play or the space bar. Click on the
 tempo view to jump; with a count-in, playback starts at the beginning of that bar.
 
 The coloured band above the tempo view shows the song's sections. Click a section to loop
@@ -94,14 +98,15 @@ to the interface when you plug it in again.
 
 **5. Record.** In **Record**, open **Setup** once:
 
-- Choose your audio interface as input (an electronic drum kit connected by USB
-  usually is one) and optionally a camera. On macOS you are asked to allow microphone
-  and camera access.
-- Press **Calibrate**: 20 clicks play, listen to the first 4 and hit a pad exactly with
-  the rest. This measures the round trip delay of your setup.
-- You hear your kit directly through your module or interface. The app never plays your
-  input back, so there is no extra delay. Turn off any "USB loopback" on your module,
-  otherwise the backing track ends up in your recording.
+- Choose your audio interface as input (a guitar or bass interface, a microphone, or an
+  electronic drum kit connected by USB) and optionally a camera. On macOS you are asked
+  to allow microphone and camera access; the app only uses them while the Record tab is
+  open.
+- Press **Calibrate**: 20 clicks play, listen to the first 4 and play a short note or hit
+  exactly with the rest. This measures the round trip delay of your setup.
+- You hear yourself directly through your interface, amp or drum module. The app never
+  plays your input back, so there is no extra delay. Turn off any "USB loopback" on your
+  interface, otherwise the backing track ends up in your recording.
 
 Then press **Record**. The count-in plays, the song starts, and the take is saved when
 you press Stop or the song ends.
@@ -109,15 +114,12 @@ you press Stop or the song ends.
 ![Reviewing a take](docs/record.png)
 
 **6. Review and export.** Pick a take on the right. It plays with its own fader
-(**My drums**) next to the original drums, the other tracks and the click. If your hits sit a
-little early or late, move **Drums timing** until they line up and save; the video follows.
-**Export audio** writes a WAV, **Export video** an MP4, both with the levels of the faders.
-To export only part of a take, choose **Trimmed** and set the start and end (type them, or
-play to the spot and press **Set**); the trimmed part is marked on the timeline. **Current
-loop** exports the loop, for example one section.
-**Range** exports the whole take, the current loop (a section, for example) or a stretch
-you type in. For video, **Picture** crops to 16:9, 9:16 (for a phone), 1:1 or 4:5: drag
-the frame on the video to place it and use **Size** to zoom in.
+(**My take**) next to the song's tracks and the click. If your playing sits a little early
+or late, move **Timing** until it lines up and save; the video follows. **Export audio**
+writes a WAV, **Export video** an MP4, both with the levels of the faders. To export only
+part of a take, choose **Trimmed** and set the start and end (type them, or play to the
+spot and press **Set**); the trimmed part is marked on the timeline. **Current loop**
+exports the loop, for example one section.
 
 The **Library** menu has *Show Library in Finder*, *Update YouTube Downloader*, *Reset
 YouTube Downloader*, *Restart Engine* and *Show Log*.
@@ -137,7 +139,7 @@ Downloader*.
 | Decoding to 44.1 kHz | [FFmpeg](https://ffmpeg.org) |
 | Separation into drums, bass, vocals, other | [Demucs](https://github.com/facebookresearch/demucs) `htdemucs_ft` on the Apple GPU ([PyTorch](https://pytorch.org) with MPS) |
 | Song sections | [All-In-One](https://github.com/mir-aidj/all-in-one) (Kim and Nam, 2023, trained on the Harmonix Set), run on the four tracks; borders snapped to bar lines. Included in `stemtool/structure` without its NATTEN and madmom dependencies (see the notes there). |
-| Electronic style | A harmonic/percussive split of the drums track that moves sustained, pitched sound (basses, synths) back to the band. The two tracks always add up to the original mix. |
+| Electronic style | A harmonic/percussive split of the drums track that moves sustained, pitched sound out of it: below 200 Hz to the bass track, above to other. The tracks always add up to the same mix. |
 | Beats and downbeats | [beat_this](https://github.com/CPJKU/beat_this), then a cleanup that keeps one tempo level, fills lost beats and drops stray ones (`stemtool/grid.py`) |
 | Click (audio and MIDI) | Rendered from the tracked beats |
 | Recording | Web Audio (AudioWorklet) for sample-accurate audio, MediaRecorder for video. Takes are placed on the song's timeline using the calibrated latency. |
@@ -169,21 +171,22 @@ The library is plain files, so other tools (for instance a DAW) can use it:
     click.mid          the click as General MIDI percussion
     takes/<date>/
       take.json        timing and file list
-      my_drums.flac    your recording, on the song's timeline
+      my_drums.flac    your take, on the song's timeline (the name dates from drums-only days)
       raw.flac         the input exactly as captured
       video.mp4|webm   camera recording (optional)
       export.wav|mp4   last export (optional)
   .stemtool-work/      temporary, hidden
 ```
 
-All audio files of a song (including `my_drums.flac`) have the same sample rate and
+All audio files of a song (including a take's `my_drums.flac`) have the same sample rate and
 length and can be started together sample-accurately; that holds for the compressed AAC
 files too, whose encoder delay is recorded in the file and removed by decoders. The four
 tracks add up to the original mix (exactly with lossless files, audibly the same with
 AAC). **Settings > Audio files** chooses the format: AAC 256 kbps (default, about 35 MB
 per song), 16-bit or 24-bit FLAC; **Convert library** brings existing songs to the
 chosen format. Songs made with Rip It Out 0.2 have two tracks (`drums`, `no_drums`)
-until they are converted; `manifest.json` has `"schema": 2` for the four-track layout. A folder only counts as a song once `manifest.json` exists; songs are built
+until they are converted; `manifest.json` has `"schema": 2` for the four-track layout.
+A folder only counts as a song once `manifest.json` exists; songs are built
 in the hidden work folder and moved into place in one step, so sync clients never pick up
 half-written songs.
 
@@ -297,12 +300,11 @@ set up the virtual environment as in [Development](#development), and see
   release first. If there is none yet, *Library > Update YouTube Downloader* installs the
   newest yt-dlp (untested with your version; *Reset YouTube Downloader* undoes it). In
   development: `.venv/bin/pip install -U yt-dlp`.
-- **Everything ended up in the drums track:** redo the song with the *Electronic* style.
+- **The drums took the bass and synths along:** redo the song with the *Electronic* style.
 - **The recording is silent:** check the input in Record > Setup (the level meter should
-  move when you hit a pad) and allow microphone access in System Settings > Privacy &
+  move when you play) and allow microphone access in System Settings > Privacy &
   Security.
-- **My hits are early or late:** run Calibrate again, or adjust *Drums timing* on the
-  take.
+- **My playing sits early or late:** run Calibrate again, or adjust *Timing* on the take.
 - **Something else:** *Library > Show Log*.
 
 ## License
