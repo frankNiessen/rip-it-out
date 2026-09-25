@@ -72,7 +72,10 @@ rm -rf "$STAGE/python/include" "$STAGE/python/share" \
 find "$SITE" -type d -name tests -path "*/scipy/*" -prune -exec rm -rf {} +
 find "$SITE" -type d -name tests -path "*/numpy/*" -prune -exec rm -rf {} +
 "$PY" -m compileall -q -j 0 "$SITE/stemtool" >/dev/null || true
-if ls "$SITE" | grep -qi "^mutagen"; then echo "mutagen (GPL) must not be bundled"; exit 1; fi
+
+echo "==> License check"
+# Inventory of every bundled Python package; stops the build if one is GPL.
+"$PY" -I "$ROOT/macos/license_report.py" "$STAGE/licenses/PYTHON_PACKAGES.md"
 
 # Electron's packager copies symlinks as absolute links into build/, which breaks
 # the bundle. The few there are (python3 -> python3.12 and such) become copies.
@@ -82,6 +85,12 @@ find "$STAGE" -type l -print0 | while IFS= read -r -d '' link; do
 done
 
 cp "$BUILD/ffmpeg-$FFMPEG_VERSION/bin/ffmpeg" "$BUILD/ffmpeg-$FFMPEG_VERSION/bin/ffprobe" "$DENO" "$STAGE/bin/"
+# Check the binary that ships, not only how it was configured: LGPL, no GPL or nonfree parts.
+FF="$STAGE/bin/ffmpeg"
+if ! "$FF" -hide_banner -L | grep -q "Lesser General Public" || \
+   "$FF" -hide_banner -buildconf | grep -qE -- "--enable-(gpl|nonfree|version3)"; then
+  echo "The bundled ffmpeg is not a plain LGPL 2.1 build"; exit 1
+fi
 cp "$BUILD/ffmpeg-$FFMPEG_VERSION/share/licenses/"* "$STAGE/licenses/"
 cp "$ROOT/macos/THIRD_PARTY_NOTICES.md" "$ROOT/LICENSE" "$STAGE/licenses/"
 

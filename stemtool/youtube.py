@@ -4,10 +4,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 from yt_dlp import YoutubeDL
 
 UNAVAILABLE_TITLES = {"[Private video]", "[Deleted video]"}
+
+# The app only takes YouTube links. yt-dlp supports many other sites, which is
+# outside what this app is for, so anything else is refused before yt-dlp sees it.
+YOUTUBE_HOSTS = {
+    "youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com",
+    "youtu.be", "www.youtube-nocookie.com", "youtube-nocookie.com",
+}
+
+
+def is_youtube_url(url: str) -> bool:
+    try:
+        parsed = urlparse(url.strip())
+    except ValueError:
+        return False
+    return parsed.scheme in ("http", "https") and (parsed.hostname or "").lower() in YOUTUBE_HOSTS
 
 
 @dataclass(frozen=True)
@@ -27,6 +43,8 @@ def expand(url: str) -> tuple[str, list[VideoRef]]:
 
     Only lists entries (no download), so this is quick even for long playlists.
     """
+    if not is_youtube_url(url):
+        raise ValueError("Only YouTube links are supported")
     opts = {"extract_flat": "in_playlist", "quiet": True, "no_warnings": True, "skip_download": True}
     with YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)

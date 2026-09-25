@@ -1,7 +1,12 @@
 # Third-party components in Rip It Out.app
 
 Rip It Out itself is MIT licensed (see `LICENSE`). The app bundles these
-components, each under its own license. None of them is GPL.
+components, each under its own license.
+
+This list describes the main components. The exact versions and licenses of all
+Python packages in a given release are in `PYTHON_PACKAGES.md` next to this file,
+generated when that release was built. The build stops if a bundled Python package
+is GPL or AGPL licensed, or if the bundled ffmpeg is not a plain LGPL 2.1 build.
 
 | Component | License | Source |
 |---|---|---|

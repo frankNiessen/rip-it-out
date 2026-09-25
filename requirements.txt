@@ -4,9 +4,10 @@ uvicorn[standard]>=0.29
 python-multipart  # take uploads
 
 # YouTube
-# yt-dlp and its optional helpers, without mutagen (GPL, only used for tagging files)
-yt-dlp
-yt-dlp-ejs
+# yt-dlp and its optional helpers, without mutagen (GPL, only used for tagging files).
+# Pinned: each release ships a yt-dlp version it was tested with. Bump deliberately.
+yt-dlp==2026.8.19
+yt-dlp-ejs==0.8.0
 brotli
 certifi
 pycryptodomex

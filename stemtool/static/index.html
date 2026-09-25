@@ -94,6 +94,7 @@
   .note.error { color: var(--fail); }
   .empty { color: var(--muted); padding: .75rem 0; margin: 0; }
 
+  .rights-note { margin: 0; font-size: .8rem; line-height: 1.4; color: var(--muted); }
   .queue { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
   .queue li { padding: .6rem 0; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 1fr auto; gap: .15rem .75rem; }
   .queue .title { font-weight: 500; overflow-wrap: anywhere; }
@@ -267,6 +268,8 @@
             </label>
           </div>
           <button class="btn" id="add-btn">Add</button>
+          <p class="rights-note">Only use content you are authorized to download and process. You are responsible
+            for complying with copyright law and the terms of the source service.</p>
         </form>
         <p class="note" id="add-note" aria-live="polite"></p>
       </section>

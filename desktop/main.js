@@ -21,11 +21,10 @@ const BIN = PACKAGED ? path.join(process.resourcesPath, "bin") : null;
 const USER_DATA = app.getPath("userData"); // ~/Library/Application Support/Rip It Out
 const CONFIG = process.env.STEMTOOL_CONFIG || path.join(USER_DATA, "settings.json"); // shared with the server: library folder
 const STATE = path.join(USER_DATA, "desktop.json"); // this file's own state
-// yt-dlp updates go here, never into the app bundle, which stays signed and unchanged.
+// A yt-dlp update the user chose to install goes here, never into the app bundle.
 const OVERLAY = path.join(USER_DATA, "site-packages");
 const LOGS = app.getPath("logs"); // ~/Library/Logs/Rip It Out
-const YTDLP_PACKAGES = ["yt-dlp", "yt-dlp-ejs", "brotli", "certifi", "pycryptodomex", "requests", "urllib3", "websockets"];
-const UPDATE_EVERY_MS = 7 * 24 * 3600 * 1000;
+const YTDLP_PACKAGES = ["yt-dlp", "yt-dlp-ejs"]; // the rest (requests, certifi, ...) comes with the app
 
 let win = null;
 let server = null;
@@ -82,7 +81,7 @@ function startServer() {
   const env = { ...process.env, STEMTOOL_CONFIG: CONFIG, PYTHONUNBUFFERED: "1", PYTHONNOUSERSITE: "1" };
   if (PACKAGED) {
     env.PATH = `${BIN}:/usr/bin:/bin:/usr/sbin:/sbin`;
-    env.PYTHONPATH = OVERLAY;
+    if (overlayActive()) env.PYTHONPATH = OVERLAY;
     delete env.PYTHONHOME;
   }
   server = spawn(PYTHON, ["-m", "uvicorn", "stemtool.server:app", "--host", "127.0.0.1", "--port", String(port)], {
@@ -205,29 +204,70 @@ function setupPermissions() {
 }
 
 // --- yt-dlp updates ------------------------------------------------------------------------
+//
+// Each release bundles a pinned yt-dlp version it was tested with. Nothing updates on
+// its own. When YouTube breaks downloads before the next release, the user can choose
+// to install the newest yt-dlp from PyPI into OVERLAY (wheels only, so no install
+// scripts run), and go back to the bundled version at any time.
 
-function updateYtDlp(manual) {
+function overlayActive() {
+  const state = readJson(STATE);
+  // An update made under another app version is dropped: the new release's tested
+  // yt-dlp takes over again.
+  if (state.ytdlpOverlayVersion && state.ytdlpOverlayVersion !== app.getVersion()) {
+    fs.rmSync(OVERLAY, { recursive: true, force: true });
+    writeJson(STATE, { ...state, ytdlpOverlayVersion: null });
+    return false;
+  }
+  return !!state.ytdlpOverlayVersion && fs.existsSync(OVERLAY);
+}
+
+async function updateYtDlp() {
   if (!PACKAGED) {
-    if (manual) dialog.showMessageBox(win, { message: "In development, update yt-dlp in the .venv with pip." });
+    dialog.showMessageBox(win, { message: "In development, update yt-dlp in the .venv with pip." });
     return;
   }
-  fs.mkdirSync(OVERLAY, { recursive: true });
-  const pip = spawn(PYTHON, ["-m", "pip", "install", "--upgrade", "--target", OVERLAY,
+  const { response } = await dialog.showMessageBox(win, {
+    type: "question", buttons: ["Update", "Cancel"], defaultId: 0, cancelId: 1,
+    message: "Install the newest YouTube downloader?",
+    detail: "This downloads the latest yt-dlp release from PyPI (pypi.org). It hasn't been tested with this version " +
+      "of Rip It Out. Use it when downloads stop working. Library > Reset YouTube Downloader goes back to the bundled version.",
+  });
+  if (response !== 0) return;
+  const tmp = `${OVERLAY}.new`;
+  fs.rmSync(tmp, { recursive: true, force: true });
+  const pip = spawn(PYTHON, ["-m", "pip", "install", "--target", tmp, "--only-binary", ":all:", "--no-deps",
     "--disable-pip-version-check", "--no-input", ...YTDLP_PACKAGES], { env: { ...process.env, PYTHONNOUSERSITE: "1" } });
   let output = "";
   pip.stdout.on("data", (d) => { output += d; });
   pip.stderr.on("data", (d) => { output += d; });
-  pip.on("exit", (code) => {
+  pip.on("exit", async (code) => {
     fs.appendFileSync(path.join(LOGS, "server.log"), `\n=== yt-dlp update (exit ${code})\n${output.slice(-4000)}\n`);
-    if (code === 0) writeJson(STATE, { ...readJson(STATE), ytdlpUpdatedAt: Date.now() });
-    if (manual || code !== 0) {
-      dialog.showMessageBox(win, {
-        type: code === 0 ? "info" : "error",
-        message: code === 0 ? "YouTube downloader updated" : "Updating the YouTube downloader failed",
-        detail: code === 0 ? "New downloads use it right away. Restart the app to use it for reading playlists too." : "Details are in the log (Library menu, Show Log).",
-      });
+    if (code !== 0) {
+      fs.rmSync(tmp, { recursive: true, force: true });
+      dialog.showMessageBox(win, { type: "error", message: "Updating the YouTube downloader failed",
+        detail: "Details are in the log (Library menu, Show Log)." });
+      return;
     }
+    fs.rmSync(OVERLAY, { recursive: true, force: true });
+    fs.renameSync(tmp, OVERLAY);
+    writeJson(STATE, { ...readJson(STATE), ytdlpOverlayVersion: app.getVersion() });
+    const restart = await dialog.showMessageBox(win, {
+      type: "info", buttons: ["Restart Engine", "Later"], defaultId: 0, cancelId: 1,
+      message: "YouTube downloader updated", detail: "It is used after the engine restarts.",
+    });
+    if (restart.response === 0) restartEngine();
   });
+}
+
+async function resetYtDlp() {
+  if (!fs.existsSync(OVERLAY)) {
+    dialog.showMessageBox(win, { message: "Already using the bundled YouTube downloader." });
+    return;
+  }
+  fs.rmSync(OVERLAY, { recursive: true, force: true });
+  writeJson(STATE, { ...readJson(STATE), ytdlpOverlayVersion: null });
+  restartEngine();
 }
 
 // --- menu ------------------------------------------------------------------------------------
@@ -248,7 +288,8 @@ function buildMenu() {
         { label: "Show Library in Finder", click: async () => { const p = await libraryPath(); if (p) shell.openPath(p); } },
         { label: "Change Library Folder…", click: () => win && win.webContents.executeJavaScript("showTab('settings')") },
         { type: "separator" },
-        { label: "Update YouTube Downloader", click: () => updateYtDlp(true) },
+        { label: "Update YouTube Downloader…", click: updateYtDlp },
+        { label: "Reset YouTube Downloader", click: resetYtDlp },
         { label: "Restart Engine", click: restartEngine },
         { label: "Show Log", click: () => shell.openPath(path.join(LOGS, "server.log")) },
       ],
@@ -287,7 +328,6 @@ if (!app.requestSingleInstanceLock()) {
     setupPermissions();
     createWindow();
     boot();
-    if (Date.now() - (readJson(STATE).ytdlpUpdatedAt || 0) > UPDATE_EVERY_MS) updateYtDlp(false);
   });
 
   app.on("activate", () => {

@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from yt_dlp.utils import DownloadError
 
-from . import __version__, config, library, takes
+from . import __version__, config, library, takes, youtube
 from .config import STYLES, load_settings
 from .jobs import JobManager
 
@@ -134,8 +134,8 @@ def update_settings(req: SettingsUpdate) -> dict:
 @app.post("/api/submit")
 def submit(req: SubmitRequest) -> dict:  # sync: runs in a threadpool, playlist listing can take a while
     url = req.url.strip()
-    if not url.startswith(("http://", "https://")):
-        raise HTTPException(400, "Paste a full YouTube link, starting with https://")
+    if not youtube.is_youtube_url(url):
+        raise HTTPException(400, "Paste a YouTube video or playlist link (youtube.com or youtu.be)")
     if req.style not in STYLES:
         raise HTTPException(400, f"Unknown style {req.style!r}")
     try:

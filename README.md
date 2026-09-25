@@ -1,6 +1,6 @@
 # Rip It Out
 
-**Rip the drums out of any song, play along with a click, and record yourself.**
+**Rip the drums out of your music, play along with a click, and record yourself.**
 
 Rip It Out is a practice tool for drummers. Paste a YouTube link or a whole playlist, and
 it separates every song into a drums track and a "everything except drums" track, finds
@@ -92,13 +92,16 @@ you press Stop or the song ends.
 little early or late, move **Drums timing** until they line up and save; the video follows.
 **Export audio** writes a WAV, **Export video** an MP4, both with the levels of the faders.
 
-The **Library** menu has *Show Library in Finder*, *Update YouTube Downloader*, *Restart
-Engine* and *Show Log*.
+The **Library** menu has *Show Library in Finder*, *Update YouTube Downloader*, *Reset
+YouTube Downloader*, *Restart Engine* and *Show Log*.
 
 ## What happens in the background
 
-Everything runs on your Mac. Nothing is uploaded anywhere. The app only goes online to
-download from YouTube, to fetch the models once, and to update yt-dlp.
+Processing is local: your recordings and the generated tracks are processed and stored on
+your computer, and there is no Rip It Out server. The app connects to YouTube when it
+downloads source audio, to the model publishers (Meta's `dl.fbaipublicfiles.com` for
+Demucs, JKU Linz's `cloud.cp.jku.at` for beat_this) the first time it needs a model, and to PyPI only when you choose *Update YouTube
+Downloader*.
 
 | Step | What does it |
 |---|---|
@@ -113,9 +116,13 @@ download from YouTube, to fetch the models once, and to update yt-dlp.
 | Export | NumPy mix, FFmpeg with Apple's VideoToolbox H.264 encoder |
 | App | [Electron](https://www.electronjs.org) window around a local [FastAPI](https://fastapi.tiangolo.com) server on `localhost`, with its own Python ([python-build-standalone](https://github.com/astral-sh/python-build-standalone)) inside the app |
 
-yt-dlp updates itself once a week, because YouTube changes often. Updates go to
-`~/Library/Application Support/Rip It Out/site-packages`; the app itself is never
-modified. Settings live in the same folder, logs in `~/Library/Logs/Rip It Out`.
+Each release bundles a pinned yt-dlp version it was tested with, and nothing updates on
+its own. YouTube changes often, so when downloads stop working before the next release,
+*Library > Update YouTube Downloader* installs the newest yt-dlp from PyPI (after asking,
+wheels only) into `~/Library/Application Support/Rip It Out/site-packages`. The app itself
+is never modified, and *Reset YouTube Downloader* goes back to the bundled version.
+Installing a newer Rip It Out also drops such an update. Settings live in the same
+folder, logs in `~/Library/Logs/Rip It Out`.
 
 ### Library format
 
@@ -144,15 +151,25 @@ original mix. A folder only counts as a song once `manifest.json` exists; songs 
 in the hidden work folder and moved into place in one step, so sync clients never pick up
 half-written songs.
 
-## Legal note
+## Legal and copyright notice
 
-Rip It Out is a tool for personal practice. Music on YouTube is protected by copyright,
-and downloading it may be against YouTube's Terms of Service unless YouTube offers a
-download button or the owner allows it. **Only process music you own or have permission
-to use, and don't share the separated tracks or exports of other people's music** unless
-you have the rights to. You are responsible for how you use this software.
+Rip It Out is a practice tool for musicians. It can download audio from YouTube and
+create local copies, separated tracks, click tracks, recordings and exports from that
+audio. It accepts YouTube links only.
 
-Rip It Out is not affiliated with or endorsed by YouTube, Google, or any artist or label.
+**Only download or process content that you are authorized to download and use.** You
+are responsible for complying with applicable copyright law, the rights of the relevant
+copyright and neighbouring-rights holders, and the terms that apply to the source
+service. YouTube's Terms of Service restrict downloading and automated access unless
+YouTube, and where applicable the rights holders, permit it, or applicable law does.
+
+**Do not share or distribute separated tracks, downloaded audio, or exports containing
+third-party copyrighted material** unless you have the necessary rights or permission.
+
+Rip It Out does not circumvent DRM and does not grant you any rights to content obtained
+from YouTube. The MIT license covers the software only, not any music you process with
+it. Rip It Out is not affiliated with or endorsed by YouTube, Google, or any artist,
+label, publisher or other rights holder.
 
 ## Build it yourself
 
@@ -229,8 +246,10 @@ set up the virtual environment as in [Development](#development), and see
 
 ## Troubleshooting
 
-- **Downloads fail:** YouTube changed something. Use *Library > Update YouTube
-  Downloader* (in development: `.venv/bin/pip install -U yt-dlp`).
+- **Downloads fail:** YouTube probably changed something. Check for a newer Rip It Out
+  release first. If there is none yet, *Library > Update YouTube Downloader* installs the
+  newest yt-dlp (untested with your version; *Reset YouTube Downloader* undoes it). In
+  development: `.venv/bin/pip install -U yt-dlp`.
 - **Everything ended up in the drums track:** redo the song with the *Electronic* style.
 - **The recording is silent:** check the input in Record > Setup (the level meter should
   move when you hit a pad) and allow microphone access in System Settings > Privacy &
