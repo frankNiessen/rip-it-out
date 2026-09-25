@@ -12,6 +12,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from yt_dlp.utils import DownloadError
 
@@ -34,6 +35,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Rip It Out", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
 class SettingsUpdate(BaseModel):
