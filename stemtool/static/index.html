@@ -437,6 +437,7 @@ function showTab(name) {
   if (name === activeTab) return;
   if (recording) return; // don't leave a take half recorded
   engine.pause();
+  if (activeTab === "record") closeInput(); // microphone and camera only while in Record
   activeTab = name;
   for (const t of ["library", "play", "record", "settings"]) {
     $(`#t-${t}`).setAttribute("aria-selected", String(t === name));
@@ -1494,7 +1495,7 @@ navigator.mediaDevices?.addEventListener("devicechange", async () => {
   if (inputGone) {
     if (recording) await stopRecording();
     closeInput("Your input was disconnected. Plug it back in to record.");
-  } else if (!input.stream && recordTabReady && store.get("inputAllowed", false)) {
+  } else if (!input.stream && activeTab === "record" && store.get("inputAllowed", false)) {
     // The saved input is back: reopen it without asking.
     const saved = store.get("dev.in");
     const devs = await navigator.mediaDevices.enumerateDevices();
@@ -1513,19 +1514,21 @@ function closeInput(message) {
 }
 
 let recordTabReady = false;
+// Microphone and camera are opened when entering Record and released when leaving it.
 async function onRecordTab() {
   if (current) refreshTakes();
-  if (recordTabReady) return;
   recordTabReady = true;
   setupSummary();
   if (!navigator.mediaDevices) { $("#setup").open = true; return; }
   if (store.get("inputAllowed", false)) {
     try {
       const labelled = await listDevices();
-      if (labelled) {
+      if (labelled && activeTab === "record" && !input.stream) {
         await openInput(); loadLatency(); setupSummary(); applyOutput();
+        if (activeTab !== "record") closeInput(); // left the tab while it was opening
         return;
       }
+      if (labelled) return;
     } catch { /* fall through to asking again */ }
   }
   $("#setup").open = true;
