@@ -189,6 +189,9 @@
   .transport { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem 1rem; }
   .transport label { display: flex; align-items: center; gap: .4rem; font-size: .92rem; }
   .transport select { padding: .3rem .5rem; font-size: .92rem; }
+  .grid-tools { display: flex; align-items: center; gap: .35rem; margin-left: auto; flex-wrap: wrap; }
+  .grid-tools .btn.quiet { padding: .2rem .55rem; min-width: 2.2rem; }
+  .grid-tools .hint:not(:first-child) { margin-left: .5rem; }
   .mixer { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.5rem; margin-top: 1rem; padding-top: .9rem; border-top: 1px solid var(--line); }
   .mixer label { display: flex; align-items: center; gap: .5rem; font-size: .92rem; }
   .mixer label.mine { font-weight: 600; }
@@ -538,7 +541,6 @@ let songs = [];
 const selected = new Set();
 const collapsed = new Set(store.get("collapsed", []));
 const UNGROUPED = "Ungrouped";
-const HEAVY = 0.55; // drums stem holding more than this share of the mix usually means basses went in there
 
 async function refreshLibrary() {
   try { songs = await api("/api/library"); } catch { return; }
@@ -575,7 +577,6 @@ function renderLibrary() {
 function songRow(s) {
   const tags = [];
   if (s.style === "electronic") tags.push(`<span class="tag elec">Electronic</span>`);
-  else if (s.drum_share > HEAVY) tags.push(`<span class="tag warn" title="Most of the mix ended up in the drums stem. Redo the separation as Electronic.">Drums ${Math.round(s.drum_share * 100)}% of mix</span>`);
   if (s.takes) tags.push(`<span class="tag">${s.takes} ${s.takes === 1 ? "take" : "takes"}</span>`);
   const f = esc(s.folder);
   return `<div class="song" data-folder="${f}">
@@ -633,7 +634,7 @@ $$("[data-redo]").forEach((b) => b.addEventListener("click", async () => {
 // ---- current song -----------------------------------------------------------
 let ctx = null;
 function audioCtx() {
-  if (!ctx) { ctx = new AudioContext({ latencyHint: "interactive" }); engine.init(); }
+  if (!ctx) { ctx = new AudioContext({ latencyHint: "interactive" }); engine.init(); applyOutput(); }
   return ctx;
 }
 let current = null;      // { folder, m, buffers }
@@ -653,6 +654,13 @@ function fillSongPickers() {
   $$(".song-pick").forEach((sel) => { sel.innerHTML = html; sel.value = current?.folder || loadingFolder || ""; });
 }
 $$(".song-pick").forEach((sel) => sel.addEventListener("change", () => { if (!recording && sel.value) selectSong(sel.value); }));
+
+function showSongMeta() {
+  const m = current.m;
+  const source = m.source_url ? ` · <a href="${esc(m.source_url)}" target="_blank" rel="noopener">Source</a>` : "";
+  const meta = `${m.bpm ? Math.round(m.bpm) + " bpm · " : ""}${current.bpb}/4 · ${fmtTime(m.duration_s)}${source}`;
+  $$(".songbar .meta").forEach((el) => { el.innerHTML = meta; });
+}
 
 async function selectSong(folder) {
   if (recording || folder === current?.folder || folder === loadingFolder) return;
@@ -675,8 +683,7 @@ async function selectSong(folder) {
     if (loadingFolder !== folder) return;
     current = { folder, m, buffers, bpb: beatsPerBar(m) };
     engine.load(current);
-    const meta = `${m.bpm ? Math.round(m.bpm) + " bpm · " : ""}${current.bpb}/4 · ${fmtTime(m.duration_s)} · <a href="${esc(m.source_url)}" target="_blank" rel="noopener">Source</a>`;
-    $$(".songbar .meta").forEach((el) => { el.innerHTML = meta; });
+    showSongMeta();
     Object.values(decks).forEach((d) => d.render());
     if (activeTab === "play") decks.play.activate();
     if (activeTab === "record") { decks.record.activate(); refreshTakes(); }
@@ -837,6 +844,15 @@ function makeDeck(kind, root) {
           <option value="0">Off</option><option value="1">1 bar</option><option value="2">2 bars</option>
         </select></label>
         <span class="hint">Space plays and pauses</span>
+        ${kind === "play" ? `<span class="grid-tools" title="Fix the beat grid if the click or bar numbers are off">
+          <span class="hint">Bar line</span>
+          <button class="btn quiet" data-grid="shift" data-steps="-1" aria-label="Move the bar line one beat earlier">◂</button>
+          <button class="btn quiet" data-grid="shift" data-steps="1" aria-label="Move the bar line one beat later">▸</button>
+          <span class="hint">Tempo</span>
+          <button class="btn quiet" data-grid="double" aria-label="Double the tempo">×2</button>
+          <button class="btn quiet" data-grid="half" aria-label="Halve the tempo">½</button>
+          <button class="btn quiet" data-grid="clean" title="Rebuild the grid from the beat tracker">Rebuild</button>
+        </span>` : ""}
       </div>
       <div class="mixer">
         ${CHANNELS[kind].map(([k, label]) => `<label class="${k === "take" ? "mine" : ""}" data-ch="${k}" ${k === "take" ? "hidden" : ""}>${label}
@@ -894,7 +910,30 @@ function makeDeck(kind, root) {
     if (was) engine.play({ countInBars: deck.countIn });
   });
   if (q(".rec")) q(".rec").addEventListener("click", () => (recording ? stopRecording() : startRecording()));
+  root.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-grid]");
+    if (b && current && !recording) editGrid(b.dataset.grid, +(b.dataset.steps || 1), b);
+  });
   return deck;
+}
+
+// Beat grid edits: the server rewrites the beats and the click, then the song reloads its click.
+async function editGrid(action, steps, button) {
+  const folder = current.folder, was = engine.playing, pos = engine.position(false);
+  engine.pause();
+  $$("[data-grid]").forEach((b) => { b.disabled = true; });
+  try {
+    const r = await api("/api/library/grid", { method: "POST", body: JSON.stringify({ folders: [folder], action, steps }) });
+    if (current?.folder !== folder) return;
+    const data = await (await fetch(`${fileUrl(folder, r.manifest.click.audio)}?v=${Date.now()}`)).arrayBuffer();
+    current.buffers.click = await ctx.decodeAudioData(data);
+    current.m = r.manifest; current.bpb = beatsPerBar(r.manifest);
+    engine.load(current); engine.offset = pos;
+    Object.values(decks).forEach((d) => d.render());
+    showSongMeta();
+    if (was) engine.play({ countInBars: 0 });
+  } catch (err) { alert(err.message); }
+  finally { $$("[data-grid]").forEach((b) => { b.disabled = false; }); }
 }
 
 function drawCounter(el, m) {
@@ -1156,8 +1195,52 @@ for (const [id, key] of [["#in-dev", "dev.in"], ["#cam-dev", "dev.cam"]]) {
 }
 $("#out-dev").addEventListener("change", async () => {
   store.set("dev.out", $("#out-dev").value);
-  try { await audioCtx().setSinkId($("#out-dev").value === "default" ? "" : $("#out-dev").value); } catch (err) { alert(err.message); }
+  audioCtx(); applyOutput();
 });
+
+// Plays through the chosen output while it is connected, otherwise through the
+// system default (for example the Mac's speakers once the drum module is unplugged).
+// The choice is remembered, so plugging the module back in switches back to it.
+async function applyOutput() {
+  if (!canSink || !ctx || !navigator.mediaDevices) return;
+  const wanted = store.get("dev.out", "default");
+  let available = false;
+  try {
+    available = wanted !== "default" && (await navigator.mediaDevices.enumerateDevices())
+      .some((d) => d.kind === "audiooutput" && d.deviceId === wanted);
+  } catch { /* no device list: use the default */ }
+  const id = available ? wanted : "";
+  if (ctx.sinkId !== id) { try { await ctx.setSinkId(id); } catch { /* keep what works */ } }
+  const sel = $("#out-dev");
+  if (sel.options.length) sel.value = available ? wanted : "default";
+}
+
+// Devices come and go (the drum module is unplugged or switched off).
+navigator.mediaDevices?.addEventListener("devicechange", async () => {
+  if (input.stream || store.get("inputAllowed", false)) { try { await listDevices(); } catch {} }
+  await applyOutput();
+  const track = input.stream?.getAudioTracks()[0];
+  const inputGone = track && track.readyState === "ended";
+  if (inputGone) {
+    if (recording) await stopRecording();
+    closeInput("Your input was disconnected. Plug it back in to record.");
+  } else if (!input.stream && recordTabReady && store.get("inputAllowed", false)) {
+    // The saved input is back: reopen it without asking.
+    const saved = store.get("dev.in");
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    if (saved && devs.some((d) => d.kind === "audioinput" && d.deviceId === saved)) {
+      try { $("#in-dev").value = saved; await openInput(); loadLatency(); setupSummary(); $("#lat-note").textContent = ""; } catch {}
+    }
+  }
+});
+
+function closeInput(message) {
+  if (input.stream) input.stream.getTracks().forEach((t) => t.stop());
+  if (input.source) input.source.disconnect();
+  input.stream = null; input.source = null;
+  showLivePreview(); setupSummary();
+  if (message) { $("#setup").open = true; $("#setup-summary").textContent = message; }
+}
 
 let recordTabReady = false;
 async function onRecordTab() {
@@ -1170,9 +1253,7 @@ async function onRecordTab() {
     try {
       const labelled = await listDevices();
       if (labelled) {
-        await openInput(); loadLatency(); setupSummary();
-        const out = $("#out-dev").value;
-        if (out && out !== "default" && ctx.setSinkId) ctx.setSinkId(out).catch(() => {});
+        await openInput(); loadLatency(); setupSummary(); applyOutput();
         return;
       }
     } catch { /* fall through to asking again */ }

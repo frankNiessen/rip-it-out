@@ -11,6 +11,8 @@ import unicodedata
 from pathlib import Path
 from typing import Iterator
 
+from . import grid
+
 MANIFEST = "manifest.json"
 SCHEMA_VERSION = 1
 TAKES_DIR = "takes"
@@ -51,7 +53,9 @@ def list_songs(library_dir: Path) -> list[dict]:
                 "duration_s": m.get("duration_s"),
                 "created_at": m.get("created_at"),
                 "style": processing.get("style", "standard"),
-                "drum_share": processing.get("drum_share", _estimated_drum_share(folder, m)),
+                "grid": m.get("grid", "raw"),
+                "grid_uneven": grid.uneven_fraction(m.get("beats", []), m.get("downbeats", [])),
+                "drum_share": processing.get("drum_share"),
                 "takes": sum(1 for t in takes.glob("*/take.json")) if takes.is_dir() else 0,
                 "stems": m.get("stems", {}),
                 "click": m.get("click", {}),
@@ -100,35 +104,6 @@ def set_group(library_dir: Path, folder: str, group: str) -> bool:
 
 
 manifest_lock = threading.Lock()
-_share_cache: dict[tuple[str, float], float | None] = {}
-
-
-def _estimated_drum_share(folder: Path, manifest: dict) -> float | None:
-    """For songs made before drum_share was stored: estimate it from 20 s in the
-    middle of the stems. Cached per folder and manifest time, so it runs once."""
-    try:
-        key = (folder.name, (folder / MANIFEST).stat().st_mtime)
-    except OSError:
-        return None
-    if key not in _share_cache:
-        _share_cache[key] = _measure_share(folder, manifest)
-    return _share_cache[key]
-
-
-def _measure_share(folder: Path, manifest: dict) -> float | None:
-    import numpy as np
-    import soundfile as sf
-
-    stems = manifest.get("stems", {})
-    try:
-        total = sf.info(str(folder / stems["drums"])).frames
-        start, frames = max(0, total // 2 - 441000), 882000
-        d, _ = sf.read(str(folder / stems["drums"]), start=start, frames=frames, dtype="float32")
-        n, _ = sf.read(str(folder / stems["no_drums"]), start=start, frames=frames, dtype="float32")
-    except (KeyError, OSError, RuntimeError):
-        return None
-    ed, en = float(np.square(d).sum()), float(np.square(n).sum())
-    return round(ed / (ed + en), 3) if ed + en > 0 else None
 
 
 def slugify(text: str, max_len: int = 60) -> str:

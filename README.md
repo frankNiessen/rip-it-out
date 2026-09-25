@@ -63,13 +63,23 @@ skipped, so you can add the same playlist again later to pick up new songs. **St
 the song being processed, **Stop all** also empties the queue.
 
 **3. Fix songs that came out drum heavy.** If the "no drums" track sounds almost empty
-(typical for drum & bass or EDM), the library tags the song with a warning. Tick the songs
-and choose **Redo separation as Electronic**. This takes a minute and keeps beats, click
+(typical for drum & bass or EDM, if you added it with the Band style), tick the songs in
+the library and choose **Redo separation as Electronic**. This takes a minute and keeps beats, click
 and takes.
 
 **4. Play along.** In **Play**, pick a song, set the count-in and the levels (drums down,
 band up, click to taste) and press Play or the space bar. Click on the tempo view to jump;
 with a count-in, playback starts at the beginning of that bar.
+
+The beat grid (click, bar numbers, count-in) is cleaned up automatically: the beat tracker
+sometimes jumps between double and half tempo or loses a beat, and the app evens that out
+while keeping the song's real tempo changes. If the "1" still sits on the wrong beat, or
+the whole song is counted twice as fast or slow as you feel it, fix it next to the
+transport: **Bar line ◂ ▸** moves every bar line by a beat, **×2** and **½** change the
+tempo level, **Rebuild** starts over from the tracker's result.
+
+If you unplug your audio interface, playback moves to the Mac's default output, and back
+to the interface when you plug it in again.
 
 **5. Record.** In **Record**, open **Setup** once:
 
@@ -109,7 +119,7 @@ Downloader*.
 | Decoding to 44.1 kHz | [FFmpeg](https://ffmpeg.org) |
 | Drums / no-drums separation | [Demucs](https://github.com/facebookresearch/demucs) `htdemucs_ft` on the Apple GPU ([PyTorch](https://pytorch.org) with MPS) |
 | Electronic style | A harmonic/percussive split of the drums track that moves sustained, pitched sound (basses, synths) back to the band. The two tracks always add up to the original mix. |
-| Beats and downbeats | [beat_this](https://github.com/CPJKU/beat_this) |
+| Beats and downbeats | [beat_this](https://github.com/CPJKU/beat_this), then a cleanup that keeps one tempo level, fills lost beats and drops stray ones (`stemtool/grid.py`) |
 | Click (audio and MIDI) | Rendered from the tracked beats |
 | Recording | Web Audio (AudioWorklet) for sample-accurate audio, MediaRecorder for video. Takes are placed on the song's timeline using the calibrated latency. |
 | Video sync | The sound in the video file is matched against the recorded audio (cross-correlation), so the camera's start delay doesn't matter |
@@ -218,11 +228,21 @@ Browsers allow the microphone and camera only on `localhost` or HTTPS, so open
 | `stemtool/jobs.py` | Queue; each song runs in its own process so it can be stopped |
 | `stemtool/pipeline.py` | Download, decode, separate, track beats, write the song folder |
 | `stemtool/separation.py` | Demucs and the electronic-style cleanup |
-| `stemtool/beats.py`, `click.py` | Beat tracking, click audio and MIDI |
+| `stemtool/beats.py`, `grid.py`, `click.py` | Beat tracking, grid cleanup and edits, click audio and MIDI |
 | `stemtool/takes.py` | Recorded takes: alignment, video sync, export |
 | `stemtool/static/index.html` | The whole UI (vanilla JS, Web Audio) |
 | `desktop/` | Electron shell: starts the engine, window, permissions, menu |
 | `macos/` | Build scripts for the app and DMG |
+
+### Tests
+
+```bash
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python -m pytest
+```
+
+The tests use a generated song in a temporary folder, never your library. GitHub runs
+them on every push (`.github/workflows/tests.yml`), without the ML models.
 
 ### Settings (environment variables)
 

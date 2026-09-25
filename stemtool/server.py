@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from yt_dlp.utils import DownloadError
 
-from . import __version__, config, library, takes, youtube
+from . import __version__, config, library, pipeline, takes, youtube
 from .config import STYLES, load_settings
 from .jobs import JobManager
 
@@ -49,6 +49,12 @@ class SubmitRequest(BaseModel):
 class GroupRequest(BaseModel):
     folders: list[str]
     group: str
+
+
+class GridRequest(BaseModel):
+    folders: list[str]
+    action: str  # clean, reset, shift, double, half
+    steps: int = 1
 
 
 class ReseparateRequest(BaseModel):
@@ -197,6 +203,18 @@ def song(folder: str) -> dict:
 def set_group(req: GroupRequest) -> dict:
     changed = sum(library.set_group(settings.library_dir, f, req.group) for f in req.folders)
     return {"changed": changed}
+
+
+@app.post("/api/library/grid")
+def regrid(req: GridRequest) -> dict:
+    """Clean, reset or edit the beat grid of songs; re-renders their click."""
+    if req.action not in pipeline.GRID_ACTIONS:
+        raise HTTPException(400, f"Unknown grid action {req.action!r}")
+    changed = []
+    for folder in req.folders:
+        song = _song(folder)
+        changed.append(pipeline.regrid(song, req.action, req.steps))
+    return {"changed": len(changed), "manifest": changed[0] if len(changed) == 1 else None}
 
 
 @app.post("/api/library/reseparate")

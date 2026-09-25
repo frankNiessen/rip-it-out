@@ -18,7 +18,7 @@ from typing import Callable
 
 import numpy as np
 
-from . import audio, beats, click, library, separation, youtube
+from . import audio, beats, click, grid, library, separation, youtube
 from .config import SAMPLE_RATE, Settings
 
 StageCallback = Callable[[str], None]
@@ -115,7 +115,8 @@ def _process(ref: youtube.VideoRef, settings: Settings, on_stage: StageCallback,
     drums, no_drums, gain, share = _separate(mix, sr, settings, style, on_stage)
 
     on_stage("Finding beats")
-    beat_times, downbeat_times = beats.track(mix.mean(axis=1), sr, settings.beat_checkpoint, settings.device)
+    raw_beats, raw_downbeats = beats.track(mix.mean(axis=1), sr, settings.beat_checkpoint, settings.device)
+    beat_times, downbeat_times, bpb = grid.clean(raw_beats, raw_downbeats)
 
     on_stage("Writing files")
     song = work / "song"
@@ -139,9 +140,12 @@ def _process(ref: youtube.VideoRef, settings: Settings, on_stage: StageCallback,
         "num_samples": len(mix),
         "duration_s": round(len(mix) / sr, 3),
         "bpm": beats.estimate_bpm(beat_times),
-        "beats_per_bar": beats.beats_per_bar(beat_times, downbeat_times),
+        "beats_per_bar": bpb,
         "beats": beat_times,
         "downbeats": downbeat_times,
+        "grid": "clean",
+        "beats_raw": raw_beats,  # the tracker's output, to clean again or reset the grid
+        "downbeats_raw": raw_downbeats,
         "stems": {"drums": "drums.flac", "no_drums": "no_drums.flac"},
         "click": {"audio": "click.flac", "midi": "click.mid"},
         "processing": {
@@ -160,3 +164,47 @@ def _process(ref: youtube.VideoRef, settings: Settings, on_stage: StageCallback,
         raise RuntimeError(f"{final.name} already exists in the library")
     song.rename(final)
     return final
+
+
+GRID_ACTIONS = ("clean", "reset", "shift", "double", "half")
+
+
+def regrid(song: Path, action: str, steps: int = 1) -> dict:
+    """Change a song's beat grid and re-render its click. Returns the new manifest.
+
+    clean: rebuild from the tracker's raw output (see grid.py); reset: back to the raw
+    output; shift: move the bar lines by `steps` beats; double / half: the tracker
+    counted at the wrong tempo level.
+    """
+    manifest = json.loads((song / library.MANIFEST).read_text(encoding="utf-8"))
+    raw_b = manifest.get("beats_raw", manifest["beats"])  # songs made before cleaning existed
+    raw_db = manifest.get("downbeats_raw", manifest["downbeats"])
+    cur_b, cur_db = manifest["beats"], manifest["downbeats"]
+    bpb = int(manifest.get("beats_per_bar") or beats.beats_per_bar(cur_b, cur_db))
+
+    if action == "clean":
+        new_b, new_db, bpb = grid.clean(raw_b, raw_db)
+    elif action == "reset":
+        new_b, new_db, bpb = list(raw_b), list(raw_db), beats.beats_per_bar(raw_b, raw_db)
+    elif action == "shift":
+        new_b, new_db = cur_b, grid.shift_downbeats(cur_b, cur_db, steps, bpb)
+    elif action == "double":
+        new_b, new_db = grid.double_tempo(cur_b, cur_db, bpb)
+    elif action == "half":
+        new_b, new_db = grid.halve_tempo(cur_b, cur_db, bpb)
+    else:
+        raise ValueError(f"Unknown grid action {action!r}")
+
+    sr, n = manifest["sample_rate"], manifest["num_samples"]
+    tmp_audio, tmp_midi = song / ".click.flac.tmp", song / ".click.mid.tmp"
+    audio.write_flac(tmp_audio, click.render_audio(new_b, new_db, n, sr), sr)
+    click.write_midi(tmp_midi, new_b, new_db)
+    os.replace(tmp_audio, song / manifest["click"]["audio"])
+    os.replace(tmp_midi, song / manifest["click"]["midi"])
+
+    def change(m: dict) -> None:
+        m.setdefault("beats_raw", raw_b)
+        m.setdefault("downbeats_raw", raw_db)
+        m.update(beats=new_b, downbeats=new_db, beats_per_bar=bpb, bpm=beats.estimate_bpm(new_b),
+                 grid="raw" if action == "reset" else ("clean" if action == "clean" else "edited"))
+    return library.update_manifest(song, change)

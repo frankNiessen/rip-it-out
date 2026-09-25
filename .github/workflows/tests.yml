@@ -1,0 +1,37 @@
+# Fast checks on every push and pull request: the Python tests (without the ML
+# models, which the tests don't need) and a syntax check of the UI and the
+# Electron shell. The full macOS build runs in macos.yml.
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install
+        run: |
+          uv venv --python 3.12
+          grep -vE "^(demucs|beat_this)" requirements.txt > /tmp/requirements-ci.txt
+          uv pip install -r /tmp/requirements-ci.txt -r requirements-dev.txt
+
+      - name: Python tests
+        run: .venv/bin/python -m pytest -q
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: JavaScript syntax
+        run: |
+          python3 -c "import re; s=open('stemtool/static/index.html').read(); open('/tmp/page.js','w').write(re.findall(r'<script>(.*?)</script>', s, re.S)[-1])"
+          node --check /tmp/page.js
+          node --check desktop/main.js
+          node --check desktop/preload.js
