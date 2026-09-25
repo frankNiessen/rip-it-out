@@ -224,9 +224,9 @@
   .rec-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(16rem, 24rem); gap: 1.5rem; margin-top: 1.5rem; align-items: start; }
   @media (max-width: 900px) { .rec-grid { grid-template-columns: 1fr; } }
   .videobox { background: #04070a; border: 1px solid rgba(198, 156, 245, .3); border-radius: 6px; aspect-ratio: 16 / 9; display: grid; place-items: center; overflow: hidden; color: #8a97a3; font-size: .9rem; }
-  .videobox { position: relative; }
   .videobox video { width: 100%; height: 100%; object-fit: contain; }
-  .cropbox { position: absolute; border: 2px solid var(--accent); box-shadow: 0 0 0 9999px rgba(4, 8, 10, .6); cursor: move; touch-action: none; }
+  .trim { display: inline-flex; align-items: center; gap: .35rem; }
+  .trim .btn.quiet { padding: .15rem .5rem; }
   .takes { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
   .takes li { border-bottom: 1px solid var(--line); }
   .takes li > button { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; padding: .55rem .4rem; display: flex; justify-content: space-between; gap: .75rem; }
@@ -383,8 +383,7 @@
 
   <div class="rec-grid">
     <div>
-      <div class="videobox" id="videobox"><span id="video-msg">No camera selected</span><video id="video" playsinline muted hidden></video>
-        <div class="cropbox" id="cropbox" hidden></div></div>
+      <div class="videobox" id="videobox"><span id="video-msg">No camera selected</span><video id="video" playsinline muted hidden></video></div>
     </div>
     <section style="margin-top:0">
       <h2>Takes</h2>
@@ -1013,7 +1012,7 @@ function makeDeck(kind, root) {
       if (!current) return;
       const m = current.m, pos = engine.position();
       follow(deck.view, pos, m.duration_s);
-      drawTimeline(canvas, m, pos, kind === "record" ? selectedTake : null, deck.view, deck.dragSel);
+      drawTimeline(canvas, m, pos, kind === "record" ? selectedTake : null, deck.view, deck.dragSel, kind === "record" ? trimRange() : null);
       q(".pos").textContent = `${fmtTime(pos)} / ${fmtTime(m.duration_s)}`;
       playBtn.textContent = engine.playing ? "Pause" : "Play";
       const L = engine.loop;
@@ -1211,7 +1210,7 @@ function niceStep(range) {
   return 100;
 }
 
-function drawTimeline(canvas, m, position, take, view, dragSel) {
+function drawTimeline(canvas, m, position, take, view, dragSel, trim) {
   const dpr = window.devicePixelRatio || 1;
   const w = canvas.clientWidth, h = canvas.clientHeight;
   if (!w || !h) return;
@@ -1307,6 +1306,16 @@ function drawTimeline(canvas, m, position, take, view, dragSel) {
     if (b < w) g.fillRect(b, top, w - b, bottom - top);
     g.fillStyle = col("--accent");
     for (const px of [x(L.a), x(L.b)]) if (px >= AXIS_W && px <= w) g.fillRect(Math.round(px) - 1, top, 2, bottom - top);
+  }
+
+  if (trim) { // the export's start and end: brackets in the recording colour
+    g.fillStyle = col("--rec");
+    for (const [t, dir] of [[trim.a, 1], [trim.b, -1]]) {
+      const px = Math.round(x(t));
+      if (px < AXIS_W || px > w) continue;
+      g.fillRect(px - 1, top, 2, bottom - top);
+      g.fillRect(dir > 0 ? px : px - 8, top, 8, 2); g.fillRect(dir > 0 ? px : px - 8, bottom - 2, 8, 2);
+    }
   }
 
   const px = x(position);
@@ -1763,7 +1772,6 @@ $("#takes").addEventListener("click", (e) => {
 });
 
 function unloadTake() {
-  crop.setAspect("");
   selectedTake = null; takeBase = null;
   engine.take = null; engine.takeShift = 0;
   decks.record?.showTake(false);
@@ -1805,20 +1813,14 @@ function renderTakePanel() {
     <div class="row"><button class="btn quiet" id="tk-save" disabled>Save timing</button>
       <span class="hint">Move Drums timing until your hits sit on the original. Higher means earlier.</span></div>
     <div class="row">
-      <label>Range <select id="tk-range">
-        <option value="take">Whole take</option><option value="loop">Current loop</option><option value="custom">From / to</option>
+      <label>Export <select id="tk-range">
+        <option value="take">Whole take</option><option value="custom">Trimmed</option><option value="loop">Current loop</option>
       </select></label>
-      <span id="tk-custom" hidden><input id="tk-from" type="text" size="6" aria-label="From (m:ss)"> to
-        <input id="tk-to" type="text" size="6" aria-label="To (m:ss)"></span>
+      <span id="tk-custom" class="trim" hidden>
+        from <input id="tk-from" type="text" size="5" aria-label="Start (m:ss)"><button class="btn quiet" id="tk-set-from" title="Start at the playhead">Set</button>
+        to <input id="tk-to" type="text" size="5" aria-label="End (m:ss)"><button class="btn quiet" id="tk-set-to" title="End at the playhead">Set</button>
+      </span>
     </div>
-    ${hasVideo ? `<div class="row">
-      <label>Picture <select id="tk-aspect">
-        <option value="">Original</option><option value="16:9">16:9</option><option value="9:16">9:16 (phone)</option>
-        <option value="1:1">1:1 (square)</option><option value="4:5">4:5</option>
-      </select></label>
-      <label id="tk-size-l" hidden>Size <input type="range" id="tk-size" min="0.3" max="1" step="0.01" value="1"></label>
-      <span class="hint" id="tk-crop-hint" hidden>Drag the frame on the video</span>
-    </div>` : ""}
     <div class="row">
       <button class="btn quiet" id="tk-exp-a">Export audio</button>
       ${hasVideo ? `<button class="btn quiet" id="tk-exp-v">Export video</button>` : ""}
@@ -1857,7 +1859,7 @@ function renderTakePanel() {
     try {
       const range = exportRange(t);
       const r = await api(`/api/library/${encodeURIComponent(current.folder)}/takes/${encodeURIComponent(t.id)}/export`, {
-        method: "POST", body: JSON.stringify({ video, ...range, crop: video ? crop.rect() : null,
+        method: "POST", body: JSON.stringify({ video, ...range,
           gains: { my_drums: g.take ?? 1, drums: g.drums ?? 0, bass: g.bass ?? 1, vocals: g.vocals ?? 1, other: g.other ?? 1, music: g.music ?? 1, click: g.click ?? 0 } }) });
       const v = Date.now();
       const base = (f) => `${fileUrl(current.folder, "takes", t.id, f)}?v=${v}`;
@@ -1866,13 +1868,12 @@ function renderTakePanel() {
     $$("#tk-exp-a, #tk-exp-v").forEach((b) => { b.disabled = false; });
   };
   const takeEnd = t.start_s + t.captured_s;
-  $("#tk-from").value = fmtTime(Math.max(0, t.start_s)); $("#tk-to").value = fmtTime(takeEnd);
+  $("#tk-from").value = fmtTrim(Math.max(0, t.start_s)); $("#tk-to").value = fmtTrim(takeEnd);
   $("#tk-range").addEventListener("change", () => { $("#tk-custom").hidden = $("#tk-range").value !== "custom"; });
-  $("#tk-aspect")?.addEventListener("change", () => {
-    crop.setAspect($("#tk-aspect").value);
-    $("#tk-size-l").hidden = $("#tk-crop-hint").hidden = !$("#tk-aspect").value;
-  });
-  $("#tk-size")?.addEventListener("input", () => crop.setSize(+$("#tk-size").value));
+  // Set the trim at the playhead (with a tenth of a second of precision).
+  const atPlayhead = () => fmtTrim(engine.position());
+  $("#tk-set-from").addEventListener("click", () => { $("#tk-from").value = atPlayhead(); });
+  $("#tk-set-to").addEventListener("click", () => { $("#tk-to").value = atPlayhead(); });
   $("#tk-exp-a").addEventListener("click", () => doExport(false));
   $("#tk-exp-v")?.addEventListener("click", () => doExport(true));
   $("#tk-del").addEventListener("click", async () => {
@@ -1896,6 +1897,16 @@ function showLivePreview() {
   if (hasCam) videoEl.play().catch(() => {});
 }
 // Export range: the whole take, the current loop, or typed times (m:ss), in song time.
+function fmtTrim(s) { // m:ss.s
+  s = Math.max(0, s);
+  return `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
+}
+// The trimmed stretch while "Trimmed" is chosen, for drawing it on the timeline.
+function trimRange() {
+  if (!selectedTake || $("#tk-range")?.value !== "custom") return null;
+  const a = parseTime($("#tk-from").value), b = parseTime($("#tk-to").value);
+  return b > a ? { a, b } : null;
+}
 function parseTime(text) {
   const m = String(text).trim().match(/^(?:(\d+):)?(\d+(?:\.\d+)?)$/);
   return m ? (+(m[1] || 0)) * 60 + (+m[2]) : NaN;
@@ -1913,61 +1924,6 @@ function exportRange(t) {
   }
   return {};
 }
-
-// Picture crop for the video export: a frame with a fixed aspect ratio over the take's
-// video, dragged into place. Kept as fractions of the picture, so it fits any resolution.
-const crop = (() => {
-  const box = $("#cropbox");
-  let aspect = 0, size = 1, cx = 0.5, cy = 0.5, drag = null;
-  const video = () => ({ w: videoEl.videoWidth || 16, h: videoEl.videoHeight || 9 });
-  function frame() { // the crop in video pixels
-    const { w: vw, h: vh } = video();
-    let w = vw, h = vh;
-    if (vw / vh > aspect) w = vh * aspect; else h = vw / aspect;
-    w *= size; h *= size;
-    const x = Math.min(vw - w, Math.max(0, cx * vw - w / 2)), y = Math.min(vh - h, Math.max(0, cy * vh - h / 2));
-    return { x, y, w, h, vw, vh };
-  }
-  function shown() { // where the video is drawn inside the box (object-fit: contain)
-    const { w: vw, h: vh } = video(), bw = videoEl.clientWidth, bh = videoEl.clientHeight;
-    const scale = Math.min(bw / vw, bh / vh);
-    return { left: videoEl.offsetLeft + (bw - vw * scale) / 2, top: videoEl.offsetTop + (bh - vh * scale) / 2, scale };
-  }
-  function draw() {
-    box.hidden = !aspect || videoEl.hidden;
-    if (box.hidden) return;
-    const f = frame(), s = shown();
-    Object.assign(box.style, { left: `${s.left + f.x * s.scale}px`, top: `${s.top + f.y * s.scale}px`,
-      width: `${f.w * s.scale}px`, height: `${f.h * s.scale}px` });
-  }
-  box.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY, cx, cy }; box.setPointerCapture(e.pointerId); });
-  box.addEventListener("pointermove", (e) => {
-    if (!drag) return;
-    const f = frame(), s = shown();
-    cx = drag.cx + (e.clientX - drag.x) / (s.scale * f.vw);
-    cy = drag.cy + (e.clientY - drag.y) / (s.scale * f.vh);
-    const nf = frame(); cx = (nf.x + nf.w / 2) / nf.vw; cy = (nf.y + nf.h / 2) / nf.vh; // stay inside
-    draw();
-  });
-  box.addEventListener("pointerup", () => { drag = null; });
-  window.addEventListener("resize", draw);
-  videoEl.addEventListener("loadedmetadata", draw);
-  return {
-    setAspect(value) {
-      const [a, b] = value ? value.split(":").map(Number) : [0, 1];
-      aspect = a / b; size = 1; cx = cy = 0.5;
-      if ($("#tk-size")) $("#tk-size").value = 1;
-      draw();
-    },
-    setSize(v) { size = v; draw(); },
-    rect() {
-      if (!aspect) return null;
-      const f = frame();
-      return { x: f.x / f.vw, y: f.y / f.vh, w: f.w / f.vw, h: f.h / f.vh };
-    },
-    draw,
-  };
-})();
 
 function showTakeVideo() {
   const t = selectedTake;

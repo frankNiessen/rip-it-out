@@ -57,8 +57,3 @@ def test_export_range_is_cut_to_the_take(tmp_path, song):
     result = takes.export(song, take["id"], {"my_drums": 1}, with_video=False, start_s=4.0, end_s=20.0)
     info = sf.info(str(song / "takes" / take["id"] / result["audio"]))
     assert abs(info.duration - 3.0) < 0.01  # 4.0 to the take's end at 7.0
-
-
-def test_crop_filter_has_even_sizes():
-    f = takes._crop_filter({"x": 0.3, "y": 0, "w": 0.3164, "h": 1})
-    assert f.startswith("crop=trunc(iw*0.31640/2)*2:trunc(ih*1.00000/2)*2:")

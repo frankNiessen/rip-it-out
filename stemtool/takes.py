@@ -158,10 +158,10 @@ def delete(song: Path, take_id: str) -> bool:
 
 
 def export(song: Path, take_id: str, gains: dict, with_video: bool,
-           start_s: float | None = None, end_s: float | None = None, crop: dict | None = None) -> dict:
+           start_s: float | None = None, end_s: float | None = None) -> dict:
     """Mixes the take with the song stems over the recorded range, or the part of it
     between start_s and end_s (song time). Writes export.wav, and export.mp4 when asked
-    and the take has video. crop: {"x", "y", "w", "h"} as fractions of the picture."""
+    and the take has video."""
     path = take_path(song, take_id)
     if path is None:
         raise TakeError("Take not found")
@@ -208,7 +208,6 @@ def export(song: Path, take_id: str, gains: dict, with_video: bool,
                 cmd += ["-itsoffset", f"{-start_in_video:.4f}", "-i", str(video)]
             cmd += [
                 "-i", str(tmp), "-map", "0:v:0", "-map", "1:a:0", "-t", f"{(b - a) / sr:.4f}",
-                *(["-vf", _crop_filter(crop)] if crop else []),
                 # Apple's hardware encoder: fast, and needs no GPL x264 in the packaged ffmpeg
                 "-c:v", "h264_videotoolbox", "-b:v", "8M", "-allow_sw", "1", "-pix_fmt", "yuv420p",
                 "-fps_mode", "cfr", "-r", "30",
@@ -227,16 +226,6 @@ def export(song: Path, take_id: str, gains: dict, with_video: bool,
 
 
 # --- internals ---------------------------------------------------------------
-
-def _crop_filter(crop: dict) -> str:
-    """ffmpeg crop from fractions of the picture, with even sizes (H.264 needs them)."""
-    x, y, w, h = (min(1.0, max(0.0, float(crop[k]))) for k in ("x", "y", "w", "h"))
-    w, h = min(w, 1 - x), min(h, 1 - y)
-    if w < 0.05 or h < 0.05:
-        raise TakeError("The picture crop is too small")
-    return (f"crop=trunc(iw*{w:.5f}/2)*2:trunc(ih*{h:.5f}/2)*2:"
-            f"trunc(iw*{x:.5f}):trunc(ih*{y:.5f})")
-
 
 def _derive(take: dict) -> None:
     """Song-time fields, kept in take.json so readers (the iOS app) needn't redo the math."""

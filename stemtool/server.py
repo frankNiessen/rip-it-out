@@ -74,7 +74,6 @@ class ExportRequest(BaseModel):
     video: bool = False
     start_s: float | None = None  # song time; None: from the start of the take
     end_s: float | None = None
-    crop: dict[str, float] | None = None  # {"x", "y", "w", "h"}, fractions of the picture
 
 
 def _song(folder: str) -> Path:
@@ -328,7 +327,7 @@ def update_take(folder: str, take_id: str, req: TakeUpdate) -> dict:
 @app.post("/api/library/{folder}/takes/{take_id}/export")
 def export_take(folder: str, take_id: str, req: ExportRequest) -> dict:
     try:
-        return takes.export(_song(folder), take_id, req.gains, req.video, req.start_s, req.end_s, req.crop)
+        return takes.export(_song(folder), take_id, req.gains, req.video, req.start_s, req.end_s)
     except takes.TakeError as exc:
         raise HTTPException(400, str(exc)) from exc
 
