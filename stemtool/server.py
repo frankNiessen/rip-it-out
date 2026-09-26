@@ -71,6 +71,16 @@ class TakeUpdate(BaseModel):
     name: str | None = None
 
 
+class TakeRef(BaseModel):
+    folder: str
+    take_id: str
+
+
+class TakesDeleteRequest(BaseModel):
+    takes: list[TakeRef]
+    exports_only: bool = False  # keep the takes, remove only export.wav/mp4
+
+
 class ExportRequest(BaseModel):
     gains: dict[str, float]
     video: bool = False
@@ -339,3 +349,28 @@ def delete_take(folder: str, take_id: str) -> dict:
     if not takes.delete(_song(folder), take_id):
         raise HTTPException(404, "Take not found")
     return {"ok": True}
+
+
+@app.get("/api/takes")
+def all_takes() -> list[dict]:
+    return takes.list_all(settings.library_dir)
+
+
+@app.post("/api/takes/delete")
+def delete_takes(req: TakesDeleteRequest) -> dict:
+    """Deletes several takes (or only their exports). Unknown songs or take ids are
+    skipped and reported, the rest still go."""
+    done, missing, freed = 0, [], 0
+    for ref in req.takes:
+        song = library.song_dir(settings.library_dir, ref.folder)
+        path = takes.take_path(song, ref.take_id) if song else None
+        if path is None:
+            missing.append(ref.model_dump())
+            continue
+        if req.exports_only:
+            freed += takes.delete_exports(song, ref.take_id) or 0
+        else:
+            freed += takes.sizes(path, {})["total"]
+            takes.delete(song, ref.take_id)
+        done += 1
+    return {"done": done, "missing": missing, "freed_bytes": freed}

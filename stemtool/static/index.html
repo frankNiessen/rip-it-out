@@ -60,6 +60,12 @@
   nav button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
   nav button:focus-visible { outline: 2px solid var(--focus); outline-offset: -4px; }
   header .status { margin: 0 0 0 auto; align-self: center; color: var(--fail); font-size: .85rem; }
+  h1 { white-space: nowrap; }
+  @media (max-width: 640px) {
+    header { flex-wrap: wrap; row-gap: 0; }
+    h1 { flex-basis: 100%; padding-top: .9rem; }
+    nav { gap: 1.25rem; overflow-x: auto; }
+  }
 
   .tab { padding: 1.75rem clamp(1rem, 4vw, 3rem) 3rem; }
   .lib-grid { display: grid; grid-template-columns: minmax(18rem, 24rem) 1fr; gap: 3rem; align-items: start; }
@@ -244,6 +250,32 @@
   .take-panel input[type=range] { width: 9rem; accent-color: var(--ink); }
   .take-panel output { font: 400 .8rem var(--mono); color: var(--ink); min-width: 6ch; }
   .take-panel a { color: var(--accent); font-weight: 600; }
+  /* ---- Takes (library-wide overview) ---- */
+  .takes-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem 1.25rem; margin-bottom: .8rem; }
+  .takes-head h2 { margin: 0; }
+  .usage { font: 400 .8rem var(--mono); color: var(--muted); }
+  .usage b { font-weight: 500; color: var(--ink); }
+  .take-tools { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
+  .take-tools input[type=search] { flex: 1; min-width: 14rem; }
+  .selbar .danger-sep { margin-left: auto; display: flex; gap: .35rem; }
+  #all-takes { container-type: inline-size; max-width: 72rem; }
+  .take-row {
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto 7ch; gap: .4rem 1.25rem; align-items: center;
+    padding: .5rem .25rem; border-bottom: 1px solid var(--line);
+  }
+  .take-row:hover { background: var(--panel); }
+  .take-row input[type=checkbox] { width: 1rem; height: 1rem; accent-color: var(--accent); }
+  .take-row .name { all: unset; cursor: pointer; font-weight: 600; min-width: 0; overflow-wrap: break-word; }
+  .take-row .name:hover { text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+  .take-row .name:focus-visible { outline: 2px solid var(--focus); }
+  .take-row .name small { display: block; font-weight: 400; font-size: .85rem; color: var(--muted); }
+  .take-row .range { font: 400 .8rem var(--mono); color: var(--muted); }
+  .take-row .kinds { display: flex; gap: .5rem; min-width: 9ch; }
+  .take-row .size { font: 500 .85rem var(--mono); text-align: right; }
+  @container (max-width: 40rem) {
+    .take-row { grid-template-columns: auto minmax(0, 1fr) 7ch; }
+    .take-row .range, .take-row .kinds { grid-column: 2; }
+  }
   .settings { max-width: 46rem; }
   .settings h2 + .hint { margin-top: -.3rem; }
   .lib-form { display: flex; gap: .5rem; flex-wrap: wrap; }
@@ -260,6 +292,7 @@
     <button role="tab" id="t-library" aria-controls="tab-library" aria-selected="true">Library</button>
     <button role="tab" id="t-play" aria-controls="tab-play" aria-selected="false">Play</button>
     <button role="tab" id="t-record" aria-controls="tab-record" aria-selected="false">Record</button>
+    <button role="tab" id="t-takes" aria-controls="tab-takes" aria-selected="false">Takes</button>
     <button role="tab" id="t-settings" aria-controls="tab-settings" aria-selected="false">Settings</button>
   </nav>
   <p class="status" id="status" hidden></p>
@@ -406,6 +439,38 @@
   </div>
 </main>
 
+<!-- ======================= Takes ======================= -->
+<main class="tab" id="tab-takes" role="tabpanel" aria-labelledby="t-takes" hidden>
+  <div class="takes-head">
+    <h2 id="takes-title">Takes</h2>
+    <span class="usage" id="takes-usage"></span>
+  </div>
+  <div class="take-tools">
+    <input id="take-search" type="search" placeholder="Search song or take name" aria-label="Search takes">
+    <select id="take-filter" aria-label="Show">
+      <option value="all">All takes</option>
+      <option value="video">With video</option>
+      <option value="export">With exports</option>
+    </select>
+    <select id="take-sort" aria-label="Sort">
+      <option value="song">By song</option>
+      <option value="new">Newest first</option>
+      <option value="old">Oldest first</option>
+      <option value="size">Largest first</option>
+    </select>
+    <button class="btn quiet" id="take-all" title="Select every take shown">Select all</button>
+  </div>
+  <div class="selbar" id="take-selbar" hidden>
+    <strong id="take-sel-count"></strong>
+    <button class="btn quiet" id="take-sel-clear">Clear selection</button>
+    <span class="danger-sep">
+      <button class="btn quiet" id="take-del-exp" title="Remove only the exported mixes (export.wav, export.mp4). They can be exported again from the take.">Delete exports</button>
+      <button class="btn quiet danger" id="take-del">Delete takes</button>
+    </span>
+  </div>
+  <div id="all-takes"></div>
+</main>
+
 <!-- ======================= Settings ======================= -->
 <main class="tab" id="tab-settings" role="tabpanel" aria-labelledby="t-settings" hidden>
   <section class="settings">
@@ -461,7 +526,7 @@ function showTab(name) {
   engine.pause();
   if (activeTab === "record") closeInput(); // microphone and camera only while in Record
   activeTab = name;
-  for (const t of ["library", "play", "record", "settings"]) {
+  for (const t of ["library", "play", "record", "takes", "settings"]) {
     $(`#t-${t}`).setAttribute("aria-selected", String(t === name));
     $(`#tab-${t}`).hidden = t !== name;
   }
@@ -469,6 +534,7 @@ function showTab(name) {
   if (name === "play") decks.play.activate();
   if (name === "record") { decks.record.activate(); onRecordTab(); }
   if (name === "settings") loadSettings();
+  if (name === "takes") refreshAllTakes();
 }
 $$("nav button").forEach((b) => b.addEventListener("click", () => showTab(b.id.slice(2))));
 
@@ -1891,6 +1957,123 @@ function renderTakePanel() {
     unloadTake(); refreshTakes(); refreshLibrary();
   });
 }
+
+// ---- takes overview (all songs) ------------------------------------------------------
+let allTakes = [];
+const takeSel = new Set(); // "folder/id"
+const takeKey = (t) => `${t.folder}/${t.id}`;
+function fmtBytes(n) {
+  if (n < 1e6) return `${Math.max(0, Math.round(n / 1e3))} KB`;
+  if (n < 1e9) return `${Math.round(n / 1e6)} MB`;
+  return `${(n / 1e9).toFixed(1)} GB`;
+}
+const sumBytes = (list, k = "total") => list.reduce((a, t) => a + t.bytes[k], 0);
+
+async function refreshAllTakes() {
+  try { allTakes = await api("/api/takes"); } catch { return; }
+  const keys = new Set(allTakes.map(takeKey));
+  for (const k of [...takeSel]) if (!keys.has(k)) takeSel.delete(k);
+  const n = allTakes.length;
+  $("#takes-title").textContent = n ? `Takes (${n})` : "Takes";
+  $("#takes-usage").innerHTML = n ? `<b>${fmtBytes(sumBytes(allTakes))}</b> · audio ${fmtBytes(sumBytes(allTakes, "audio"))}`
+    + ` · video ${fmtBytes(sumBytes(allTakes, "video"))} · exports ${fmtBytes(sumBytes(allTakes, "exports"))}` : "";
+  renderAllTakes();
+}
+
+function shownTakes() {
+  const q = $("#take-search").value.trim().toLowerCase();
+  const filter = $("#take-filter").value;
+  return allTakes.filter((t) => (!q || `${t.title} ${t.artist} ${t.name}`.toLowerCase().includes(q))
+    && (filter !== "video" || t.has_video) && (filter !== "export" || t.has_export));
+}
+
+function renderAllTakes() {
+  const box = $("#all-takes");
+  if (!allTakes.length) { box.innerHTML = `<p class="empty">Takes you record in the Record tab appear here.</p>`; updateTakeSelbar(); return; }
+  const list = shownTakes();
+  const sort = $("#take-sort").value;
+  const byDate = (a, b) => b.created_at.localeCompare(a.created_at);
+  if (sort === "song") {
+    const bySong = new Map();
+    for (const t of list.sort(byDate)) {
+      if (!bySong.has(t.folder)) bySong.set(t.folder, []);
+      bySong.get(t.folder).push(t);
+    }
+    box.innerHTML = [...bySong.values()].sort((a, b) => a[0].title.localeCompare(b[0].title)).map((g) =>
+      `<details class="group" open><summary>${esc(g[0].title)} <small>${g.length} ${g.length === 1 ? "take" : "takes"} · ${fmtBytes(sumBytes(g))}</small></summary>
+        ${g.map((t) => takeRow(t, false)).join("")}</details>`).join("");
+  } else {
+    const cmp = { new: byDate, old: (a, b) => -byDate(a, b), size: (a, b) => b.bytes.total - a.bytes.total }[sort];
+    box.innerHTML = list.sort(cmp).map((t) => takeRow(t, true)).join("");
+  }
+  if (!list.length) box.innerHTML = `<p class="empty">No take matches.</p>`;
+  updateTakeSelbar();
+}
+
+function takeRow(t, withSong) {
+  const when = new Date(t.created_at).toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const key = esc(takeKey(t));
+  const sub = [withSong ? esc(t.title) : "", t.name ? esc(when) : ""].filter(Boolean).join(" · ");
+  const b = t.bytes;
+  const tip = `Audio ${fmtBytes(b.audio)}${b.video ? `, video ${fmtBytes(b.video)}` : ""}${b.exports ? `, exports ${fmtBytes(b.exports)}` : ""}`;
+  return `<div class="take-row">
+    <input type="checkbox" data-tsel="${key}" ${takeSel.has(takeKey(t)) ? "checked" : ""} aria-label="Select take ${esc(t.name || when)}">
+    <button class="name" data-topen="${key}" title="Open in Record">${esc(t.name || when)}${sub ? `<small>${sub}</small>` : ""}</button>
+    <span class="range">${fmtTime(t.start_s)} to ${fmtTime((t.start_s || 0) + (t.captured_s || 0))}</span>
+    <span class="kinds">${t.has_video ? `<span class="tag">video</span>` : ""}${t.has_export ? `<span class="tag">export</span>` : ""}</span>
+    <span class="size" title="${esc(tip)}">${fmtBytes(b.total)}</span>
+  </div>`;
+}
+
+function updateTakeSelbar() {
+  const sel = allTakes.filter((t) => takeSel.has(takeKey(t)));
+  $("#take-selbar").hidden = !sel.length;
+  $("#take-sel-count").textContent = `${sel.length} selected · ${fmtBytes(sumBytes(sel))}`;
+  $("#take-del-exp").hidden = !sel.some((t) => t.has_export);
+}
+
+["#take-search", "#take-filter", "#take-sort"].forEach((id) => $(id).addEventListener(id === "#take-search" ? "input" : "change", renderAllTakes));
+$("#take-all").addEventListener("click", () => { shownTakes().forEach((t) => takeSel.add(takeKey(t))); renderAllTakes(); });
+$("#take-sel-clear").addEventListener("click", () => { takeSel.clear(); renderAllTakes(); });
+$("#all-takes").addEventListener("change", (e) => {
+  const k = e.target.dataset.tsel;
+  if (!k) return;
+  e.target.checked ? takeSel.add(k) : takeSel.delete(k);
+  updateTakeSelbar();
+});
+$("#all-takes").addEventListener("click", async (e) => {
+  const k = e.target.closest("[data-topen]")?.dataset.topen;
+  const t = k && allTakes.find((x) => takeKey(x) === k);
+  if (!t || recording) return;
+  showTab("record");
+  await selectSong(t.folder);
+  if (current?.folder !== t.folder) return;
+  await refreshTakes();
+  openTake(t.id);
+});
+
+async function deleteSelectedTakes(exportsOnly) {
+  const sel = allTakes.filter((x) => takeSel.has(takeKey(x)) && (!exportsOnly || x.has_export));
+  if (!sel.length) return;
+  const n = sel.length, what = n === 1 ? "take" : "takes";
+  const question = exportsOnly
+    ? `Delete the exports of ${n} ${what} (${fmtBytes(sumBytes(sel, "exports"))})? The takes stay and can be exported again.`
+    : `Delete ${n} ${what}, including ${n === 1 ? "its" : "their"} audio and video files? This frees ${fmtBytes(sumBytes(sel))} and can't be undone.`;
+  if (!confirm(question)) return;
+  try {
+    await api("/api/takes/delete", { method: "POST", body: JSON.stringify({
+      exports_only: exportsOnly, takes: sel.map((x) => ({ folder: x.folder, take_id: x.id })) }) });
+  } catch (err) { alert(err.message); }
+  if (!exportsOnly) {
+    if (selectedTake && sel.some((x) => x.folder === current?.folder && x.id === selectedTake.id)) unloadTake();
+    sel.forEach((x) => takeSel.delete(takeKey(x)));
+    refreshLibrary();
+    refreshTakes();
+  }
+  refreshAllTakes();
+}
+$("#take-del").addEventListener("click", () => deleteSelectedTakes(false));
+$("#take-del-exp").addEventListener("click", () => deleteSelectedTakes(true));
 
 // ---- video box: live camera while recording/idle, the take's video when reviewing ----
 const videoEl = $("#video");

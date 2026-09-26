@@ -67,6 +67,54 @@ def list_takes(song: Path) -> list[dict]:
     return out
 
 
+def sizes(path: Path, take: dict) -> dict:
+    """Disk use of a take folder in bytes: audio (my take, raw capture), video,
+    exports (can be rendered again) and the total, which includes everything."""
+    out = {"audio": 0, "video": 0, "exports": 0, "total": 0}
+    video = (take.get("video") or {}).get("file")
+    for file in path.rglob("*"):
+        try:
+            if not file.is_file():
+                continue
+            n = file.stat().st_size
+        except OSError:
+            continue
+        out["total"] += n
+        if file.parent == path and file.stem == "export":
+            out["exports"] += n
+        elif file.parent == path and file.name == video:
+            out["video"] += n
+        elif file.suffix == ".flac":
+            out["audio"] += n
+    return out
+
+
+def list_all(library_dir: Path) -> list[dict]:
+    """Every take in the library with its song and disk use, newest first."""
+    out = []
+    for song, manifest in library.iter_manifests(library_dir):
+        for take in list_takes(song):
+            take_id = str(take.get("id", ""))
+            path = take_path(song, take_id)
+            if path is None:
+                continue
+            out.append({
+                "folder": song.name,
+                "title": manifest.get("title") or song.name,
+                "artist": manifest.get("artist") or "",
+                "id": take_id,
+                "name": take.get("name", ""),
+                "created_at": take.get("created_at", ""),
+                "start_s": take.get("start_s"),
+                "captured_s": take.get("captured_s"),
+                "has_video": bool(take.get("video")),
+                "has_export": any(path.glob("export.*")),
+                "bytes": sizes(path, take),
+            })
+    out.sort(key=lambda t: t["created_at"], reverse=True)
+    return out
+
+
 def create(song: Path, work_root: Path, meta: dict, raw_upload: Path,
            video_upload: Path | None, video_ext: str | None) -> dict:
     manifest = json.loads((song / library.MANIFEST).read_text(encoding="utf-8"))
@@ -155,6 +203,19 @@ def delete(song: Path, take_id: str) -> bool:
         return False
     shutil.rmtree(path)
     return True
+
+
+def delete_exports(song: Path, take_id: str) -> int | None:
+    """Removes a take's rendered exports (they can be made again). Returns the bytes
+    freed, or None if there is no such take."""
+    path = take_path(song, take_id)
+    if path is None:
+        return None
+    freed = 0
+    for file in path.glob("export.*"):
+        freed += file.stat().st_size
+        file.unlink()
+    return freed
 
 
 def export(song: Path, take_id: str, gains: dict, with_video: bool,

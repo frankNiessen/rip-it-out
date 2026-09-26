@@ -32,6 +32,7 @@ camera too, if you like) that you can mix with the band afterwards.
   millisecond.
 - **Review and export** your takes against the original, with a timing nudge; export
   the whole take, a trimmed part or a loop as WAV or as MP4 video, with the mix you like.
+  All takes of the library in one list, with their size, to clear out old ones at once.
 - **Library** in a plain folder you choose: your own files or YouTube, groups (from
   playlist names or your own), search, queue with stop, no duplicates when you add a
   playlist again. Put it in iCloud Drive, Nextcloud or Dropbox to have it on your other
@@ -123,6 +124,12 @@ writes a WAV, **Export video** an MP4, both with the levels of the faders. To ex
 part of a take, choose **Trimmed** and set the start and end (type them, or play to the
 spot and press **Set**); the trimmed part is marked on the timeline. **Current loop**
 exports the loop, for example one section.
+
+**7. Clean up takes.** The **Takes** tab lists the takes of all songs with the space
+each one uses, and the total at the top (audio, video, exports). Sort by song, date or
+size, or show only takes with video. Tick the ones you no longer need and choose
+**Delete takes**, or **Delete exports** to remove only the exported WAV and MP4 files
+(you can export them again later). Click a take to open it in Record.
 
 The **Library** menu has *Show Library in Finder*, *Update YouTube Downloader*, *Reset
 YouTube Downloader*, *Restart Engine* and *Show Log*.
@@ -262,7 +269,7 @@ Browsers allow the microphone and camera only on `localhost` or HTTPS, so open
 | `stemtool/localfiles.py` | Importing your own audio files |
 | `stemtool/separation.py` | Demucs and the electronic-style cleanup |
 | `stemtool/beats.py`, `grid.py`, `click.py` | Beat tracking, grid cleanup and edits, click audio and MIDI |
-| `stemtool/takes.py` | Recorded takes: alignment, video sync, export |
+| `stemtool/takes.py` | Recorded takes: alignment, video sync, export, disk use |
 | `stemtool/static/index.html` | The whole UI (vanilla JS, Web Audio) |
 | `desktop/` | Electron shell: starts the engine, window, permissions, menu |
 | `macos/` | Build scripts for the app and DMG |
