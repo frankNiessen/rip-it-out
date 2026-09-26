@@ -10,7 +10,7 @@ name: Windows app
 
 on:
   push:
-    branches: [main, claude/rip-it-out-takes-overview-krn21c]  # TEMP: verify the build before merging
+    branches: [main]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
@@ -31,6 +31,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: false  # PyTorch alone would make it several GB
 
       - uses: actions/setup-node@v4
         with:

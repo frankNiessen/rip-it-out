@@ -324,7 +324,7 @@ has its own tests: `node --test desktop/updates.test.js`.
 3. Start Rip It Out from the Start menu.
 
 The separation runs on an NVIDIA GPU when there is one, otherwise on the CPU (a few
-minutes per song). The app takes several GB, most of it the GPU libraries. Settings live in
+minutes per song). The download is about 2.3 GB and the app takes about 5 GB, most of it the GPU libraries. Settings live in
 `%APPDATA%\Rip It Out`, the library defaults to `Music\Rip It Out`; uninstalling keeps
 both. The update button is macOS only for now: on Windows, install the new version over
 the old one.
