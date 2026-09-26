@@ -29,14 +29,16 @@ def file_id(path: Path) -> str:
 def safe_name(name: str) -> str:
     """The file name without folders or odd characters, for storing the upload."""
     base = Path(name).name
-    return re.sub(r"[^\w .()\-]+", "_", base).strip() or "audio"
+    clean = re.sub(r"[^\w .()\-]+", "_", base).strip()
+    stem, ext = Path(clean).stem[:100].strip(), Path(clean).suffix[:10]  # short, for Windows' path limit
+    return f"{stem}{ext}" if stem else "audio"
 
 
 def read_meta(path: Path, original_name: str) -> dict:
     """Title and artist from the file's tags, else from a name like "Artist - Title.mp3"."""
     tags: dict[str, str] = {}
     run = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format_tags", "-of", "json", str(path)],
-                         capture_output=True, text=True)
+                         capture_output=True, text=True, encoding="utf-8", errors="replace")
     if run.returncode == 0:
         raw = json.loads(run.stdout or "{}").get("format", {}).get("tags", {})
         tags = {k.lower(): str(v).strip() for k, v in raw.items() if str(v).strip()}

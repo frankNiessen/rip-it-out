@@ -1,6 +1,6 @@
 # Fast checks on every push and pull request: the Python tests (without the ML
-# models, which the tests don't need) and a syntax check of the UI and the
-# Electron shell. The full macOS build runs in macos.yml.
+# models, which the tests don't need) on Linux and Windows, and a syntax check of
+# the UI and the Electron shell. The full app builds run in macos.yml and windows.yml.
 name: Tests
 
 on:
@@ -9,8 +9,17 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      PY: ${{ runner.os == 'Windows' && '.venv/Scripts/python' || '.venv/bin/python' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -19,17 +28,28 @@ jobs:
       - name: Install
         run: |
           uv venv --python 3.12
-          grep -vE "^(demucs|beat_this)" requirements.txt > /tmp/requirements-ci.txt
-          uv pip install -r /tmp/requirements-ci.txt -r requirements-dev.txt
+          grep -vE "^(demucs|beat_this)" requirements.txt > "$RUNNER_TEMP/requirements-ci.txt"
+          uv pip install -r "$RUNNER_TEMP/requirements-ci.txt" -r requirements-dev.txt
+
+      # The same LGPL ffmpeg the Windows app bundles, so the video export runs too.
+      - name: ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          windows/fetch_ffmpeg.sh "$RUNNER_TEMP/ffmpeg"
+          echo "$RUNNER_TEMP/ffmpeg/bin" >> "$GITHUB_PATH"
 
       - name: Python tests
-        run: .venv/bin/python -m pytest -q
+        run: $PY -m pytest -q -rs
 
       - uses: actions/setup-node@v4
+        if: runner.os == 'Linux'
         with:
           node-version: 22
 
       - name: JavaScript syntax
+        if: runner.os == 'Linux'
         run: |
           python3 -c "import re; s=open('stemtool/static/index.html').read(); open('/tmp/page.js','w').write(re.findall(r'<script>(.*?)</script>', s, re.S)[-1])"
           node --check /tmp/page.js
@@ -38,4 +58,5 @@ jobs:
           node --check desktop/updates.js
 
       - name: Updater tests
+        if: runner.os == 'Linux'
         run: node --test desktop/updates.test.js

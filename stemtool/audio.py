@@ -16,7 +16,7 @@ def decode_to_wav(src: Path, dst: Path, sample_rate: int) -> None:
         "-i", str(src), "-vn", "-ac", "2", "-ar", str(sample_rate),
         "-c:a", "pcm_f32le", str(dst),
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg could not decode the download: {result.stderr.strip()[-400:]}")
 
@@ -53,7 +53,7 @@ def read_range(path: Path, start: int, frames: int) -> np.ndarray:
 def _decode(path: Path) -> tuple[np.ndarray, int]:
     probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries",
                             "stream=sample_rate,channels", "-of", "csv=p=0", str(path)],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
     if probe.returncode != 0 or not probe.stdout.strip():
         raise RuntimeError(f"ffprobe could not read {Path(path).name}")
     sr, channels = (int(x) for x in probe.stdout.strip().split(",")[:2])
@@ -80,7 +80,7 @@ def write_stem(folder: Path, name: str, data: np.ndarray, sample_rate: int, fmt:
     try:
         run = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-i", str(tmp), "-c:a", "aac",
                               "-b:a", "256k", "-movflags", "+faststart", str(folder / filename)],
-                             capture_output=True, text=True)
+                             capture_output=True, text=True, encoding="utf-8", errors="replace")
         if run.returncode != 0:
             raise RuntimeError(f"ffmpeg could not encode {filename}: {run.stderr.strip()[-300:]}")
     finally:

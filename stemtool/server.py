@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import secrets
 import shutil
+import signal
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -32,6 +35,7 @@ STATIC = Path(__file__).parent / "static"
 async def lifespan(_: FastAPI):
     manager.start()
     yield
+    manager.stop_all()  # through the stop guard, so quitting never leaves half-written files
 
 
 app = FastAPI(title="Rip It Out", lifespan=lifespan)
@@ -159,7 +163,7 @@ def update_settings(req: SettingsUpdate) -> dict:
     try:
         new.mkdir(parents=True, exist_ok=True)
         probe = new / ".stemtool-write-test"
-        probe.write_text("ok")
+        probe.write_text("ok", encoding="utf-8")
         probe.unlink()
     except OSError as exc:
         raise HTTPException(400, f"Can't use that folder: {exc.strerror or exc}") from exc
@@ -245,6 +249,17 @@ def clear() -> dict:
 @app.post("/api/jobs/stop-all")
 def stop_all() -> dict:
     return manager.stop_all()
+
+
+@app.post("/api/shutdown", include_in_schema=False)
+async def shutdown(x_shutdown_token: str = Header("")) -> dict:
+    """Quits the server the way Ctrl+C does. For the desktop app on Windows, which
+    can't send the server a signal; it passes the token in STEMTOOL_SHUTDOWN_TOKEN."""
+    token = os.environ.get("STEMTOOL_SHUTDOWN_TOKEN", "")
+    if not token or not secrets.compare_digest(x_shutdown_token, token):
+        raise HTTPException(404, "Not Found")
+    signal.raise_signal(signal.SIGINT)  # uvicorn finishes open requests, then runs the lifespan's end
+    return {"ok": True}
 
 
 @app.get("/api/library")

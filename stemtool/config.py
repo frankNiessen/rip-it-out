@@ -64,6 +64,8 @@ def config_file() -> Path:
         return Path(os.environ["STEMTOOL_CONFIG"]).expanduser()
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Application Support" / APP_DIR_NAME / "settings.json"
+    if sys.platform == "win32":  # the same folder the desktop app uses
+        return Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming") / APP_DIR_NAME / "settings.json"
     base = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
     return base / "ripitout" / "settings.json"
 

@@ -23,6 +23,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import uuid
 from datetime import datetime, timezone
 from math import gcd
@@ -37,6 +38,9 @@ SCHEMA_VERSION = 1
 TAKE_ID = re.compile(r"^[0-9A-Za-z_-]{1,64}$")
 VIDEO_EXTS = {"webm", "mp4", "mov", "mkv"}
 SYNC_RATE = 8000  # sample rate used to line the video's sound up with the capture
+# The system's own H.264 encoder (Apple VideoToolbox, Windows Media Foundation):
+# fast, and the packaged ffmpeg needs no GPL x264.
+_H264 = ["-c:v", "h264_videotoolbox", "-allow_sw", "1"] if sys.platform == "darwin" else ["-c:v", "h264_mf"]
 
 
 class TakeError(Exception):
@@ -269,12 +273,10 @@ def export(song: Path, take_id: str, gains: dict, with_video: bool,
                 cmd += ["-itsoffset", f"{-start_in_video:.4f}", "-i", str(video)]
             cmd += [
                 "-i", str(tmp), "-map", "0:v:0", "-map", "1:a:0", "-t", f"{(b - a) / sr:.4f}",
-                # Apple's hardware encoder: fast, and needs no GPL x264 in the packaged ffmpeg
-                "-c:v", "h264_videotoolbox", "-b:v", "8M", "-allow_sw", "1", "-pix_fmt", "yuv420p",
-                "-fps_mode", "cfr", "-r", "30",
+                *_H264, "-b:v", "8M", "-pix_fmt", "yuv420p", "-fps_mode", "cfr", "-r", "30",
                 "-c:a", "aac", "-b:a", "256k", "-movflags", "+faststart", str(path / ".export.mp4"),
             ]
-            run = subprocess.run(cmd, capture_output=True, text=True)
+            run = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
             if run.returncode != 0:
                 raise TakeError(f"ffmpeg could not render the video: {run.stderr.strip()[-400:]}")
             os.replace(path / ".export.mp4", path / "export.mp4")

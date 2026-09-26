@@ -12,7 +12,6 @@ import logging
 import multiprocessing as mp
 import queue
 import shutil
-import signal
 import threading
 import time
 from dataclasses import asdict, dataclass, field
@@ -52,6 +51,8 @@ class JobManager:
         self._queue: queue.Queue[str] = queue.Queue()
         self._thread: threading.Thread | None = None
         self._proc: mp.process.BaseProcess | None = None
+        self._guard = None  # the running child's stop guard, see stop_process
+        self._stopping = False
 
     def start(self) -> None:
         if self._thread is None:
@@ -158,9 +159,10 @@ class JobManager:
                 _drop_import(job.source_file)
                 return True
             job.stage = "Stopping"
-            proc = self._proc
-        if proc is not None and proc.is_alive():
-            proc.terminate()
+            proc, guard = self._proc, self._guard
+            self._stopping = True
+        if proc is not None:
+            stop_process(proc, guard)
         return True
 
     def busy(self) -> bool:
@@ -224,11 +226,11 @@ class JobManager:
         (a thread can't be interrupted in the middle of Demucs). Models load once
         per song this way, which costs a few seconds against minutes of work."""
         ctx = mp.get_context("spawn")
-        messages = ctx.Queue()
-        proc = ctx.Process(target=_child, args=(messages, self.settings, ref, style, group, reseparate),
+        messages, guard = ctx.Queue(), ctx.Lock()
+        proc = ctx.Process(target=_child, args=(messages, guard, self.settings, ref, style, group, reseparate),
                            name=f"stemtool-{video_id}", daemon=True)
         with self._lock:
-            self._proc = proc
+            self._proc, self._guard, self._stopping = proc, guard, False
         proc.start()
         try:
             while True:
@@ -240,7 +242,9 @@ class JobManager:
                     try:  # the last message may arrive just after the process exits
                         kind, value = messages.get(timeout=1)
                     except queue.Empty:
-                        if proc.exitcode in (-signal.SIGTERM, -signal.SIGKILL):
+                        with self._lock:
+                            stopped = self._stopping
+                        if stopped:
                             raise _Cancelled() from None
                         raise RuntimeError(f"Processing stopped unexpectedly (exit code {proc.exitcode})") from None
                 if kind == "stage":
@@ -252,15 +256,28 @@ class JobManager:
         finally:
             proc.join(timeout=30)
             with self._lock:
-                self._proc = None
+                self._proc = self._guard = None
             # a stopped job leaves its work folder behind
             work = f"reseparate-{reseparate}" if reseparate else ref.video_id
             shutil.rmtree(self.settings.work_dir / work, ignore_errors=True)
 
 
-
 class _Cancelled(Exception):
     pass
+
+
+def stop_process(proc: mp.process.BaseProcess, guard, timeout: float = 120) -> None:
+    """Ends a child process, but never while it holds its guard (a block that must
+    not be cut short, see pipeline._no_stop). On Windows terminate() is a hard kill
+    that no signal handler can defer, so waiting for the lock is what keeps files whole."""
+    got = guard.acquire(timeout=timeout)
+    try:
+        if proc.is_alive():
+            proc.terminate()
+            proc.join(timeout=10)
+    finally:
+        if got:
+            guard.release()
 
 
 def _drop_import(source_file: str) -> None:
@@ -269,7 +286,9 @@ def _drop_import(source_file: str) -> None:
         shutil.rmtree(Path(source_file).parent, ignore_errors=True)
 
 
-def _child(messages, settings: Settings, ref: youtube.VideoRef, style: str, group: str, reseparate: str) -> None:
+def _child(messages, guard, settings: Settings, ref: youtube.VideoRef, style: str, group: str,
+           reseparate: str) -> None:
+    pipeline.stop_guard = guard
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     on_stage = lambda s: messages.put(("stage", s))  # noqa: E731
     try:

@@ -57,3 +57,27 @@ def test_export_range_is_cut_to_the_take(tmp_path, song):
     result = takes.export(song, take["id"], {"my_drums": 1}, with_video=False, start_s=4.0, end_s=20.0)
     info = sf.info(str(song / "takes" / take["id"] / result["audio"]))
     assert abs(info.duration - 3.0) < 0.01  # 4.0 to the take's end at 7.0
+
+
+def test_export_with_video(tmp_path, song):
+    """Uses the system's H.264 encoder (VideoToolbox on macOS, Media Foundation on Windows)."""
+    import shutil
+    import subprocess
+
+    import pytest
+
+    encoder = takes._H264[1]
+    if not shutil.which("ffmpeg") or encoder not in subprocess.run(
+            ["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, text=True).stdout:
+        pytest.skip(f"ffmpeg with {encoder} not installed")
+    video = tmp_path / "camera.mkv"
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=5",
+                    "-c:v", "mpeg4", str(video)], check=True)
+    raw = record(tmp_path, song, capture_start_s=3.0, latency_ms=0)
+    take = takes.create(song, tmp_path / "work", {"capture_start_s": 3.0, "latency_ms": 0, "video_clock_offset_s": 0.1},
+                        raw, video, "mkv")
+    result = takes.export(song, take["id"], {"my_drums": 1, "bass": 1}, with_video=True)
+    assert result["video"] == "export.mp4"
+    probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_name", "-of", "csv=p=0",
+                            str(song / "takes" / take["id"] / "export.mp4")], capture_output=True, text=True)
+    assert probe.stdout.split() == ["h264", "aac"]

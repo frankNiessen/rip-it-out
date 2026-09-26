@@ -10,8 +10,9 @@ import json
 import os
 import shutil
 import signal
+import sys
 import threading
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
@@ -87,20 +88,27 @@ def reseparate(folder: str, settings: Settings, on_stage: StageCallback, style: 
         shutil.rmtree(work, ignore_errors=True)
 
 
+# Set in the queue's child process (jobs.py). Stop takes this lock before it ends the
+# process, so a block holding it always runs to the end.
+stop_guard = None
+
+
 @contextmanager
 def _no_stop():
-    """Defers SIGTERM (the queue's Stop button) until the block is done."""
-    if threading.current_thread() is not threading.main_thread():
-        yield
-        return
-    pending: list[int] = []
-    previous = signal.signal(signal.SIGTERM, lambda signum, _frame: pending.append(signum))
-    try:
-        yield
-    finally:
-        signal.signal(signal.SIGTERM, previous)
-        if pending:
-            signal.raise_signal(signal.SIGTERM)
+    """Holds off the queue's Stop button until the block is done. SIGTERM (the app
+    quitting) is deferred too, where the platform delivers it as a signal."""
+    with stop_guard or nullcontext():
+        if threading.current_thread() is not threading.main_thread() or sys.platform == "win32":
+            yield
+            return
+        pending: list[int] = []
+        previous = signal.signal(signal.SIGTERM, lambda signum, _frame: pending.append(signum))
+        try:
+            yield
+        finally:
+            signal.signal(signal.SIGTERM, previous)
+            if pending:
+                signal.raise_signal(signal.SIGTERM)
 
 
 def _separate(mix: np.ndarray, sr: int, settings: Settings, style: str, on_stage: StageCallback):
