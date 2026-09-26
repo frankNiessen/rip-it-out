@@ -12,8 +12,9 @@ camera too, if you like) that you can mix with the band afterwards.
 ![The library, grouped into playlists](docs/library.png)
 
 > **Made for macOS on Apple Silicon** (M1 or newer, macOS 13 Ventura or newer). The
-> separation runs on the Mac's GPU. The engine also runs on Linux as a headless server
-> with the UI in the browser, see [Linux](#linux-headless-server).
+> separation runs on the Mac's GPU. A [Windows](#windows-preview) build is in preview, and
+> the engine also runs on Linux as a headless server with the UI in the browser, see
+> [Linux](#linux-headless-server).
 
 ## Features
 
@@ -312,6 +313,26 @@ has its own tests: `node --test desktop/updates.test.js`.
 | `RIPITOUT_PORT` | `38765` | Port of the desktop app's engine |
 | `RIPITOUT_UPDATE_URL` | GitHub's latest release | Where *Check for updates* looks (for testing the updater) |
 
+## Windows (preview)
+
+1. Download `RipItOut-Setup-<version>.exe` and the `RipItOut-Setup-<version>-*.bin` files
+   next to it from the [Releases](../../releases) page, into the same folder. (The
+   installer comes in parts because GitHub limits each file to 2 GB.)
+2. Run the `.exe`. It installs for your user only, no administrator rights needed. The
+   installer is not signed yet, so SmartScreen says "Windows protected your PC": click
+   **More info**, then **Run anyway**.
+3. Start Rip It Out from the Start menu.
+
+The separation runs on an NVIDIA GPU when there is one, otherwise on the CPU (a few
+minutes per song). The app takes several GB, most of it the GPU libraries. Settings live in
+`%APPDATA%\Rip It Out`, the library defaults to `Music\Rip It Out`; uninstalling keeps
+both. The update button is macOS only for now: on Windows, install the new version over
+the old one.
+
+Building it: `windows/build.sh` in Git Bash, with uv, Node.js, the GitHub CLI, 7-Zip and
+Inno Setup 6. The GitHub workflow (`.github/workflows/windows.yml`) does this on every push
+to `main` and attaches the installer to releases for tags.
+
 ## Linux (headless server)
 
 The engine runs on Linux with an NVIDIA GPU (CUDA) or on the CPU; you use the UI in a
@@ -329,7 +350,8 @@ set up the virtual environment as in [Development](#development), and see
 - **The drums took the bass and synths along:** redo the song with the *Electronic* style.
 - **The recording is silent:** check the input in Record > Setup (the level meter should
   move when you play) and allow microphone access in System Settings > Privacy &
-  Security.
+  Security (on Windows: Settings > Privacy & security > Microphone, "Let desktop apps
+  access your microphone").
 - **My playing sits early or late:** run Calibrate again, or adjust *Timing* on the take.
 - **Something else:** *Library > Show Log*.
 
