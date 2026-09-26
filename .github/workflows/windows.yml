@@ -10,7 +10,7 @@ name: Windows app
 
 on:
   push:
-    branches: [main]
+    branches: [main, claude/rip-it-out-takes-overview-krn21c]  # TEMP: verify the build before merging
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
