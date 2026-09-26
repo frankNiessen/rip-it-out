@@ -24,6 +24,7 @@ from urllib.parse import unquote, urljoin
 
 TAG = f"cp{sys.version_info.major}{sys.version_info.minor}"
 INDEX = "https://download.pytorch.org/whl"
+HEADERS = {"User-Agent": "pip/26 (rip-it-out build)"}
 CUDA_VARIANTS = ["cu126", "cu128", "cu129", "cu130", "cu131", "cu132", "cu133", "cu134"]
 
 
@@ -31,7 +32,7 @@ def find(package: str, variant: str) -> dict | None:
     version = metadata.version(package).split("+")[0]
     page_url = f"{INDEX}/{variant}/{package}/"
     try:
-        with urllib.request.urlopen(page_url, timeout=60) as r:
+        with urllib.request.urlopen(urllib.request.Request(page_url, headers=HEADERS), timeout=60) as r:
             page = r.read().decode()
     except urllib.error.HTTPError as exc:
         if exc.code in (403, 404):  # no such CUDA variant
@@ -42,8 +43,12 @@ def find(package: str, variant: str) -> dict | None:
         path, _, fragment = href.partition("#")
         if unquote(path.rsplit("/", 1)[-1]) == name and fragment.startswith("sha256="):
             url = urljoin(page_url, path)
-            with urllib.request.urlopen(url, timeout=60) as r:  # the CDN refuses HEAD; the body isn't read
-                size = int(r.headers["Content-Length"])
+            try:  # GET, not HEAD, which the CDN refuses; the body isn't read
+                with urllib.request.urlopen(urllib.request.Request(url, headers=HEADERS), timeout=60) as r:
+                    size = int(r.headers["Content-Length"])
+            except urllib.error.HTTPError as exc:
+                print(f"{url}: {exc.code} {exc.reason}")
+                return None
             return {"file": name, "url": url, "sha256": fragment.removeprefix("sha256="), "size": size}
     return None
 
