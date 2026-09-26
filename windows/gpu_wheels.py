@@ -42,8 +42,7 @@ def find(package: str, variant: str) -> dict | None:
         path, _, fragment = href.partition("#")
         if unquote(path.rsplit("/", 1)[-1]) == name and fragment.startswith("sha256="):
             url = urljoin(page_url, path)
-            head = urllib.request.Request(url, method="HEAD")
-            with urllib.request.urlopen(head, timeout=60) as r:
+            with urllib.request.urlopen(url, timeout=60) as r:  # the CDN refuses HEAD; the body isn't read
                 size = int(r.headers["Content-Length"])
             return {"file": name, "url": url, "sha256": fragment.removeprefix("sha256="), "size": size}
     return None
