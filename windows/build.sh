@@ -8,14 +8,15 @@
 # Needs: uv, Node.js, the GitHub CLI with GH_TOKEN set (for ffmpeg), 7-Zip and
 # Inno Setup 6. The installer is not signed, so SmartScreen warns before it runs.
 #
-# PyTorch comes as the CUDA build: it uses an NVIDIA GPU when there is one and
-# the CPU otherwise. That makes the installer large; it is split into files under
-# 2 GB (GitHub's limit for release files) that must sit in the same folder.
+# The app bundles the CPU build of PyTorch, so it runs on every PC. On a PC with an
+# NVIDIA graphics card the installer offers to download the CUDA build of the same
+# PyTorch version (gpu_wheels.py finds it, installer.iss downloads it).
 set -euo pipefail
 
 PY_VERSION=3.12
 DENO_VERSION=2.9.7
-TORCH_INDEX=${TORCH_INDEX:-https://download.pytorch.org/whl/cu128}
+TORCH_CPU_INDEX=https://download.pytorch.org/whl/cpu
+TORCH_GPU_INDEX=${TORCH_GPU_INDEX:-https://download.pytorch.org/whl/cu128}
 # Longest path allowed inside the app folder. The install folder
 # (C:\Users\<name>\AppData\Local\Programs\Rip It Out\) takes up to about 80 of
 # Windows' 260 characters.
@@ -64,10 +65,11 @@ mkdir -p "$STAGE/bin" "$STAGE/licenses"
 cp -r "$PY_SRC" "$STAGE/python"
 PY="$STAGE/python/python.exe"
 SITE=$(winpath "$("$PY" -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])' | tr -d '\r')")
-# PyTorch first, from its CUDA index; the rest keeps that build. Compiled here, as the
+# PyTorch first, the CPU build (the PyPI one would do too, but this index says so);
+# the rest keeps it. Compiled here, as the
 # app folder is replaced whole on every install.
 uv pip install --quiet --python "$PY" --break-system-packages --compile-bytecode \
-  --index-url "$TORCH_INDEX" torch torchaudio
+  --index-url "$TORCH_CPU_INDEX" torch torchaudio
 uv pip install --quiet --python "$PY" --break-system-packages --compile-bytecode \
   -r "$ROOT/requirements.txt"
 cp -r "$ROOT/stemtool" "$SITE/stemtool"
@@ -86,7 +88,14 @@ find "$STAGE" -name "*.pdb" -delete
 echo "==> License check"
 # Inventory of every bundled Python package; stops the build if one is GPL.
 "$PY" -I "$ROOT/macos/license_report.py" "$STAGE/licenses/PYTHON_PACKAGES.md"
-"$PY" -c "import torch; print('PyTorch', torch.__version__, 'CUDA', torch.version.cuda)"
+"$PY" -c "import torch; print('PyTorch', torch.__version__)"
+"$PY" -m pip --version  # the installer installs the GPU download with it
+
+echo "==> GPU download"
+# What the installer downloads on PCs with an NVIDIA GPU. The app reads the folder name
+# from python/gpu.json (desktop/main.js).
+"$PY" -I "$ROOT/windows/gpu_wheels.py" "$TORCH_GPU_INDEX" "$BUILD/gpu.json" "$BUILD/gpu.iss"
+cp "$BUILD/gpu.json" "$STAGE/python/gpu.json"
 
 cp "$BUILD/ffmpeg/bin/ffmpeg.exe" "$BUILD/ffmpeg/bin/ffprobe.exe" "$DENO" "$STAGE/bin/"
 cp "$BUILD/ffmpeg/licenses/"* "$ROOT/windows/THIRD_PARTY_NOTICES.md" "$ROOT/LICENSE" "$STAGE/licenses/"
@@ -119,6 +128,7 @@ if [[ $MAKE_INSTALLER == 1 ]]; then
   rm -f "$DIST"/RipItOut-Setup-*
   # MSYS would read /D... as a path and rewrite it.
   MSYS2_ARG_CONV_EXCL="*" "$ISCC" /Q "/DAppVersion=$VERSION" "/DSourceDir=$APP" "/DOutputDir=$DIST" \
-    "/DIconFile=$ICONS/icon.ico" "$ROOT/windows/installer.iss"
+    "/DIconFile=$ICONS/icon.ico" "/DGpuInclude=$BUILD/gpu.iss" \
+    "$ROOT/windows/installer.iss"
   ls -l "$DIST"/RipItOut-Setup-*
 fi

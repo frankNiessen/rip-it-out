@@ -4,13 +4,14 @@
 #   workflow artifact for 7 days.
 # - A tag like v0.6.0: build and attach the installer to the GitHub release.
 #
-# The installer is not signed. The in-app update button is macOS only for now; on
-# Windows, Settings points to the release page.
+# The installer is not signed. It bundles PyTorch for the CPU and, on PCs with an
+# NVIDIA GPU, offers to download the CUDA build (windows/installer.iss). The in-app
+# update button is macOS only for now; on Windows, Settings points to the release page.
 name: Windows app
 
 on:
   push:
-    branches: [main]
+    branches: [main, claude/rip-it-out-takes-overview-krn21c]  # TEMP: verify the build before merging
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
@@ -53,23 +54,47 @@ jobs:
         run: |
           RES="build/app/resources"
           "$RES/python/python.exe" -c \
-            "import torch, demucs.pretrained, beat_this.inference, yt_dlp, stemtool.server; print('imports ok')"
+            "import torch, demucs.pretrained, beat_this.inference, yt_dlp, stemtool.server; assert torch.version.cuda is None; print('imports ok')"
           ENCODERS=$("$RES/bin/ffmpeg.exe" -hide_banner -encoders)
           grep -q " h264_mf " <<<"$ENCODERS"
           "$RES/bin/deno.exe" --version
 
-      # Starts the app as a user would, waits for the engine, then closes the window
-      # and checks that the engine and everything it started have quit.
-      - name: Smoke test the app
+      # What the installer does on a PC with an NVIDIA GPU: download the CUDA build of the
+      # bundled PyTorch, check it, install it into its own folder and load it from there.
+      # (The runner has no GPU, so CUDA itself isn't tested.)
+      - name: Smoke test the GPU download
         run: |
-          "build/app/Rip It Out.exe" &
+          PY="build/app/resources/python/python.exe"
+          GPU="$RUNNER_TEMP/gpu"
+          mkdir -p "$GPU/wheels"
+          for pkg in torch torchaudio; do
+            FILE=$("$PY" -c "import json; print(json.load(open('build/gpu.json'))['wheels']['$pkg']['file'])")
+            URL=$("$PY" -c "import json; print(json.load(open('build/gpu.json'))['wheels']['$pkg']['url'])")
+            SHA=$("$PY" -c "import json; print(json.load(open('build/gpu.json'))['wheels']['$pkg']['sha256'])")
+            curl -fsSL --retry 3 -o "$GPU/wheels/$FILE" "$URL"
+            echo "$SHA  $GPU/wheels/$FILE" | sha256sum -c -
+          done
+          "$PY" -I -m pip install --no-deps --no-index --disable-pip-version-check --no-input \
+            --target "$GPU/site" "$GPU"/wheels/*.whl
+          PYTHONPATH="$GPU/site" "$PY" -c \
+            "import torch, torchaudio, demucs.pretrained; assert torch.version.cuda, torch.__version__; print('GPU build loads:', torch.__version__)"
+
+      # Installs as a user would (silently), starts the installed app, waits for the engine,
+      # closes the window, checks the engine and everything it started have quit, uninstalls.
+      - name: Smoke test the installer and app
+        run: |
+          APPDIR="$LOCALAPPDATA/Programs/Rip It Out"
+          SETUP=$(ls dist/RipItOut-Setup-*.exe)
+          MSYS2_ARG_CONV_EXCL="*" "$SETUP" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG="$RUNNER_TEMP/setup.log"
+          test -f "$APPDIR/Rip It Out.exe"
+          "$APPDIR/Rip It Out.exe" &
           for i in $(seq 1 120); do
             curl -sf http://127.0.0.1:38765/api/status >/dev/null && break
             sleep 2
           done
           curl -sf http://127.0.0.1:38765/api/status
           echo
-          taskkill //IM "Rip It Out.exe"
+          taskkill //IM "Rip It Out.exe" || true
           for i in $(seq 1 20); do
             tasklist //FI "IMAGENAME eq python.exe" | grep -qi python.exe || break
             sleep 1
@@ -77,10 +102,16 @@ jobs:
           if tasklist //FI "IMAGENAME eq python.exe" | grep -qi python.exe; then
             echo "The engine is still running after the app closed"; exit 1
           fi
+          sleep 3
+          MSYS2_ARG_CONV_EXCL="*" "$APPDIR/unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+          for i in $(seq 1 30); do [[ -f "$APPDIR/Rip It Out.exe" ]] || break; sleep 1; done
+          if [[ -f "$APPDIR/Rip It Out.exe" ]]; then echo "Uninstalling left the app behind"; exit 1; fi
 
-      - name: Engine log
+      - name: Engine and setup logs
         if: always()
-        run: cat "$APPDATA/Rip It Out/logs/server.log" 2>/dev/null || true
+        run: |
+          cat "$APPDATA/Rip It Out/logs/server.log" 2>/dev/null || true
+          tail -40 "$RUNNER_TEMP/setup.log" 2>/dev/null || true
 
       - uses: actions/upload-artifact@v4
         with:

@@ -94,7 +94,8 @@ function startServer() {
     } else {
       env.PATH = `${BIN}:/usr/bin:/bin:/usr/sbin:/sbin`;
     }
-    if (overlayActive()) env.PYTHONPATH = OVERLAY;
+    const extra = [overlayActive() && OVERLAY, gpu.dir].filter(Boolean);
+    if (extra.length) env.PYTHONPATH = extra.join(path.delimiter);
     // Python's bytecode cache goes here, not into the app: writing into the bundle breaks its code seal.
     // (The Windows build ships it compiled, in a folder the installer replaces whole.)
     if (!WINDOWS) env.PYTHONPYCACHEPREFIX = path.join(USER_DATA, "pycache");
@@ -193,6 +194,7 @@ function createWindow() {
 
 async function boot() {
   splash("Starting the engine…", "The first start after installing takes a little longer.");
+  await findGpu();
   try {
     port = await pickPort();
   } catch (err) { showProblem(err.message); return; }
@@ -237,6 +239,47 @@ function setupPermissions() {
     }
     callback(ok);
   });
+}
+
+// --- NVIDIA GPU support (Windows) --------------------------------------------------------
+//
+// The app bundles the CPU build of PyTorch. On PCs with an NVIDIA driver the installer
+// can download the CUDA build of the same version into GPU_ROOT (windows/installer.iss);
+// the engine then finds it first on PYTHONPATH. Before it is used the first time, a
+// quick import checks that it loads. If it doesn't, the CPU build stays in use.
+
+const GPU_ROOT = path.join(process.env.LOCALAPPDATA || USER_DATA, APP_NAME, "gpu");
+const gpu = { dir: null };
+
+function runPython(args, env) {
+  return new Promise((resolve) => {
+    const proc = spawn(PYTHON, args, { env: { ...process.env, PYTHONNOUSERSITE: "1", ...env }, windowsHide: true });
+    let output = "";
+    proc.stdout.on("data", (d) => { output += d; });
+    proc.stderr.on("data", (d) => { output += d; });
+    proc.on("error", (err) => resolve({ code: -1, output: err.message }));
+    proc.on("exit", (code) => resolve({ code, output }));
+  });
+}
+
+async function findGpu() {
+  gpu.dir = null;
+  if (!WINDOWS || !PACKAGED) return;
+  const name = readJson(path.join(process.resourcesPath, "python", "gpu.json")).dir; // written by windows/build.sh
+  const dir = name && path.join(GPU_ROOT, name);
+  if (!dir || !fs.existsSync(path.join(dir, "torch"))) return;
+  const state = readJson(STATE);
+  const checked = state.gpuChecked || {};
+  if (checked[name] === undefined) {
+    splash("Checking GPU acceleration…", "Once after installing.");
+    const probe = await runPython(["-c", "import torch, torchaudio; print(torch.__version__, torch.cuda.is_available())"],
+      { PYTHONPATH: dir });
+    fs.mkdirSync(LOGS, { recursive: true });
+    fs.appendFileSync(path.join(LOGS, "server.log"), `\n=== GPU check (exit ${probe.code})\n${probe.output.slice(-4000)}\n`);
+    checked[name] = probe.code === 0;
+    writeJson(STATE, { ...readJson(STATE), gpuChecked: checked });
+  }
+  if (checked[name]) gpu.dir = dir;
 }
 
 // --- yt-dlp updates ------------------------------------------------------------------------

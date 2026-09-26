@@ -315,19 +315,21 @@ has its own tests: `node --test desktop/updates.test.js`.
 
 ## Windows (preview)
 
-1. Download `RipItOut-Setup-<version>.exe` and the `RipItOut-Setup-<version>-*.bin` files
-   next to it from the [Releases](../../releases) page, into the same folder. (The
-   installer comes in parts because GitHub limits each file to 2 GB.)
-2. Run the `.exe`. It installs for your user only, no administrator rights needed. The
-   installer is not signed yet, so SmartScreen says "Windows protected your PC": click
+1. Download `RipItOut-Setup-<version>.exe` from the [Releases](../../releases) page.
+2. Run it. It installs for your user only, no administrator rights needed. The installer
+   is not signed yet, so SmartScreen says "Windows protected your PC": click
    **More info**, then **Run anyway**.
-3. Start Rip It Out from the Start menu.
+3. With an NVIDIA graphics card, Setup offers **GPU acceleration** (about 2.5 GB,
+   downloaded from pytorch.org). Keep it ticked: separation is much faster on the GPU.
+   Without it, or on other graphics cards, Rip It Out uses
+   the CPU. Run Setup again to add it later.
+4. Start Rip It Out from the Start menu.
 
-The separation runs on an NVIDIA GPU when there is one, otherwise on the CPU (a few
-minutes per song). The download is about 2.3 GB and the app takes about 5 GB, most of it the GPU libraries. Settings live in
-`%APPDATA%\Rip It Out`, the library defaults to `Music\Rip It Out`; uninstalling keeps
-both. The update button is macOS only for now: on Windows, install the new version over
-the old one.
+The download is about 1 GB, the app takes about 2.5 GB, and the GPU acceleration as much
+again. Settings live in `%APPDATA%\Rip It Out`, the library defaults to
+`Music\Rip It Out`, and GPU acceleration in `%LOCALAPPDATA%\Rip It Out\gpu`, where it
+stays across updates. Uninstalling keeps your settings and library. The update button
+is macOS only for now: on Windows, install the new version over the old one.
 
 Building it: `windows/build.sh` in Git Bash, with uv, Node.js, the GitHub CLI, 7-Zip and
 Inno Setup 6. The GitHub workflow (`.github/workflows/windows.yml`) does this on every push

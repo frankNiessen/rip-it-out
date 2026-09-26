@@ -14,8 +14,7 @@ is GPL or AGPL licensed, or if the bundled ffmpeg is not an LGPL build.
 | FFmpeg (ffmpeg, ffprobe), LGPL build without GPL or nonfree parts | LGPL, see `FFmpeg-LICENSE.txt` | https://ffmpeg.org, build from https://github.com/BtbN/FFmpeg-Builds (version in `ffmpeg -version`), checked by `windows/fetch_ffmpeg.sh` |
 | Deno | MIT | https://github.com/denoland/deno |
 | Python (python-build-standalone) | PSF License and others | https://github.com/astral-sh/python-build-standalone |
-| PyTorch, torchaudio (CUDA build) | BSD-3-Clause and others | https://github.com/pytorch/pytorch |
-| NVIDIA CUDA runtime libraries (cuBLAS, cuFFT, cuDNN and others, inside PyTorch's `torch\lib`) | NVIDIA license for redistributable components (CUDA Toolkit EULA, cuDNN license) | https://docs.nvidia.com/cuda/eula/ |
+| PyTorch, torchaudio (CPU build) | BSD-3-Clause and others | https://github.com/pytorch/pytorch |
 | Demucs | MIT | https://github.com/facebookresearch/demucs |
 | beat_this | MIT | https://github.com/CPJKU/beat_this |
 | All-In-One (model code in `stemtool/structure`; weights downloaded on first use) | MIT, see `stemtool/structure/LICENSE` | https://github.com/mir-aidj/all-in-one, weights https://huggingface.co/taejunkim/allinone |
@@ -28,8 +27,7 @@ is GPL or AGPL licensed, or if the bundled ffmpeg is not an LGPL build.
 | NumPy, SciPy, soundfile, mido | BSD, MIT | PyPI |
 
 The LGPL components are separate, replaceable files (the ffmpeg programs and
-Python extension modules). The NVIDIA libraries are shipped unmodified, as part of
-PyTorch, and are used only when an NVIDIA GPU is present. Their source code is available at the links above.
+Python extension modules). Their source code is available at the links above.
 
 yt-dlp's optional `mutagen` dependency (GPL) is deliberately not installed.
 
@@ -38,3 +36,9 @@ their publishers on first use and stored in `.cache` in your user folder.
 
 The full license texts of the Python packages are in their `*.dist-info`
 folders inside `resources\python\Lib\site-packages` in the app folder.
+
+GPU acceleration is not part of the app. On PCs with an NVIDIA graphics card, Setup
+offers to download the CUDA build of PyTorch from pytorch.org into
+`%LOCALAPPDATA%\Rip It Out\gpu`. That build includes NVIDIA's CUDA runtime libraries
+(cuBLAS, cuFFT, cuDNN and others) under NVIDIA's license for redistributable
+components, see https://docs.nvidia.com/cuda/eula/.
