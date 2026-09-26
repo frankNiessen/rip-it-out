@@ -2,7 +2,7 @@
 
     uv run --with pillow macos/make_icon.py <output dir>
 
-Writes icon-1024.png, which build.sh turns into AppIcon.icns.
+Writes icon-1024.png, which build.sh turns into AppIcon.icns, and icon.ico for Windows.
 """
 
 from __future__ import annotations
@@ -81,5 +81,7 @@ def app_icon(size: int = 1024) -> Image.Image:
 if __name__ == "__main__":
     out = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
     out.mkdir(parents=True, exist_ok=True)
-    app_icon().save(out / "icon-1024.png")
+    icon = app_icon()
+    icon.save(out / "icon-1024.png")
+    icon.save(out / "icon.ico", sizes=[(s, s) for s in (16, 24, 32, 48, 64, 128, 256)])  # Windows
     print(f"Wrote icons to {out}")

@@ -4,7 +4,8 @@
 // during development) on a local port and shows the web UI in its own window.
 
 const { app, BrowserWindow, Menu, dialog, ipcMain, session, shell, systemPreferences } = require("electron");
-const { spawn } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
 const net = require("node:net");
@@ -15,11 +16,12 @@ const APP_NAME = "Rip It Out";
 const PREFERRED_PORT = Number(process.env.RIPITOUT_PORT) || 38765; // stable, so the UI keeps its saved preferences
 const ROOT = path.resolve(__dirname, "..");
 const PACKAGED = app.isPackaged;
+const WINDOWS = process.platform === "win32";
 const PYTHON = PACKAGED
-  ? path.join(process.resourcesPath, "python", "bin", "python3")
-  : path.join(ROOT, ".venv", "bin", "python");
+  ? path.join(process.resourcesPath, "python", ...(WINDOWS ? ["python.exe"] : ["bin", "python3"]))
+  : path.join(ROOT, ".venv", ...(WINDOWS ? ["Scripts", "python.exe"] : ["bin", "python"]));
 const BIN = PACKAGED ? path.join(process.resourcesPath, "bin") : null;
-const USER_DATA = app.getPath("userData"); // ~/Library/Application Support/Rip It Out
+const USER_DATA = app.getPath("userData"); // ~/Library/Application Support/Rip It Out, %APPDATA%\Rip It Out
 const CONFIG = process.env.STEMTOOL_CONFIG || path.join(USER_DATA, "settings.json"); // shared with the server: library folder
 const STATE = path.join(USER_DATA, "desktop.json"); // this file's own state
 // A yt-dlp update the user chose to install goes here, never into the app bundle.
@@ -27,6 +29,8 @@ const OVERLAY = path.join(USER_DATA, "site-packages");
 const LOGS = app.getPath("logs"); // ~/Library/Logs/Rip It Out
 const YTDLP_PACKAGES = ["yt-dlp", "yt-dlp-ejs"]; // the rest (requests, certifi, ...) comes with the app
 const UPDATE_DIR = path.join(USER_DATA, "update"); // downloaded DMG and the unpacked new app
+// Windows can't send the server a signal, so it is asked to quit over HTTP with this.
+const SHUTDOWN_TOKEN = crypto.randomBytes(24).toString("hex");
 
 let win = null;
 let server = null;
@@ -80,16 +84,24 @@ function startServer() {
   const log = fs.openSync(logFile, "a");
   fs.writeSync(log, `\n=== ${new Date().toISOString()} ${APP_NAME} ${app.getVersion()} on port ${port}\n`);
 
-  const env = { ...process.env, STEMTOOL_CONFIG: CONFIG, PYTHONUNBUFFERED: "1", PYTHONNOUSERSITE: "1" };
+  const env = { ...process.env, STEMTOOL_CONFIG: CONFIG, STEMTOOL_SHUTDOWN_TOKEN: SHUTDOWN_TOKEN,
+    PYTHONUNBUFFERED: "1", PYTHONNOUSERSITE: "1", PYTHONUTF8: "1" };
   if (PACKAGED) {
-    env.PATH = `${BIN}:/usr/bin:/bin:/usr/sbin:/sbin`;
+    if (WINDOWS) {
+      const system = process.env.SystemRoot || "C:\\Windows";
+      for (const key of Object.keys(env)) if (key.toUpperCase() === "PATH") delete env[key]; // it's "Path" there
+      env.PATH = [BIN, path.join(system, "System32"), system].join(path.delimiter);
+    } else {
+      env.PATH = `${BIN}:/usr/bin:/bin:/usr/sbin:/sbin`;
+    }
     if (overlayActive()) env.PYTHONPATH = OVERLAY;
     // Python's bytecode cache goes here, not into the app: writing into the bundle breaks its code seal.
-    env.PYTHONPYCACHEPREFIX = path.join(USER_DATA, "pycache");
+    // (The Windows build ships it compiled, in a folder the installer replaces whole.)
+    if (!WINDOWS) env.PYTHONPYCACHEPREFIX = path.join(USER_DATA, "pycache");
     delete env.PYTHONHOME;
   }
   server = spawn(PYTHON, ["-m", "uvicorn", "stemtool.server:app", "--host", "127.0.0.1", "--port", String(port)], {
-    cwd: PACKAGED ? USER_DATA : ROOT, env, stdio: ["ignore", log, log],
+    cwd: PACKAGED ? USER_DATA : ROOT, env, stdio: ["ignore", log, log], windowsHide: true,
   });
   const proc = server;
   proc.on("exit", (code, signal) => {
@@ -114,10 +126,30 @@ function stopServer() {
   server = null;
   if (!proc || proc.exitCode !== null) return Promise.resolve();
   return new Promise((resolve) => {
-    const force = setTimeout(() => { try { proc.kill("SIGKILL"); } catch {} }, 8000);
+    const force = setTimeout(() => killTree(proc), 15000);
     proc.once("exit", () => { clearTimeout(force); resolve(); });
-    proc.kill("SIGTERM"); // uvicorn shuts down cleanly and ends running jobs
+    // uvicorn shuts down cleanly and ends running jobs
+    if (WINDOWS) askServerToQuit().then((ok) => { if (!ok) killTree(proc); });
+    else proc.kill("SIGTERM");
   });
+}
+
+function askServerToQuit() {
+  return new Promise((resolve) => {
+    const req = http.request(`http://127.0.0.1:${port}/api/shutdown`,
+      { method: "POST", headers: { "X-Shutdown-Token": SHUTDOWN_TOKEN }, timeout: 3000 },
+      (res) => { res.resume(); resolve(res.statusCode === 200); });
+    req.on("error", () => resolve(false));
+    req.on("timeout", () => { req.destroy(); resolve(false); });
+    req.end();
+  });
+}
+
+// The server and the processing it started. On Windows, ending a process leaves its children running.
+function killTree(proc) {
+  if (proc.exitCode !== null) return;
+  if (WINDOWS) spawnSync("taskkill", ["/pid", String(proc.pid), "/T", "/F"], { windowsHide: true });
+  else { try { proc.kill("SIGKILL"); } catch {} }
 }
 
 async function serverBusy() {
@@ -241,7 +273,8 @@ async function updateYtDlp() {
   const tmp = `${OVERLAY}.new`;
   fs.rmSync(tmp, { recursive: true, force: true });
   const pip = spawn(PYTHON, ["-m", "pip", "install", "--target", tmp, "--only-binary", ":all:", "--no-deps",
-    "--disable-pip-version-check", "--no-input", ...YTDLP_PACKAGES], { env: { ...process.env, PYTHONNOUSERSITE: "1" } });
+    "--disable-pip-version-check", "--no-input", ...YTDLP_PACKAGES],
+  { env: { ...process.env, PYTHONNOUSERSITE: "1" }, windowsHide: true });
   let output = "";
   pip.stdout.on("data", (d) => { output += d; });
   pip.stderr.on("data", (d) => { output += d; });
@@ -285,6 +318,7 @@ const handle = (channel, fn) => ipcMain.handle(channel, async (e, ...args) => {
 
 function updateBlocker() {
   if (!PACKAGED) return "In development, update with git pull.";
+  if (WINDOWS) return "On Windows, get the new installer from the release page.";
   return updates.installProblem(updates.bundlePath(app.getPath("exe")));
 }
 
@@ -366,7 +400,7 @@ function buildMenu() {
     {
       label: "Library",
       submenu: [
-        { label: "Show Library in Finder", click: async () => { const p = await libraryPath(); if (p) shell.openPath(p); } },
+        { label: isMac ? "Show Library in Finder" : "Show Library in Explorer", click: async () => { const p = await libraryPath(); if (p) shell.openPath(p); } },
         { label: "Change Library Folder…", click: () => win && win.webContents.executeJavaScript("showTab('settings')") },
         { type: "separator" },
         { label: "Update YouTube Downloader…", click: updateYtDlp },

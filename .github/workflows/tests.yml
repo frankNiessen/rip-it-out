@@ -19,7 +19,7 @@ jobs:
       run:
         shell: bash
     env:
-      PY: ${{ runner.os == 'Windows' && '.venv/Scripts/python' || '.venv/bin/python' }}
+      PY: ${{ matrix.os == 'windows-latest' && '.venv/Scripts/python' || '.venv/bin/python' }}
     steps:
       - uses: actions/checkout@v4
 

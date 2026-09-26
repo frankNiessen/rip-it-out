@@ -1,0 +1,95 @@
+# Builds the Windows app and its installer on a Windows runner.
+#
+# - Every push to main and every pull request: build, keep the installer as a
+#   workflow artifact for 7 days.
+# - A tag like v0.6.0: build and attach the installer to the GitHub release.
+#
+# The installer is not signed. The in-app update button is macOS only for now; on
+# Windows, Settings points to the release page.
+name: Windows app
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write  # to create releases on tags
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Inno Setup
+        run: |
+          if [[ ! -f "C:/Program Files (x86)/Inno Setup 6/ISCC.exe" ]]; then
+            choco install innosetup --no-progress -y
+          fi
+
+      - name: Build app and installer
+        run: windows/build.sh
+
+      - name: Smoke test the bundled engine
+        run: |
+          RES="build/app/resources"
+          "$RES/python/python.exe" -c \
+            "import torch, demucs.pretrained, beat_this.inference, yt_dlp, stemtool.server; print('imports ok')"
+          ENCODERS=$("$RES/bin/ffmpeg.exe" -hide_banner -encoders)
+          grep -q " h264_mf " <<<"$ENCODERS"
+          "$RES/bin/deno.exe" --version
+
+      # Starts the app as a user would, waits for the engine, then closes the window
+      # and checks that the engine and everything it started have quit.
+      - name: Smoke test the app
+        run: |
+          "build/app/Rip It Out.exe" &
+          for i in $(seq 1 120); do
+            curl -sf http://127.0.0.1:38765/api/status >/dev/null && break
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:38765/api/status
+          echo
+          taskkill //IM "Rip It Out.exe"
+          for i in $(seq 1 20); do
+            tasklist //FI "IMAGENAME eq python.exe" | grep -qi python.exe || break
+            sleep 1
+          done
+          if tasklist //FI "IMAGENAME eq python.exe" | grep -qi python.exe; then
+            echo "The engine is still running after the app closed"; exit 1
+          fi
+
+      - name: Engine log
+        if: always()
+        run: cat "$APPDATA/Rip It Out/logs/server.log" 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RipItOut-windows
+          path: dist/RipItOut-Setup-*
+          retention-days: 7
+          compression-level: 0
+
+      - name: Attach installer to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/RipItOut-Setup-*
+          generate_release_notes: true
