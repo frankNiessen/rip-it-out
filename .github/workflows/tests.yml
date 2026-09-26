@@ -35,3 +35,7 @@ jobs:
           node --check /tmp/page.js
           node --check desktop/main.js
           node --check desktop/preload.js
+          node --check desktop/updates.js
+
+      - name: Updater tests
+        run: node --test desktop/updates.test.js

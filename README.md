@@ -134,14 +134,22 @@ size, or show only takes with video. Tick the ones you no longer need and choose
 The **Library** menu has *Show Library in Finder*, *Update YouTube Downloader*, *Reset
 YouTube Downloader*, *Restart Engine* and *Show Log*.
 
+**Updates.** *Settings > Updates > Check for updates* (or *Rip It Out > Check for Updates…*)
+looks for a newer release on GitHub. Choose **Download and install**, then **Restart to
+update**: the app quits, the new version takes its place and starts, your library and
+settings stay. Nothing is checked or downloaded unless you ask. Each release is signed
+with the project's key, and the app installs only a download that matches that signature.
+The app has to be in a folder your user can write to (normally Applications); versions
+0.4 and earlier don't have the button, so install the first version with it from the DMG.
+
 ## What happens in the background
 
 Processing is local: your recordings and the generated tracks are processed and stored on
 your computer, and there is no Rip It Out server. The app connects to YouTube when it
 downloads source audio, to the model publishers (Meta's `dl.fbaipublicfiles.com` for
 Demucs, JKU Linz's `cloud.cp.jku.at` for beat_this, Hugging Face for the section model)
-the first time it needs a model, and to PyPI only when you choose *Update YouTube
-Downloader*.
+the first time it needs a model, to PyPI only when you choose *Update YouTube
+Downloader*, and to GitHub only when you choose *Check for updates*.
 
 | Step | What does it |
 |---|---|
@@ -244,6 +252,12 @@ push to `main` (as a workflow artifact) and attaches it to a GitHub release for 
 certificate in the repository secrets (listed in the workflow file) it also signs and
 notarizes, and the `xattr` step is no longer needed.
 
+The update button trusts a release only through `RipItOut-<version>.update.json`: the DMG's
+size and SHA-256, signed with an ed25519 key (`macos/sign_update.mjs`). The workflow writes
+it on tags when the private key is in the `UPDATE_SIGNING_KEY` secret; the public key is in
+`desktop/updates.js`. If you fork the project, make your own key pair and replace the public
+key, otherwise your builds can't update themselves.
+
 ## Development
 
 ```bash
@@ -271,7 +285,7 @@ Browsers allow the microphone and camera only on `localhost` or HTTPS, so open
 | `stemtool/beats.py`, `grid.py`, `click.py` | Beat tracking, grid cleanup and edits, click audio and MIDI |
 | `stemtool/takes.py` | Recorded takes: alignment, video sync, export, disk use |
 | `stemtool/static/index.html` | The whole UI (vanilla JS, Web Audio) |
-| `desktop/` | Electron shell: starts the engine, window, permissions, menu |
+| `desktop/` | Electron shell: starts the engine, window, permissions, menu, app updates (`updates.js`) |
 | `macos/` | Build scripts for the app and DMG |
 
 ### Tests
@@ -282,7 +296,8 @@ Browsers allow the microphone and camera only on `localhost` or HTTPS, so open
 ```
 
 The tests use a generated song in a temporary folder, never your library. GitHub runs
-them on every push (`.github/workflows/tests.yml`), without the ML models.
+them on every push (`.github/workflows/tests.yml`), without the ML models. The updater
+has its own tests: `node --test desktop/updates.test.js`.
 
 ### Settings (environment variables)
 
@@ -295,6 +310,7 @@ them on every push (`.github/workflows/tests.yml`), without the ML models.
 | `STEMTOOL_SHIFTS` | `1` | Demucs shifts: higher is slightly better and slower |
 | `STEMTOOL_BEAT_CHECKPOINT` | `final0` | beat_this checkpoint |
 | `RIPITOUT_PORT` | `38765` | Port of the desktop app's engine |
+| `RIPITOUT_UPDATE_URL` | GitHub's latest release | Where *Check for updates* looks (for testing the updater) |
 
 ## Linux (headless server)
 

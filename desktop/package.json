@@ -6,7 +6,8 @@
   "private": true,
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "test": "node --test updates.test.js"
   },
   "devDependencies": {
     "@electron/packager": "20.3.0",

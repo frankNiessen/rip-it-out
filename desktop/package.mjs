@@ -25,7 +25,7 @@ const [appPath] = await packager({
   icon: ICON,
   asar: true,
   prune: true,
-  ignore: [/^\/package\.mjs$/, /^\/node_modules\/\.cache/],
+  ignore: [/^\/package\.mjs$/, /^\/updates\.test\.js$/, /^\/node_modules\/\.cache/],
   extraResource: ["python", "bin", "licenses"].map((d) => path.join(STAGE, d)),
   extendInfo: path.join(here, "..", "macos", "Info.plist"),
   osxSign: CODESIGN_IDENTITY

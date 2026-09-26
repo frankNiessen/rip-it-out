@@ -9,6 +9,7 @@ const fs = require("node:fs");
 const http = require("node:http");
 const net = require("node:net");
 const path = require("node:path");
+const updates = require("./updates");
 
 const APP_NAME = "Rip It Out";
 const PREFERRED_PORT = Number(process.env.RIPITOUT_PORT) || 38765; // stable, so the UI keeps its saved preferences
@@ -25,6 +26,7 @@ const STATE = path.join(USER_DATA, "desktop.json"); // this file's own state
 const OVERLAY = path.join(USER_DATA, "site-packages");
 const LOGS = app.getPath("logs"); // ~/Library/Logs/Rip It Out
 const YTDLP_PACKAGES = ["yt-dlp", "yt-dlp-ejs"]; // the rest (requests, certifi, ...) comes with the app
+const UPDATE_DIR = path.join(USER_DATA, "update"); // downloaded DMG and the unpacked new app
 
 let win = null;
 let server = null;
@@ -270,6 +272,76 @@ async function resetYtDlp() {
   restartEngine();
 }
 
+// --- app updates (see updates.js) --------------------------------------------------------------
+
+const updateState = { update: null, staged: null, abort: null };
+
+// Errors go back as { error } so the page can show them as they are.
+const handle = (channel, fn) => ipcMain.handle(channel, async (e, ...args) => {
+  try { return await fn(e, ...args); } catch (err) { return { error: err.name === "AbortError" ? "Cancelled." : err.message }; }
+});
+
+function updateBlocker() {
+  if (!PACKAGED) return "In development, update with git pull.";
+  return updates.installProblem(updates.bundlePath(app.getPath("exe")));
+}
+
+function setupUpdates() {
+  fs.rmSync(UPDATE_DIR, { recursive: true, force: true }); // leftovers from an earlier update
+
+  handle("update-check", async () => {
+    const result = await updates.check({ currentVersion: app.getVersion(), releasesUrl: process.env.RIPITOUT_UPDATE_URL });
+    updateState.update = result.update;
+    return { ...result, blocker: result.update ? updateBlocker() : null, ready: !!updateState.staged };
+  });
+
+  handle("update-download", async (e) => {
+    const u = updateState.update;
+    if (!u) throw new Error("Check for updates first.");
+    const blocker = updateBlocker();
+    if (blocker) throw new Error(blocker);
+    if (updateState.abort) throw new Error("A download is already running.");
+    fs.rmSync(UPDATE_DIR, { recursive: true, force: true });
+    updateState.abort = new AbortController();
+    try {
+      const dmg = await updates.download(u, UPDATE_DIR, {
+        signal: updateState.abort.signal, userAgent: `RipItOut/${app.getVersion()}`,
+        onProgress: (got, total) => { if (!e.sender.isDestroyed()) e.sender.send("update-progress", { got, total }); },
+      });
+      if (!e.sender.isDestroyed()) e.sender.send("update-progress", { got: u.size, total: u.size, unpacking: true });
+      await new Promise((r) => setImmediate(r));
+      updateState.staged = updates.extractApp(dmg, UPDATE_DIR, u.version);
+      return { ready: true, version: u.version };
+    } catch (err) {
+      fs.rmSync(UPDATE_DIR, { recursive: true, force: true });
+      throw err;
+    } finally {
+      updateState.abort = null;
+    }
+  });
+
+  handle("update-cancel", () => { updateState.abort?.abort(); return { ok: true }; });
+
+  handle("update-install", async () => {
+    if (!updateState.staged) throw new Error("Nothing to install yet.");
+    if (await serverBusy() && !confirmStop("Restart to update?")) return { cancelled: true };
+    const script = updates.writeSwapScript(UPDATE_DIR);
+    fs.mkdirSync(LOGS, { recursive: true });
+    const log = fs.openSync(path.join(LOGS, "update.log"), "a");
+    const target = updates.bundlePath(app.getPath("exe"));
+    spawn("/bin/bash", [script, String(process.pid), updateState.staged, target],
+      { detached: true, stdio: ["ignore", log, log] }).unref();
+    quitting = true;
+    await stopServer();
+    app.quit();
+    return { ok: true };
+  });
+}
+
+function checkForUpdatesFromMenu() {
+  if (win && port) win.webContents.executeJavaScript("showTab('settings'); checkForUpdates()");
+}
+
 // --- menu ------------------------------------------------------------------------------------
 
 async function libraryPath() {
@@ -280,7 +352,15 @@ async function libraryPath() {
 function buildMenu() {
   const isMac = process.platform === "darwin";
   const template = [
-    ...(isMac ? [{ role: "appMenu" }] : []),
+    ...(isMac ? [{
+      label: APP_NAME,
+      submenu: [
+        { role: "about" },
+        { label: "Check for Updates…", click: checkForUpdatesFromMenu },
+        { type: "separator" }, { role: "services" }, { type: "separator" },
+        { role: "hide" }, { role: "hideOthers" }, { role: "unhide" }, { type: "separator" }, { role: "quit" },
+      ],
+    }] : []),
     { role: "editMenu" }, // copy and paste in text fields
     {
       label: "Library",
@@ -326,6 +406,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     buildMenu();
     setupPermissions();
+    setupUpdates();
     createWindow();
     boot();
   });

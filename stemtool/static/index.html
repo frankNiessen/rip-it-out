@@ -494,6 +494,18 @@
     </div>
     <p class="note" id="fmt-note" aria-live="polite"></p>
 
+    <div id="upd" hidden>
+      <h2 style="margin-top:2rem">Updates</h2>
+      <div class="lib-form">
+        <button class="btn quiet" id="upd-check">Check for updates</button>
+        <button class="btn" id="upd-get" hidden>Download and install</button>
+        <button class="btn quiet" id="upd-cancel" hidden>Cancel</button>
+        <button class="btn" id="upd-restart" hidden title="Quits, puts the new version in place and starts it">Restart to update</button>
+      </div>
+      <div class="meter" id="upd-meter" hidden style="max-width: 24rem"><i></i></div>
+      <p class="note" id="upd-note" aria-live="polite"></p>
+    </div>
+
     <h2 style="margin-top:2rem">About</h2>
     <dl class="about" id="about"></dl>
   </section>
@@ -596,6 +608,52 @@ $("#lib-form").addEventListener("submit", async (e) => {
     note.textContent = `Library switched. ${songs.length} ${songs.length === 1 ? "song" : "songs"} found.`;
   } catch (err) { note.className = "note error"; note.textContent = err.message; }
 });
+
+// ---- app updates (desktop app only) -----------------------------------------------
+const updater = desktop?.updates || null;
+$("#upd").hidden = !updater;
+function updateUi(state, html = "", error = false) {
+  $("#upd-check").hidden = state === "downloading";
+  $("#upd-get").hidden = state !== "available";
+  $("#upd-cancel").hidden = state !== "downloading";
+  $("#upd-restart").hidden = state !== "ready";
+  $("#upd-meter").hidden = state !== "downloading";
+  $("#upd-note").className = `note ${error ? "error" : ""}`;
+  $("#upd-note").innerHTML = html;
+}
+const notesLink = (r, text = "What's new") => r.notesUrl ? ` <a href="${esc(r.notesUrl)}" target="_blank" rel="noopener">${text}</a>` : "";
+async function checkForUpdates() {
+  if (!updater || !$("#upd-cancel").hidden) return;
+  updateUi("idle", "Checking…");
+  const r = await updater.check();
+  if (r.error) return updateUi("idle", esc(r.error), true);
+  if (!r.newer) return updateUi("idle", `You have the latest version (${esc(r.current)}).`);
+  if (r.ready) return updateUi("ready", `Version ${esc(r.version)} is ready.`);
+  if (!r.update) return updateUi("idle", `Version ${esc(r.version)} is out.${notesLink(r, "Download it from GitHub")}`);
+  if (r.blocker) return updateUi("idle", `Version ${esc(r.version)} is out. ${esc(r.blocker)}${notesLink(r)}`);
+  updateUi("available", `Version ${esc(r.version)} is out (${fmtBytes(r.update.size)} download).${notesLink(r)}`);
+}
+if (updater) {
+  updater.onProgress(({ got, total, unpacking }) => {
+    $("#upd-meter i").style.width = `${Math.round(100 * got / total)}%`;
+    $("#upd-note").textContent = unpacking ? "Checking and unpacking…" : `Downloading ${fmtBytes(got)} of ${fmtBytes(total)}`;
+  });
+  $("#upd-check").addEventListener("click", checkForUpdates);
+  $("#upd-get").addEventListener("click", async () => {
+    updateUi("downloading", "Downloading…");
+    $("#upd-meter i").style.width = "0";
+    const r = await updater.download();
+    if (r.error) return updateUi("available", esc(r.error), r.error !== "Cancelled.");
+    updateUi("ready", `Version ${esc(r.version)} is ready.`);
+  });
+  $("#upd-cancel").addEventListener("click", () => updater.cancel());
+  $("#upd-restart").addEventListener("click", async () => {
+    if (recording) return;
+    const r = await updater.install();
+    if (r.error) updateUi("ready", esc(r.error), true);
+    else if (!r.cancelled) updateUi("idle", "Restarting…");
+  });
+}
 
 // ---- add ------------------------------------------------------------------
 $("#add").addEventListener("submit", async (e) => {

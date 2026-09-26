@@ -11,6 +11,9 @@
 #   MACOS_CERT_PASSWORD     password of that .p12
 #   MACOS_SIGN_IDENTITY     e.g. "Developer ID Application: Your Name (TEAMID)"
 #   APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD   for notarization (app-specific password)
+#
+# UPDATE_SIGNING_KEY (the ed25519 private key, PEM) signs RipItOut-<version>.update.json
+# on tags, which the app's update button needs. Without it, releases are manual installs.
 name: macOS app
 
 on:
@@ -30,6 +33,7 @@ jobs:
     env:
       MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
+      UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -84,6 +88,11 @@ jobs:
             "import torch, demucs.pretrained, beat_this.inference, yt_dlp, stemtool.server; print('imports ok')"
           "$RES/bin/ffmpeg" -hide_banner -encoders | grep -q h264_videotoolbox
 
+      # What the app's update button checks before it installs anything (desktop/updates.js).
+      - name: Sign the update
+        if: startsWith(github.ref, 'refs/tags/v') && env.UPDATE_SIGNING_KEY != ''
+        run: node macos/sign_update.mjs dist/RipItOut-*.dmg
+
       - uses: actions/upload-artifact@v4
         with:
           name: RipItOut-dmg
@@ -94,5 +103,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.dmg
+          files: |
+            dist/*.dmg
+            dist/*.update.json
           generate_release_notes: true
