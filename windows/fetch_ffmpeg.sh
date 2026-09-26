@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# Downloads an LGPL build of ffmpeg and ffprobe for 64-bit Windows into <dest>/bin,
-# from BtbN/FFmpeg-Builds (the newest release branch), and checks the binary that
-# ships: no GPL or nonfree parts, no x264, and Windows' own H.264 encoder included.
+# Downloads a pinned LGPL build of ffmpeg and ffprobe for 64-bit Windows into
+# <dest>/bin, from BtbN/FFmpeg-Builds, and checks the binary that ships: no GPL or
+# nonfree parts, no x264, and Windows' own H.264 encoder included.
+#
+# Pinned to a month-end build: BtbN deletes its daily builds after two weeks but keeps
+# the last one of each month for two years. To update, pick a newer month-end
+# autobuild-* release, set FFMPEG_TAG, run this once and copy the SHA-256 it prints.
 #
 #   windows/fetch_ffmpeg.sh <dest>
 #
@@ -13,14 +17,21 @@ set -euo pipefail
 winpath() { if command -v cygpath >/dev/null; then cygpath -m "$1"; else echo "$1"; fi; }
 DEST=$(winpath "$1")
 REPO=BtbN/FFmpeg-Builds
+FFMPEG_TAG=autobuild-2026-08-31-13-27
+FFMPEG_SHA256=unknown
 
 if [[ ! -x "$DEST/bin/ffmpeg.exe" ]]; then
-  ASSET=$(gh release view latest -R "$REPO" --json assets --jq '.assets[].name' \
-    | grep -E '^ffmpeg-n[0-9.]+-latest-win64-lgpl-[0-9.]+\.zip$' | sort -V | tail -1)
-  [[ -n "$ASSET" ]] || { echo "No LGPL win64 build found in $REPO"; exit 1; }
-  echo "==> Downloading $ASSET"
+  # The release branch build (n<version>), not master.
+  ASSET=$(gh release view "$FFMPEG_TAG" -R "$REPO" --json assets --jq '.assets[].name' \
+    | grep -E '^ffmpeg-n[0-9.]+-.*-win64-lgpl-[0-9.]+\.zip$' | sort -V | tail -1)
+  [[ -n "$ASSET" ]] || { echo "No LGPL win64 build found in $REPO $FFMPEG_TAG"; exit 1; }
+  echo "==> Downloading $ASSET ($FFMPEG_TAG)"
   TMP=$(winpath "$(mktemp -d)")
-  gh release download latest -R "$REPO" -p "$ASSET" -D "$TMP"
+  gh release download "$FFMPEG_TAG" -R "$REPO" -p "$ASSET" -D "$TMP"
+  GOT=$(sha256sum "$TMP/$ASSET" | cut -d' ' -f1)
+  if [[ "$GOT" != "$FFMPEG_SHA256" ]]; then
+    echo "SHA-256 of $ASSET is $GOT, expected $FFMPEG_SHA256"; exit 1
+  fi
   7z x -y -o"$TMP" "$TMP/$ASSET" >/dev/null
   SRC=$(dirname "$(dirname "$(find "$TMP" -name ffmpeg.exe | head -1)")")
   mkdir -p "$DEST/bin" "$DEST/licenses"
