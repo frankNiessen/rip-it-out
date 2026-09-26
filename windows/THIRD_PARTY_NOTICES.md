@@ -11,7 +11,7 @@ is GPL or AGPL licensed, or if the bundled ffmpeg is not an LGPL build.
 | Component | License | Source |
 |---|---|---|
 | Electron (includes Chromium) | MIT, Chromium parts BSD and others, see `LICENSES.chromium.html` in the app folder | https://github.com/electron/electron |
-| FFmpeg (ffmpeg, ffprobe), LGPL build without GPL or nonfree parts | LGPL, see `FFmpeg-LICENSE.txt` | https://ffmpeg.org, build from https://github.com/BtbN/FFmpeg-Builds (version in `ffmpeg -version`), checked by `windows/fetch_ffmpeg.sh` |
+| FFmpeg (ffmpeg, ffprobe), LGPL build without GPL or nonfree parts | LGPL, see `FFmpeg-LICENSE.txt` | https://ffmpeg.org, build from https://github.com/BtbN/FFmpeg-Builds, pinned and checked by `windows/fetch_ffmpeg.sh` (version in `ffmpeg -version`) |
 | Deno | MIT | https://github.com/denoland/deno |
 | Python (python-build-standalone) | PSF License and others | https://github.com/astral-sh/python-build-standalone |
 | PyTorch, torchaudio (CPU build) | BSD-3-Clause and others | https://github.com/pytorch/pytorch |
