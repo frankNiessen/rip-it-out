@@ -15,8 +15,8 @@ set -euo pipefail
 
 PY_VERSION=3.12
 DENO_VERSION=2.9.7
+TORCH_VERSION=2.14.0  # pinned: the CPU build ships, the installer downloads the matching CUDA build
 TORCH_CPU_INDEX=https://download.pytorch.org/whl/cpu
-TORCH_GPU_INDEX=${TORCH_GPU_INDEX:-https://download.pytorch.org/whl/cu128}
 # Longest path allowed inside the app folder. The install folder
 # (C:\Users\<name>\AppData\Local\Programs\Rip It Out\) takes up to about 80 of
 # Windows' 260 characters.
@@ -69,7 +69,7 @@ SITE=$(winpath "$("$PY" -c 'import sysconfig; print(sysconfig.get_paths()["purel
 # the rest keeps it. Compiled here, as the
 # app folder is replaced whole on every install.
 uv pip install --quiet --python "$PY" --break-system-packages --compile-bytecode \
-  --index-url "$TORCH_CPU_INDEX" torch torchaudio
+  --index-url "$TORCH_CPU_INDEX" "torch==$TORCH_VERSION" torchaudio
 uv pip install --quiet --python "$PY" --break-system-packages --compile-bytecode \
   -r "$ROOT/requirements.txt"
 cp -r "$ROOT/stemtool" "$SITE/stemtool"
@@ -94,7 +94,7 @@ echo "==> License check"
 echo "==> GPU download"
 # What the installer downloads on PCs with an NVIDIA GPU. The app reads the folder name
 # from python/gpu.json (desktop/main.js).
-"$PY" -I "$ROOT/windows/gpu_wheels.py" "$TORCH_GPU_INDEX" "$BUILD/gpu.json" "$BUILD/gpu.iss"
+"$PY" -I "$ROOT/windows/gpu_wheels.py" "$BUILD/gpu.json" "$BUILD/gpu.iss"
 cp "$BUILD/gpu.json" "$STAGE/python/gpu.json"
 
 cp "$BUILD/ffmpeg/bin/ffmpeg.exe" "$BUILD/ffmpeg/bin/ffprobe.exe" "$DENO" "$STAGE/bin/"

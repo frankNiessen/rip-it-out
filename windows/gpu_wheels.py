@@ -2,8 +2,10 @@
 
 Run with the staged Python after the CPU build of PyTorch is installed (windows/build.sh):
 
-    python gpu_wheels.py <index url> <gpu.json> <gpu.iss>
+    python gpu_wheels.py <gpu.json> <gpu.iss>
 
+PyTorch publishes each version for a few CUDA versions only. This takes the oldest
+CUDA that has the bundled version, since it works with the most drivers and cards.
 Writes the download URL, SHA-256 and size of the torch and torchaudio wheels that
 match the bundled versions exactly, for 64-bit Windows and this Python: as JSON
 (the app reads the folder name from it) and as defines for installer.iss.
@@ -14,19 +16,27 @@ from __future__ import annotations
 import json
 import re
 import sys
+import urllib.error
 import urllib.request
 from importlib import metadata
 from pathlib import Path
 from urllib.parse import unquote, urljoin
 
 TAG = f"cp{sys.version_info.major}{sys.version_info.minor}"
+INDEX = "https://download.pytorch.org/whl"
+CUDA_VARIANTS = ["cu126", "cu128", "cu129", "cu130", "cu131", "cu132", "cu133", "cu134"]
 
 
-def find(index: str, package: str, variant: str) -> dict:
+def find(package: str, variant: str) -> dict | None:
     version = metadata.version(package).split("+")[0]
-    page_url = f"{index.rstrip('/')}/{package}/"
-    with urllib.request.urlopen(page_url, timeout=60) as r:
-        page = r.read().decode()
+    page_url = f"{INDEX}/{variant}/{package}/"
+    try:
+        with urllib.request.urlopen(page_url, timeout=60) as r:
+            page = r.read().decode()
+    except urllib.error.HTTPError as exc:
+        if exc.code in (403, 404):  # no such CUDA variant
+            return None
+        raise
     name = f"{package}-{version}+{variant}-{TAG}-{TAG}-win_amd64.whl"
     for href in re.findall(r'href="([^"]+)"', page):
         path, _, fragment = href.partition("#")
@@ -36,13 +46,18 @@ def find(index: str, package: str, variant: str) -> dict:
             with urllib.request.urlopen(head, timeout=60) as r:
                 size = int(r.headers["Content-Length"])
             return {"file": name, "url": url, "sha256": fragment.removeprefix("sha256="), "size": size}
-    raise SystemExit(f"{name} is not in {page_url}")
+    return None
 
 
 def main() -> None:
-    index, out, iss = sys.argv[1], Path(sys.argv[2]), Path(sys.argv[3])
-    variant = index.rstrip("/").rsplit("/", 1)[-1]  # cu128
-    wheels = {p: find(index, p, variant) for p in ("torch", "torchaudio")}
+    out, iss = Path(sys.argv[1]), Path(sys.argv[2])
+    for variant in CUDA_VARIANTS:
+        wheels = {p: find(p, variant) for p in ("torch", "torchaudio")}
+        if all(wheels.values()):
+            break
+        print(f"{variant}: no build of the bundled torch and torchaudio")
+    else:
+        raise SystemExit(f"No CUDA build of torch {metadata.version('torch')} found in {INDEX}")
     torch_version = metadata.version("torch").split("+")[0]
     info = {"dir": f"torch-{torch_version}-{variant}", "wheels": wheels}
     out.write_text(json.dumps(info, indent=2), encoding="utf-8")
