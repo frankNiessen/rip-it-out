@@ -319,14 +319,14 @@ has its own tests: `node --test desktop/updates.test.js`.
 2. Run it. It installs for your user only, no administrator rights needed. The installer
    is not signed yet, so SmartScreen says "Windows protected your PC": click
    **More info**, then **Run anyway**.
-3. With an NVIDIA graphics card, Setup offers **GPU acceleration** (about 2.5 GB,
+3. With an NVIDIA graphics card, Setup offers **GPU acceleration** (about 2.6 GB,
    downloaded from pytorch.org). Keep it ticked: separation is much faster on the GPU.
-   Without it, or on other graphics cards, Rip It Out uses
-   the CPU. Run Setup again to add it later.
+   Without it, or on other graphics cards, Rip It Out uses the CPU. Run Setup again to
+   add it later.
 4. Start Rip It Out from the Start menu.
 
-The download is about 1 GB, the app takes about 2.5 GB, and the GPU acceleration as much
-again. Settings live in `%APPDATA%\Rip It Out`, the library defaults to
+The installer is about 400 MB, the app takes about 1.5 GB, GPU acceleration another
+2.6 GB. Settings live in `%APPDATA%\Rip It Out`, the library defaults to
 `Music\Rip It Out`, and GPU acceleration in `%LOCALAPPDATA%\Rip It Out\gpu`, where it
 stays across updates. Uninstalling keeps your settings and library. The update button
 is macOS only for now: on Windows, install the new version over the old one.
