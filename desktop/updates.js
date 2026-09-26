@@ -9,7 +9,7 @@
 //
 // Plain Node on purpose (no Electron imports), so it can be tested on its own.
 
-const { spawnSync } = require("node:child_process");
+const { spawn } = require("node:child_process");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -105,28 +105,35 @@ async function download(update, dir, { signal, onProgress, userAgent = "RipItOut
   }
 }
 
+// Runs a command without blocking (the app's window stays responsive), resolves to its output.
 function run(cmd, args) {
-  const r = spawnSync(cmd, args, { encoding: "utf8" });
-  if (r.status !== 0) throw new Error(`${path.basename(cmd)} failed: ${(r.stderr || r.error?.message || "").trim().slice(-300)}`);
-  return r.stdout.trim();
+  return new Promise((resolve, reject) => {
+    const proc = spawn(cmd, args);
+    let out = "", err = "";
+    proc.stdout.on("data", (d) => { out += d; });
+    proc.stderr.on("data", (d) => { err += d; });
+    proc.on("error", reject);
+    proc.on("close", (code) => code === 0 ? resolve(out.trim())
+      : reject(new Error(`${path.basename(cmd)} failed: ${err.trim().slice(-300)}`)));
+  });
 }
 
 // Copies the app out of the DMG into dir and checks its version and code seal.
-function extractApp(dmg, dir, version) {
+async function extractApp(dmg, dir, version) {
   const mount = fs.mkdtempSync(path.join(dir, "mnt-"));
   const staged = path.join(dir, `${APP_NAME}.app`);
   fs.rmSync(staged, { recursive: true, force: true });
-  run("/usr/bin/hdiutil", ["attach", "-nobrowse", "-readonly", "-noautoopen", "-mountpoint", mount, dmg]);
+  await run("/usr/bin/hdiutil", ["attach", "-nobrowse", "-readonly", "-noautoopen", "-mountpoint", mount, dmg]);
   try {
-    run("/usr/bin/ditto", [path.join(mount, `${APP_NAME}.app`), staged]);
+    await run("/usr/bin/ditto", [path.join(mount, `${APP_NAME}.app`), staged]);
   } finally {
-    spawnSync("/usr/bin/hdiutil", ["detach", mount, "-force"]);
+    await run("/usr/bin/hdiutil", ["detach", mount, "-force"]).catch(() => {});
     fs.rmSync(mount, { recursive: true, force: true });
   }
   const plist = path.join(staged, "Contents", "Info.plist");
-  const got = run("/usr/bin/plutil", ["-extract", "CFBundleShortVersionString", "raw", plist]);
+  const got = await run("/usr/bin/plutil", ["-extract", "CFBundleShortVersionString", "raw", plist]);
   if (got !== version) throw new Error(`The downloaded app is version ${got}, not ${version}.`);
-  run("/usr/bin/codesign", ["--verify", "--deep", "--strict", staged]);
+  await run("/usr/bin/codesign", ["--verify", "--deep", "--strict", staged]);
   fs.rmSync(dmg, { force: true });
   return staged;
 }

@@ -84,6 +84,8 @@ function startServer() {
   if (PACKAGED) {
     env.PATH = `${BIN}:/usr/bin:/bin:/usr/sbin:/sbin`;
     if (overlayActive()) env.PYTHONPATH = OVERLAY;
+    // Python's bytecode cache goes here, not into the app: writing into the bundle breaks its code seal.
+    env.PYTHONPYCACHEPREFIX = path.join(USER_DATA, "pycache");
     delete env.PYTHONHOME;
   }
   server = spawn(PYTHON, ["-m", "uvicorn", "stemtool.server:app", "--host", "127.0.0.1", "--port", String(port)], {
@@ -309,8 +311,7 @@ function setupUpdates() {
         onProgress: (got, total) => { if (!e.sender.isDestroyed()) e.sender.send("update-progress", { got, total }); },
       });
       if (!e.sender.isDestroyed()) e.sender.send("update-progress", { got: u.size, total: u.size, unpacking: true });
-      await new Promise((r) => setImmediate(r));
-      updateState.staged = updates.extractApp(dmg, UPDATE_DIR, u.version);
+      updateState.staged = await updates.extractApp(dmg, UPDATE_DIR, u.version);
       return { ready: true, version: u.version };
     } catch (err) {
       fs.rmSync(UPDATE_DIR, { recursive: true, force: true });

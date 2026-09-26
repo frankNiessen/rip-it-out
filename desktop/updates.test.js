@@ -108,7 +108,7 @@ function fakeApp(dir, version) {
   return app;
 }
 
-test("the app comes out of the DMG with the announced version", { skip: process.platform !== "darwin" }, () => {
+test("the app comes out of the DMG with the announced version", { skip: process.platform !== "darwin" }, async () => {
   const dir = tmp();
   try {
     const src = path.join(dir, "src");
@@ -118,13 +118,13 @@ test("the app comes out of the DMG with the announced version", { skip: process.
     assert.equal(spawnSync("hdiutil", ["create", "-quiet", "-srcfolder", src, "-format", "UDZO", dmg]).status, 0);
     const out = path.join(dir, "out");
     fs.mkdirSync(out);
-    const staged = updates.extractApp(dmg, out, "0.5.0");
+    const staged = await updates.extractApp(dmg, out, "0.5.0");
     assert.ok(fs.existsSync(path.join(staged, "Contents", "MacOS", "run")));
     assert.ok(!fs.existsSync(dmg));
 
     const dmg2 = path.join(dir, "RipItOut-0.6.0.dmg");
     assert.equal(spawnSync("hdiutil", ["create", "-quiet", "-srcfolder", src, "-format", "UDZO", dmg2]).status, 0);
-    assert.throws(() => updates.extractApp(dmg2, out, "0.6.0"), /version 0.5.0/);
+    await assert.rejects(updates.extractApp(dmg2, out, "0.6.0"), /version 0.5.0/);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
