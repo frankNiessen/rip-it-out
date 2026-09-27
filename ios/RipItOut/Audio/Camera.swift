@@ -16,12 +16,20 @@ final class Camera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unc
     private(set) var device: AVCaptureDevice?
 
     // only touched on `queue`
-    private var writer: AVAssetWriter?
-    private var input: AVAssetWriterInput?
+    /// A video file ready to be written, made while the camera shows its picture: the
+    /// first one set up the video encoder, which held everything up for two seconds
+    /// (and the click and the recording with it) when it happened on pressing Record.
+    private struct Prepared {
+        let writer: AVAssetWriter
+        let input: AVAssetWriterInput
+        let url: URL
+        let angle: CGFloat
+    }
+    private var prepared: Prepared?
+    private var active: Prepared?  // the one being recorded
+    private var wantAngle: CGFloat = 90
     private var recording = false
     private var firstHost: Double?
-    private var url: URL?
-    private var transform = CGAffineTransform.identity
 
     static var permission: AVAuthorizationStatus { AVCaptureDevice.authorizationStatus(for: .video) }
 
@@ -58,6 +66,7 @@ final class Camera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unc
             }
             session.commitConfiguration()
             configuredPosition = position
+            queue.sync { discardPrepared() } // made for the other camera's frames
             self.device = device
             rotation = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: nil)
         }
@@ -69,21 +78,20 @@ final class Camera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unc
 
     func stop() {
         if session.isRunning { session.stopRunning() }
+        queue.sync { discardPrepared() }
     }
 
     var isRunning: Bool { session.isRunning }
 
     func startRecording() {
         // Which way up, fixed for the whole video: stored as the file's rotation, not by
-        // turning the camera's output while recording starts (that reconfigured the
-        // capture, and the audio with it: the click died).
+        // turning the camera's output while recording starts.
         let angle = rotation?.videoRotationAngleForHorizonLevelCapture ?? 90
-        let turn = CGAffineTransform(rotationAngle: (angle - 90) * .pi / 180)
         queue.sync {
-            transform = turn
-            url = FileManager.default.temporaryDirectory.appendingPathComponent("video-\(UUID().uuidString.prefix(8)).mp4")
-            writer = nil
-            input = nil
+            wantAngle = angle
+            if prepared?.angle != angle { discardPrepared() } // held another way: made at the first frame
+            active = prepared
+            prepared = nil
             firstHost = nil
             recording = true
         }
@@ -92,45 +100,73 @@ final class Camera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unc
     /// Finishes the file. Returns it and the host time of its first frame, or nil if
     /// no frame was recorded.
     func stopRecording() async -> (url: URL, firstHost: Double)? {
-        let state: (AVAssetWriter?, AVAssetWriterInput?, Double?, URL?) = queue.sync {
+        let state: (Prepared?, Double?) = queue.sync {
             recording = false
-            return (writer, input, firstHost, url)
+            defer { active = nil }
+            return (active, firstHost)
         }
-        guard let writer = state.0, let first = state.2, let url = state.3, writer.status == .writing else { return nil }
-        state.1?.markAsFinished()
-        await writer.finishWriting()
-        return writer.status == .completed ? (url, first) : nil
+        guard let p = state.0 else { return nil }
+        guard let first = state.1, p.writer.status == .writing else {
+            p.writer.cancelWriting()
+            try? FileManager.default.removeItem(at: p.url)
+            return nil
+        }
+        p.input.markAsFinished()
+        await p.writer.finishWriting()
+        return p.writer.status == .completed ? (p.url, first) : nil
+    }
+
+    private func discardPrepared() {
+        guard let p = prepared else { return }
+        p.writer.cancelWriting()
+        try? FileManager.default.removeItem(at: p.url)
+        prepared = nil
+    }
+
+    /// A writer for frames like this one, already writing (the encoder set up).
+    private func makeWriter(like sample: CMSampleBuffer, angle: CGFloat) -> Prepared? {
+        guard let image = CMSampleBufferGetImageBuffer(sample) else { return nil }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("video-\(UUID().uuidString.prefix(8)).mp4")
+        guard let w = try? AVAssetWriter(outputURL: url, fileType: .mp4) else { return nil }
+        let settings: [String: Any] = [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: CVPixelBufferGetWidth(image),
+            AVVideoHeightKey: CVPixelBufferGetHeight(image),
+            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: 6_000_000],
+        ]
+        let i = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
+        i.expectsMediaDataInRealTime = true
+        i.transform = CGAffineTransform(rotationAngle: (angle - 90) * .pi / 180)
+        guard w.canAdd(i) else { return nil }
+        w.add(i)
+        w.shouldOptimizeForNetworkUse = true
+        let t = PlayerEngine.hostNow
+        guard w.startWriting() else { return nil }
+        Log.write("video writer ready (took \(Log.ms(PlayerEngine.hostNow - t)))")
+        return Prepared(writer: w, input: i, url: url, angle: angle)
     }
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-        guard recording, let url else { return }
+        guard recording else {
+            // Showing the picture: have the next video file ready.
+            if prepared == nil {
+                let angle = rotation?.videoRotationAngleForHorizonLevelCapture ?? 90
+                prepared = makeWriter(like: sampleBuffer, angle: angle)
+            }
+            return
+        }
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-        if writer == nil {
-            guard let image = CMSampleBufferGetImageBuffer(sampleBuffer),
-                  let w = try? AVAssetWriter(outputURL: url, fileType: .mp4) else { return }
-            let settings: [String: Any] = [
-                AVVideoCodecKey: AVVideoCodecType.h264,
-                AVVideoWidthKey: CVPixelBufferGetWidth(image),
-                AVVideoHeightKey: CVPixelBufferGetHeight(image),
-                AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: 6_000_000],
-            ]
-            let i = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
-            i.expectsMediaDataInRealTime = true
-            i.transform = transform
-            guard w.canAdd(i) else { return }
-            w.add(i)
-            w.shouldOptimizeForNetworkUse = true
-            guard w.startWriting() else { return }
-            w.startSession(atSourceTime: pts)
-            writer = w
-            input = i
+        if active == nil { active = makeWriter(like: sampleBuffer, angle: wantAngle) }
+        guard let p = active, p.writer.status == .writing else { return }
+        if firstHost == nil {
+            p.writer.startSession(atSourceTime: pts)
             // The capture clock to the host clock, which the audio engine uses too.
             let clock = session.synchronizationClock ?? CMClockGetHostTimeClock()
             firstHost = CMSyncConvertTime(pts, from: clock, to: CMClockGetHostTimeClock()).seconds
-            if let firstHost { Log.write("video first frame: \(Log.ms(firstHost - PlayerEngine.hostNow)) from now (capture clock \(clock === CMClockGetHostTimeClock() ? "is" : "isn't") the host clock)") }
+            if let firstHost { Log.write("video first frame: \(Log.ms(firstHost - PlayerEngine.hostNow)) from now") }
         }
-        if let input, input.isReadyForMoreMediaData {
-            input.append(sampleBuffer)
+        if p.input.isReadyForMoreMediaData {
+            p.input.append(sampleBuffer)
         }
     }
 }
