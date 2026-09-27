@@ -131,18 +131,24 @@ final class Recorder {
     /// when it closes.
     var recordPageOpen = false {
         didSet {
-            if !recordPageOpen {
+            guard recordPageOpen != oldValue else { return }
+            if recordPageOpen {
+                player.setRecordingSession(true)
+                refreshInputs()
+            } else {
                 releaseInput()
                 Task { await updateCamera(active: false) }
             }
         }
     }
 
-    /// Switches the microphone off unless something is being recorded or calibrated.
+    /// Switches the microphone off unless something is being recorded or calibrated, and
+    /// outside the Record page goes back to a playback-only session.
     func releaseInput() {
         guard state == .idle else { return }
         if tapInstalled { stopCapture() }
         player.disableInput()
+        if !recordPageOpen { player.setRecordingSession(false) }
     }
 
     /// The app goes to the background: save a take being recorded, then let go of the

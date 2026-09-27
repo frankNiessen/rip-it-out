@@ -192,8 +192,8 @@ final class LibraryStore {
     func song(_ id: String) -> Song? { songs.first { $0.id == id } }
 
     /// Takes of a song, newest first. Blocks while take.json files download.
-    nonisolated static func takes(of song: URL) -> [Take] {
-        if let remote = Files.remote, remote.relative(song) != nil {
+    nonisolated static func takes(of song: URL, sync: Bool = true) -> [Take] {
+        if sync, let remote = Files.remote, remote.relative(song) != nil {
             try? remote.syncTakes(song.lastPathComponent)
         }
         let root = song.appendingPathComponent("takes")

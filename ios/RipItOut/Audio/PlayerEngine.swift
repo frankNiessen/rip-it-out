@@ -62,10 +62,12 @@ final class PlayerEngine {
 
     // MARK: - session and engine
 
+    /// Playback only, until a Record page opens: then iOS doesn't count the microphone
+    /// as in use (no orange dot) while you practise or listen back.
     private func configureSession() {
         let session = AVAudioSession.sharedInstance()
         do {
-            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP])
+            try session.setCategory(.playback, mode: .default, options: [])
             try session.setPreferredIOBufferDuration(0.005)
             try session.setActive(true)
         } catch {
@@ -113,6 +115,25 @@ final class PlayerEngine {
             return "The input \(session.currentRoute.inputs.first?.portName ?? "?") reports \(Int(hw.sampleRate)) Hz with \(hw.channelCount) channels."
         }
         return nil
+    }
+
+    /// The session for recording (the Record page: inputs can be listed and chosen) or
+    /// for playback only (everywhere else).
+    func setRecordingSession(_ on: Bool) {
+        let session = AVAudioSession.sharedInstance()
+        let isRecord = session.category == .playAndRecord
+        guard on != isRecord else { return }
+        do {
+            if on {
+                try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP])
+            } else {
+                try session.setCategory(.playback, mode: .default, options: [])
+            }
+            try session.setActive(true)
+        } catch {
+            self.error = "Audio session: \(error.localizedDescription)"
+        }
+        startEngine()
     }
 
     /// Switches the microphone off again (leaving Record, the app going to the

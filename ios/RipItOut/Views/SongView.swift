@@ -90,6 +90,7 @@ struct SongView: View {
         if let note = recorder.note {
             Text(note).font(.system(size: 13)).foregroundStyle(Theme.muted)
         }
+        RecordSetup()
         CameraBox()
         TakesView(song: song, takes: takes)
     }
@@ -475,6 +476,37 @@ struct Caption: View {
 
 /// The song's takes: tap one to play it with the song (the "My take" fader), Delete
 /// throws a bad one away. Timing, level and names are changed on the desktop.
+/// What you record with, right where you record: the input, the latency and Calibrate.
+struct RecordSetup: View {
+    @Environment(Recorder.self) private var recorder
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Menu {
+                Picker("Input", selection: Binding(get: { recorder.selectedInputUID ?? "" }, set: { recorder.selectInput($0) })) {
+                    ForEach(recorder.inputs, id: \.uid) { Text($0.portName).tag($0.uid) }
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "mic")
+                    Text(recorder.inputName)
+                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
+                }
+            }
+            .buttonStyle(QuietButtonStyle())
+            .disabled(recorder.state != .idle)
+            Text("\(Int(recorder.latencyMs)) ms").font(Theme.mono(12)).foregroundStyle(Theme.muted)
+            Spacer(minLength: 0)
+            Button(recorder.state == .calibrating ? "Calibrating…" : "Calibrate") { Task { await recorder.calibrate() } }
+                .buttonStyle(QuietButtonStyle())
+                .disabled(recorder.state != .idle)
+        }
+        if let note = recorder.calibrationNote, recorder.state == .calibrating || !note.isEmpty {
+            Text(note).font(.system(size: 13)).foregroundStyle(Theme.muted)
+        }
+    }
+}
+
 /// The song's takes, newest first. Each opens the take page (watch and listen).
 struct TakesView: View {
     let song: Song

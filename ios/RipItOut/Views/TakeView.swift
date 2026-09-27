@@ -36,6 +36,7 @@ struct TakeView: View {
                                 if player.isPlaying { player.pause() } else { player.play(countInBars: 0) }
                             }
                             .buttonStyle(PrimaryButtonStyle())
+                            .disabled(player.loading || player.take?.id != take.id)
                             Button { player.seek(player.takeStart(take)) } label: { Image(systemName: "backward.end.fill") }
                                 .buttonStyle(QuietButtonStyle())
                                 .accessibilityLabel("From the start of the take")
@@ -64,11 +65,25 @@ struct TakeView: View {
             } else if missing {
                 ContentUnavailableView("Take not found", systemImage: "waveform",
                                        description: Text("It may have been deleted on another device."))
+                    .padding(.top, 60)
             } else {
-                Text("Loading…").font(Theme.mono(12)).foregroundStyle(Theme.muted).padding(.top, 40)
+                VStack(spacing: 10) {
+                    ProgressView().tint(Theme.muted)
+                    Text("Finding the take…").font(Theme.mono(12)).foregroundStyle(Theme.muted)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, 80)
             }
         }
-        .background(Theme.bg)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.bg.ignoresSafeArea())
+        .overlay {
+            if player.loading {
+                Text("Loading the song and your take…").font(Theme.mono(12)).foregroundStyle(Theme.ink)
+                    .padding(14).background(Theme.panel, in: .rect(cornerRadius: 3))
+                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.line, lineWidth: 1))
+            }
+        }
         .navigationTitle("Take")
         .navigationBarTitleDisplayMode(.inline)
         .themedNavigation()
@@ -132,9 +147,14 @@ struct TakeView: View {
     private func open() async {
         recorder.recordPageOpen = false // no microphone, no camera while watching
         guard let song else { missing = true; return }
-        let folder = song.folder
-        let all = await Task.detached { LibraryStore.takes(of: folder) }.value
-        guard let t = all.first(where: { $0.id == takeID }) else { missing = true; return }
+        let folder = song.folder, id = takeID
+        // The copy on this device first, so the page is there at once; the server only
+        // if the take isn't here yet (recorded on another device).
+        var t = await Task.detached { LibraryStore.takes(of: folder, sync: false).first { $0.id == id } }.value
+        if t == nil {
+            t = await Task.detached { LibraryStore.takes(of: folder).first { $0.id == id } }.value
+        }
+        guard let t else { missing = true; return }
         take = t
         await player.load(song)
         player.bandLevel = Float(band)
