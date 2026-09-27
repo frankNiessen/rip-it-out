@@ -128,11 +128,8 @@ struct SongView: View {
             .themedNavigation()
             .toolbar(.hidden, for: .tabBar)
             .task(id: song.id) { await open(song) }
-            .onAppear {
-                if openInRecord { modeRaw = Mode.record.rawValue }
-                applyMode()
-            }
-            .onChange(of: modeRaw) { applyMode() }
+            .onAppear { applyMode() }
+            .onChange(of: modeRaw) { applyMode(entering: true) }
             .onChange(of: recorder.lastSaved?.id) { Task { await loadTakes(song) } }
             .onChange(of: recorder.cameraOn) { Task { await recorder.updateCamera(active: mode == .record) } }
             .onChange(of: recorder.frontCamera) { Task { await recorder.updateCamera(active: mode == .record) } }
@@ -141,13 +138,17 @@ struct SongView: View {
             } message: { Text(player.error ?? "") }
     }
 
-    /// The microphone and the camera only in Record.
-    private func applyMode() {
+    /// The microphone and the camera only in Record. `entering`: the switch to Record (or
+    /// opening the song in it), not coming back to the page.
+    private func applyMode(entering: Bool = false) {
         recorder.recordPageOpen = mode == .record
-        if mode == .record {
+        guard mode == .record else { return }
+        if entering {
+            player.pause() // Record starts the song itself
             if player.loop != nil { player.setLoop(nil) } // a take is one pass through the song
-            Task { await recorder.updateCamera(active: true) }
+            recorder.cameraOn = false // video only when you switch it on
         }
+        Task { await recorder.updateCamera(active: true) }
     }
 
     private var errorShown: Binding<Bool> {
@@ -156,6 +157,8 @@ struct SongView: View {
 
     private func open(_ song: Song) async {
         lastSong = song.id
+        if openInRecord && mode != .record { modeRaw = Mode.record.rawValue } // onChange does the rest
+        else if mode == .record { applyMode(entering: true) }
         await player.load(song)
         if player.take != nil { await player.loadTake(nil) } // takes play on their own page
         await loadTakes(song)
@@ -227,6 +230,12 @@ struct SongTimeline: View {
 
     /// The visible part of the song: all of it, or zoomed in around the playhead.
     private func window(_ duration: Double) -> (start: Double, span: Double) {
+        if let L = player.loop {
+            // a loop fills the view, with a little of what's around it
+            let pad = max(1, (L.b - L.a) * 0.08)
+            let start = max(0, L.a - pad), end = min(duration, L.b + pad)
+            return (start, max(0.5, end - start))
+        }
         let zoom = max(1, player.zoom)
         let span = duration / zoom
         guard zoom > 1 else { return (0, duration) }
@@ -354,7 +363,7 @@ struct TransportView: View {
         let busy = recorder.state == .saving || recorder.state == .calibrating
         VStack(alignment: .leading, spacing: 10) {
             // one main action per mode: Play in Practice, Record in Record
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 if mode == .practice {
                     Button { player.toggle() } label: {
                         Label(player.isPlaying ? "Pause" : "Play", systemImage: player.isPlaying ? "pause.fill" : "play.fill")
@@ -365,42 +374,40 @@ struct TransportView: View {
                         .buttonStyle(RecordButtonStyle(recording: recording))
                         .disabled(busy)
                 }
-                Button { player.seek(player.loop?.a ?? 0) } label: {
-                    Label(player.loop == nil ? "Start" : "Loop start", systemImage: "backward.end.fill")
-                }
-                .buttonStyle(QuietButtonStyle())
-                .disabled(recording)
+                Button { player.seek(player.loop?.a ?? 0) } label: { Image(systemName: "backward.end.fill") }
+                    .buttonStyle(QuietButtonStyle())
+                    .disabled(recording)
+                    .accessibilityLabel(player.loop == nil ? "To the start" : "To the start of the loop")
                 if mode == .practice {
                     Button { player.toggleSectionLoop() } label: { Label("Loop", systemImage: "repeat") }
                         .buttonStyle(QuietButtonStyle(on: player.loop != nil))
                 }
                 Spacer(minLength: 0)
-            }
-            SectionStrip(locked: recording)
-            HStack(spacing: 6) {
                 Menu {
                     Picker("Count-in", selection: $player.countInBars) {
                         Text("No count-in").tag(0)
-                        Text("1 bar").tag(1)
-                        Text("2 bars").tag(2)
+                        Text("Count-in 1 bar").tag(1)
+                        Text("Count-in 2 bars").tag(2)
                     }
                 } label: {
-                    HStack(spacing: 5) {
-                        Text(player.countInBars == 0 ? "No count-in" : player.countInBars == 1 ? "Count-in: 1 bar" : "Count-in: 2 bars")
-                        Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
+                    HStack(spacing: 3) {
+                        Image(systemName: "metronome")
+                        Text(player.countInBars == 0 ? "–" : "\(player.countInBars)")
                     }
                 }
-                .buttonStyle(QuietButtonStyle())
+                .buttonStyle(QuietButtonStyle(on: player.countInBars > 0))
                 .disabled(recording)
-                Spacer(minLength: 0)
+                .accessibilityLabel("Count-in")
                 if mode == .record {
                     Button { recorder.cameraOn.toggle() } label: {
-                        Label(recorder.cameraOn ? "Video on" : "Video off", systemImage: recorder.cameraOn ? "video.fill" : "video.slash")
+                        Image(systemName: recorder.cameraOn ? "video.fill" : "video.slash")
                     }
                     .buttonStyle(QuietButtonStyle(on: recorder.cameraOn))
                     .disabled(recording)
+                    .accessibilityLabel(recorder.cameraOn ? "Video on" : "Video off")
                 }
             }
+            SectionStrip(locked: recording)
             if recording {
                 TimelineView(.animation(minimumInterval: 1 / 20)) { _ in
                     HStack(spacing: 8) {
@@ -550,25 +557,10 @@ struct Caption: View {
                     .overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.lineStrong, lineWidth: 1))
                     .accessibilityLabel("Zoom")
                 }
-                if let L = player.loop {
-                    HStack(spacing: 8) {
-                        Image(systemName: "repeat").foregroundStyle(Theme.accent)
-                        Text(loopLabel(L)).font(Theme.mono(12)).foregroundStyle(Theme.accent).lineLimit(1)
-                        Spacer(minLength: 0)
-                        Button("End loop") { player.setLoop(nil) }
-                            .buttonStyle(QuietButtonStyle())
-                    }
-                }
             }
         }
     }
 
-    private func loopLabel(_ L: PlayerEngine.Loop) -> String {
-        let a = Grid.lastLE(player.grid.downbeats, L.a + 0.05) + 1
-        let b = Grid.lastLE(player.grid.downbeats, L.b - 0.05) + 1
-        let name = player.song?.manifest.sections?.first { abs($0.start - L.a) < 0.05 && abs($0.end - L.b) < 0.05 }?.label
-        return name.map { "\($0) · bars \(a) to \(b)" } ?? "Bars \(a) to \(b)"
-    }
 }
 
 /// The song's takes: tap one to play it with the song (the "My take" fader), Delete
