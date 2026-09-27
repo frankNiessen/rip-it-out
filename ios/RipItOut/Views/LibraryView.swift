@@ -1,0 +1,194 @@
+import SwiftUI
+
+struct RootView: View {
+    @Environment(LibraryStore.self) private var library
+
+    var body: some View {
+        if library.folder == nil {
+            WelcomeView()
+        } else {
+            NavigationStack {
+                LibraryView()
+                    .navigationDestination(for: String.self) { id in SongView(songID: id) }
+            }
+        }
+    }
+}
+
+struct WelcomeView: View {
+    @Environment(LibraryStore.self) private var library
+    @State private var picking = false
+    @State private var signingIn = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Spacer()
+            Logo(size: 30)
+            Text("Play along with your songs and record yourself. Connect to the library the desktop app fills: on your Nextcloud, or in a folder in the Files app (iCloud Drive, On My iPhone).")
+                .font(.system(size: 15))
+                .foregroundStyle(Theme.muted)
+            if library.checking {
+                Text("Opening the folder…").font(Theme.mono(12)).foregroundStyle(Theme.muted)
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    Button("Connect to Nextcloud") { signingIn = true }
+                        .buttonStyle(PrimaryButtonStyle())
+                    Button("Choose a folder in Files") { picking = true }
+                        .buttonStyle(QuietButtonStyle())
+                }
+            }
+            if let error = library.error {
+                Text(error).foregroundStyle(Theme.fail).font(.system(size: 13))
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 28)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .background(Theme.bg)
+        .folderPicker(isPresented: $picking)
+        .sheet(isPresented: $signingIn) { NextcloudLoginView() }
+    }
+}
+
+/// The desktop's header mark: a small lime square (the "power LED") and the name.
+struct Logo: View {
+    var size: CGFloat = 18
+
+    var body: some View {
+        HStack(spacing: size * 0.45) {
+            Rectangle().fill(Theme.accent).frame(width: size * 0.42, height: size * 0.42)
+            Text("Rip It Out").font(.system(size: size, weight: .heavy).width(.expanded)).foregroundStyle(Theme.ink)
+        }
+    }
+}
+
+extension View {
+    func folderPicker(isPresented: Binding<Bool>) -> some View {
+        modifier(FolderPicker(isPresented: isPresented))
+    }
+}
+
+private struct FolderPicker: ViewModifier {
+    @Environment(LibraryStore.self) private var library
+    @Binding var isPresented: Bool
+    @State private var answered = false
+
+    func body(content: Content) -> some View {
+        content
+            .fileImporter(isPresented: $isPresented, allowedContentTypes: [.folder]) { result in
+                answered = true
+                switch result {
+                case .success(let url): library.choose(url)
+                case .failure(let error): library.error = "Couldn't open that folder: \(error.localizedDescription)"
+                }
+            }
+            .onChange(of: isPresented) { was, now in
+                if now { answered = false; return }
+                guard was else { return }
+                // When the storage app can't prepare the folder, the picker closes without
+                // handing over anything (and without an error). Say so instead of doing nothing.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    guard !answered, !library.checking else { return }
+                    library.error = "No folder was opened. If you tapped Open, the storage app couldn't prepare it: "
+                        + "open the folder once in the Files app and wait until its songs are listed, then try again."
+                }
+            }
+    }
+}
+
+struct LibraryView: View {
+    @Environment(LibraryStore.self) private var library
+    @State private var search = ""
+    @State private var settings = false
+
+    private func matches(_ s: Song) -> Bool {
+        search.isEmpty || s.title.localizedCaseInsensitiveContains(search) || s.artist.localizedCaseInsensitiveContains(search)
+            || s.group.localizedCaseInsensitiveContains(search)
+    }
+
+    var body: some View {
+        List {
+            if let error = library.error, !library.songs.isEmpty {
+                Text(error).font(.system(size: 13)).foregroundStyle(Theme.muted)
+                    .listRowBackground(Theme.bg)
+            }
+            if library.pending > 0 {
+                Text("\(library.pending) songs couldn't be fetched yet, trying again…")
+                    .font(Theme.mono(11)).foregroundStyle(Theme.muted)
+                    .listRowBackground(Theme.bg)
+            }
+            ForEach(library.groups) { group in
+                let songs = group.songs.filter(matches)
+                if !songs.isEmpty {
+                    Section {
+                        ForEach(songs) { song in
+                            NavigationLink(value: song.id) { SongRow(song: song) }
+                                .listRowBackground(Theme.bg)
+                                .listRowSeparatorTint(Theme.line)
+                        }
+                    } header: {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(group.name.isEmpty ? "No group" : group.name)
+                                .font(.system(size: 17, weight: .bold)).foregroundStyle(Theme.ink)
+                            Text("\(songs.count) \(songs.count == 1 ? "song" : "songs")")
+                                .font(Theme.mono(12)).foregroundStyle(Theme.muted)
+                        }
+                        .textCase(nil)
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+        }
+        .listStyle(.plain)
+        .themedList()
+        .overlay {
+            if library.songs.isEmpty && !library.loading && library.pending == 0 {
+                ContentUnavailableView("No songs yet", systemImage: "music.note.list",
+                                       description: Text(library.error ?? "Songs you add in Rip It Out on your Mac appear here once \(library.folderName) has synced."))
+            } else if library.songs.isEmpty && library.loading {
+                ProgressView("Fetching the song list from \(library.folderName)…")
+            }
+        }
+        .searchable(text: $search)
+        .refreshable { await library.reload() }
+        .navigationTitle("Library")
+        .navigationBarTitleDisplayMode(.inline)
+        .themedNavigation()
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) { Logo() }
+            ToolbarItem(placement: .principal) { Text("") }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { settings = true } label: { Image(systemName: "gearshape").foregroundStyle(Theme.muted) }
+            }
+        }
+        .sheet(isPresented: $settings) { SettingsView() }
+    }
+}
+
+struct SongRow: View {
+    let song: Song
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(song.title).font(.system(size: 16, weight: .semibold)).foregroundStyle(Theme.ink)
+                if !song.artist.isEmpty {
+                    Text(song.artist).font(.system(size: 14)).foregroundStyle(Theme.muted)
+                }
+                if song.takeCount > 0 {
+                    Text(song.takeCount == 1 ? "1 take" : "\(song.takeCount) takes")
+                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.ink)
+                }
+            }
+            Spacer(minLength: 8)
+            if let bpm = song.manifest.bpm {
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    Text("\(Int(bpm.rounded()))").font(.system(size: 16, weight: .semibold)).foregroundStyle(Theme.ink)
+                    Text("bpm").font(Theme.mono(11)).foregroundStyle(Theme.muted)
+                }
+            }
+            Text(Theme.time(song.manifest.durationS)).font(Theme.mono(13)).foregroundStyle(Theme.muted)
+        }
+        .padding(.vertical, 4)
+    }
+}

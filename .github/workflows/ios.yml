@@ -1,0 +1,33 @@
+# Builds the iOS app and runs its unit tests in the simulator. Nothing is signed:
+# to run the app on an iPhone, open ios/RipItOut.xcodeproj in Xcode (see ios/README.md).
+name: iOS app
+
+on:
+  push:
+    paths: ["ios/**", ".github/workflows/ios.yml"]
+  pull_request:
+    paths: ["ios/**", ".github/workflows/ios.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode version
+        run: xcodebuild -version
+
+      - name: Build and test
+        run: |
+          # the newest available iPhone simulator
+          UDID=$(xcrun simctl list devices available -j \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print([x["udid"] for k in sorted(d) if "iOS" in k for x in d[k] if x["name"].startswith("iPhone")][-1])')
+          set -o pipefail
+          xcodebuild test -project RipItOut.xcodeproj -scheme RipItOut \
+            -destination "id=$UDID" CODE_SIGNING_ALLOWED=NO 2>&1 \
+            | tee build.log | (grep -E "error:|warning:|Test Case|\*\* " || true)
