@@ -39,7 +39,12 @@ final class PlayerEngine {
     @ObservationIgnored private var settleUntil: Double = 0 // our own engine rebuild, not a device change
     @ObservationIgnored private var players: [String: AVAudioPlayerNode] = [:]
     @ObservationIgnored private var files: [String: AVAudioFile] = [:]
-    @ObservationIgnored private let countPlayer = AVAudioPlayerNode()
+    @ObservationIgnored private var countPlayer = AVAudioPlayerNode()
+    /// When the song's first player really played `pos0` (host seconds), read back from
+    /// the render timeline once it runs: a start can come later than asked for (right
+    /// after the input was switched on), and a take placed by the asked-for time would
+    /// then be out of sync.
+    @ObservationIgnored private(set) var measuredStartHost: Double?
     @ObservationIgnored private var generation = 0
     private var offset: Double = 0   // observed: the playhead follows a jump while stopped
     @ObservationIgnored private var pos0: Double = 0
@@ -81,10 +86,11 @@ final class PlayerEngine {
     @ObservationIgnored private var startError: Error?
 
     // Audio buffers: 5 ms was too little for five tracks plus the input (short crackles).
-    // Recording keeps them short (the take's delay is calibrated); playback alone can
-    // take longer ones.
+    // One size for playing and recording: changing it makes iOS rebuild the audio route
+    // (another crackle), and the delay it adds is part of the calibrated latency (you
+    // don't listen to yourself through the phone).
     nonisolated static let playbackBuffer = 0.02
-    nonisolated static let recordBuffer = 0.01
+    nonisolated static let recordBuffer = 0.02
 
     /// The tracks together can go over full scale (separated stems don't add up exactly):
     /// a peak limiter before the output keeps that from crackling.
@@ -189,12 +195,17 @@ final class PlayerEngine {
         old.detach(countPlayer)
         if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
 
+        // New player nodes as well: a node moved from one engine to another didn't
+        // always start at the time it was given (a silent count-in, clicks out of step).
         let fresh = AVAudioEngine()
         if withInput { _ = fresh.inputNode } // before anything runs, so the engine starts with the input
+        countPlayer = AVAudioPlayerNode()
         fresh.attach(countPlayer)
         fresh.connect(countPlayer, to: fresh.mainMixerNode, format: AudioIO.stereo(44100))
-        for (key, p) in players {
+        for key in Array(players.keys) {
             guard let file = files[key] else { continue }
+            let p = AVAudioPlayerNode()
+            players[key] = p
             fresh.attach(p)
             fresh.connect(p, to: fresh.mainMixerNode, format: file.processingFormat)
             p.volume = effectiveLevel(key)
@@ -490,7 +501,10 @@ final class PlayerEngine {
         let lead = plan.clicks.first.map { max(0, plan.pos - $0.s) } ?? 0
         // With a count-in its clicks are the first sounds after silence: give the output a
         // moment (some USB interfaces swallow the first fraction of a second).
-        let start = Self.hostNow + (plan.clicks.isEmpty ? 0.12 : 0.3) + lead
+        // An engine that has only just started needs a moment before it keeps time.
+        let warming = engine.outputNode.lastRenderTime?.isHostTimeValid != true
+        let start = Self.hostNow + (plan.clicks.isEmpty ? 0.12 : 0.3) + (warming ? 0.3 : 0) + lead
+        measuredStartHost = nil
 
         generation += 1
         let gen = generation
@@ -631,7 +645,22 @@ final class PlayerEngine {
         song?.manifest.sections?.last { $0.start <= t + 0.01 }
     }
 
+    /// Host seconds at which a player's sample 0 plays, from its render timeline; nil
+    /// until it has rendered.
+    nonisolated static func actualStart(_ node: AVAudioPlayerNode) -> Double? {
+        guard let nt = node.lastRenderTime, nt.isHostTimeValid, nt.isSampleTimeValid,
+              let pt = node.playerTime(forNodeTime: nt), pt.isSampleTimeValid, pt.sampleRate > 0 else { return nil }
+        return AVAudioTime.seconds(forHostTime: nt.hostTime) - Double(pt.sampleTime) / pt.sampleRate
+    }
+
+    /// When the calibration clicks really started (see `actualStart`).
+    func measuredClicksStart() -> Double? { Self.actualStart(countPlayer) }
+
     private func checkEnd() {
+        if isPlaying, measuredStartHost == nil, Self.hostNow > startHost + 0.3,
+           let p = players.first(where: { $0.key != "take" })?.value, let t = Self.actualStart(p) {
+            measuredStartHost = t
+        }
         guard isPlaying, activeLoop == nil, pos0 + Self.hostNow - startHost >= duration else { return }
         stopAll()
         offset = duration

@@ -400,21 +400,16 @@ struct TransportView: View {
                         .buttonStyle(QuietButtonStyle(on: player.loop != nil))
                 }
                 Spacer(minLength: 0)
-                Menu {
-                    Picker("Count-in", selection: $player.countInBars) {
-                        Text("No count-in").tag(0)
-                        Text("Count-in 1 bar").tag(1)
-                        Text("Count-in 2 bars").tag(2)
-                    }
-                } label: {
+                // count-in: off, 1 bar, 2 bars, off, one tap each
+                Button { player.countInBars = (player.countInBars + 1) % 3 } label: {
                     HStack(spacing: 3) {
                         Image(systemName: "metronome")
-                        Text(player.countInBars == 0 ? "–" : "\(player.countInBars)")
+                        Text(player.countInBars == 0 ? "–" : "\(player.countInBars)").monospacedDigit()
                     }
                 }
                 .buttonStyle(QuietButtonStyle(on: player.countInBars > 0))
                 .disabled(recording)
-                .accessibilityLabel("Count-in")
+                .accessibilityLabel(player.countInBars == 0 ? "No count-in" : "Count-in \(player.countInBars) bar\(player.countInBars == 1 ? "" : "s")")
                 if mode == .record {
                     Button { recorder.cameraOn.toggle() } label: {
                         Image(systemName: recorder.cameraOn ? "video.fill" : "video.slash")
@@ -496,7 +491,6 @@ struct MixerView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 6)
-        .background(key == "take" ? Theme.accent.opacity(0.08) : Color.clear, in: .rect(cornerRadius: 3))
     }
 }
 

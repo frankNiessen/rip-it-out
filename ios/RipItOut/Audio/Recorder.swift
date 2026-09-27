@@ -303,6 +303,7 @@ final class Recorder {
     func stopRecording() async {
         guard state == .recording, let cap = capture, let started, let song = player.song else { return }
         player.onEnded = nil
+        let measured = player.measuredStartHost
         player.pause()
         stopCapture()
         capture = nil
@@ -315,7 +316,10 @@ final class Recorder {
             note = "Nothing was captured."
             return
         }
-        let captureStartS = started.pos + (first - started.host)
+        // Where the song really started (read from the render timeline) rather than
+        // where it was asked to; they differ when the start came late.
+        let songHost = measured.flatMap { abs($0 - started.host) < 2 ? $0 : nil } ?? started.host
+        let captureStartS = started.pos + (first - songHost)
         let captureEndS = captureStartS + Double(cap.frames) / cap.sampleRate
         if captureEndS <= started.pos + 0.5 {
             cap.discard()
@@ -361,10 +365,16 @@ final class Recorder {
         let cap: Capture
         do { cap = try startCapture() } catch { calibrationNote = error.localizedDescription; return }
         defer { cap.discard(); capture = nil }
-        let t0 = PlayerEngine.hostNow + 0.6
+        var t0 = PlayerEngine.hostNow + 0.6
         player.playClicks(t0: t0, count: count, interval: interval)
         let end = t0 + Double(count) * interval + 0.5
+        var measured = false
         while PlayerEngine.hostNow < end {
+            // the clicks' real start, as for a take (see stopRecording)
+            if !measured, PlayerEngine.hostNow > t0 + 0.3, let t = player.measuredClicksStart() {
+                measured = true
+                if abs(t - t0) < 2 { t0 = t }
+            }
             let k = Int(floor((PlayerEngine.hostNow - t0) / interval))
             calibrationNote = k < 0 ? "Get ready…" : k < listen ? "Listen… \(k + 1)"
                 : "Play along with every click (\(min(count, k + 1) - listen) of \(count - listen))"
