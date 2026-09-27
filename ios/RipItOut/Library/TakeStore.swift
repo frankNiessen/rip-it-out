@@ -43,7 +43,9 @@ enum TakeStore {
         try TakeJSON.encode(json).write(to: work.appendingPathComponent("take.json"))
 
         let final = takes.appendingPathComponent(id)
-        try Files.moveIn(work, to: final)
+        // Saved on the device now; the upload to the server runs in the background.
+        try Files.moveIn(work, to: final, upload: false)
+        Files.remote?.enqueueUpload(final)
         guard let take = Take(json: json, folder: final) else { throw AudioIO.Failure.message("Couldn't read the new take") }
         return take
     }

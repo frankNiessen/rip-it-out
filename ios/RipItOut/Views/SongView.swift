@@ -90,6 +90,12 @@ struct SongView: View {
         if let note = recorder.note {
             Text(note).font(.system(size: 13)).foregroundStyle(Theme.muted)
         }
+        if let upload = Uploads.shared.text {
+            HStack(spacing: 8) {
+                if Uploads.shared.active { ProgressView().tint(Theme.muted) }
+                Text(upload).font(Theme.mono(11)).foregroundStyle(Uploads.shared.failed ? Theme.mute : Theme.muted)
+            }
+        }
         RecordSetup()
         CameraBox()
         TakesView(song: song, takes: takes)
@@ -431,7 +437,7 @@ struct MixerView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ForEach(player.trackKeys + (player.countInBars > 0 ? ["count"] : []), id: \.self) { key in
+            ForEach(player.trackKeys, id: \.self) { key in
                 let mine = key == "take"
                 let silent = player.effectiveLevel(key) == 0 && player.level(key) > 0
                 HStack(spacing: 8) {
@@ -545,14 +551,9 @@ struct Caption: View {
                     .accessibilityLabel("Zoom")
                 }
                 if let L = player.loop {
-                    Text("Loop: \(loopLabel(L))").font(Theme.mono(12)).foregroundStyle(Theme.accent).lineLimit(1)
-                }
-                if player.loop != nil {
                     HStack(spacing: 8) {
-                        Stepper2(label: "Start", back: { player.nudgeLoop(end: false, by: -1) },
-                                 forward: { player.nudgeLoop(end: false, by: 1) })
-                        Stepper2(label: "End", back: { player.nudgeLoop(end: true, by: -1) },
-                                 forward: { player.nudgeLoop(end: true, by: 1) })
+                        Image(systemName: "repeat").foregroundStyle(Theme.accent)
+                        Text(loopLabel(L)).font(Theme.mono(12)).foregroundStyle(Theme.accent).lineLimit(1)
                         Spacer(minLength: 0)
                         Button("End loop") { player.setLoop(nil) }
                             .buttonStyle(QuietButtonStyle())
@@ -566,7 +567,7 @@ struct Caption: View {
         let a = Grid.lastLE(player.grid.downbeats, L.a + 0.05) + 1
         let b = Grid.lastLE(player.grid.downbeats, L.b - 0.05) + 1
         let name = player.song?.manifest.sections?.first { abs($0.start - L.a) < 0.05 && abs($0.end - L.b) < 0.05 }?.label
-        return "bars \(a) to \(b)" + (name.map { " (\($0))" } ?? "")
+        return name.map { "\($0) · bars \(a) to \(b)" } ?? "Bars \(a) to \(b)"
     }
 }
 

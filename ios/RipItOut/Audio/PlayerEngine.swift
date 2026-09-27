@@ -317,6 +317,7 @@ final class PlayerEngine {
     // MARK: - levels
 
     func level(_ key: String) -> Float {
+        if key == "count" { return 0.8 } // the count-in has no fader: always clearly audible
         if let v = levels[key] { return v }
         let stored = UserDefaults.standard.object(forKey: "level.\(key)") as? Float
         return stored ?? (key == "click" ? 0 : key == "count" ? 0.8 : 1)

@@ -329,8 +329,10 @@ final class Nextcloud: @unchecked Sendable {
         let remote = try list("\(song)/takes").filter { $0.isDirectory && !$0.name.hasPrefix(".") }
         let root = local("\(song)/takes")
         let names = Set(remote.map(\.name))
-        for name in (try? fm.contentsOfDirectory(atPath: root.path)) ?? [] where !name.hasPrefix(".") && !names.contains(name) {
-            try? fm.removeItem(at: root.appendingPathComponent(name))
+        let waiting = Set(pendingUploads)
+        for name in (try? fm.contentsOfDirectory(atPath: root.path)) ?? []
+        where !name.hasPrefix(".") && !names.contains(name) && !waiting.contains("\(song)/takes/\(name)") {
+            try? fm.removeItem(at: root.appendingPathComponent(name)) // deleted elsewhere (not one still uploading)
         }
         let known = loadState()
         var fetched: [String: String] = [:]
@@ -382,7 +384,66 @@ final class Nextcloud: @unchecked Sendable {
 
     func deleteRemote(_ local: URL) throws {
         guard let rel = relative(local) else { return }
+        dequeueUpload(rel)
         try delete(rel)
+    }
+
+    // MARK: - uploads in the background
+
+    // Takes saved on the phone and not on the server yet (relative paths), kept on disk so
+    // an upload that didn't finish is tried again after a restart.
+    private var queueURL: URL { mirror.appendingPathComponent(".uploads.json") }
+    private let queueLock = NSLock()
+    private var uploading = false
+
+    private func readQueue() -> [String] {
+        (try? JSONSerialization.jsonObject(with: Data(contentsOf: queueURL))) as? [String] ?? []
+    }
+
+    private func writeQueue(_ q: [String]) {
+        if let data = try? JSONSerialization.data(withJSONObject: q) { try? data.write(to: queueURL, options: .atomic) }
+    }
+
+    func enqueueUpload(_ local: URL) {
+        guard let rel = relative(local) else { return }
+        queueLock.lock(); defer { queueLock.unlock() }
+        var q = readQueue()
+        if !q.contains(rel) { q.append(rel); writeQueue(q) }
+    }
+
+    private func dequeueUpload(_ rel: String) {
+        queueLock.lock(); defer { queueLock.unlock() }
+        writeQueue(readQueue().filter { $0 != rel })
+    }
+
+    var pendingUploads: [String] {
+        queueLock.lock(); defer { queueLock.unlock() }
+        return readQueue()
+    }
+
+    /// Uploads what's waiting, one take after the other. Returns (uploaded, failed, the
+    /// last error). Only one run at a time; a second call returns at once.
+    func processUploads() -> (done: Int, failed: Int, error: String?) {
+        queueLock.lock()
+        if uploading { queueLock.unlock(); return (0, 0, nil) }
+        uploading = true
+        queueLock.unlock()
+        defer { queueLock.lock(); uploading = false; queueLock.unlock() }
+        var done = 0, failed = 0
+        var lastError: String?
+        for rel in pendingUploads {
+            let folder = local(rel)
+            guard FileManager.default.fileExists(atPath: folder.path) else { dequeueUpload(rel); continue }
+            do {
+                try uploadFolder(folder)
+                dequeueUpload(rel)
+                done += 1
+            } catch {
+                failed += 1
+                lastError = error.localizedDescription
+            }
+        }
+        return (done, failed, lastError)
     }
 }
 

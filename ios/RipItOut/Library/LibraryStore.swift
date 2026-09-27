@@ -154,6 +154,7 @@ final class LibraryStore {
             return (songs, remote == nil ? waiting : failed, problem)
         }.value
         guard folder == self.folder else { return } // switched libraries meanwhile
+        Uploads.shared.run() // takes that didn't make it up last time
         songs = found
         pending = waiting
         if let problem { error = "Couldn't reach Nextcloud (\(problem)). Showing the songs on this iPhone." }

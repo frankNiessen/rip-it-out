@@ -328,6 +328,7 @@ final class Recorder {
             note = (take.peakDbfs ?? 0) < -45 ? "The take is almost silent. Check the input in Settings." : nil
             state = .idle
             lastSaved = take
+            Uploads.shared.run()
         } catch {
             note = "Saving failed: \(error.localizedDescription)"
             state = .idle

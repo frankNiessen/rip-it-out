@@ -22,9 +22,10 @@ to the last song.
 - **Play along:** a channel strip per track (drums, bass, vocals, other, click) with its
   fader, **M** (mute) and **S** (solo: hear only the soloed tracks, the click keeps
   playing unless muted), the bar and beat counter, the tempo view with the song's
-  sections, a count-in of one or two bars, and loops: tap a section to loop it, or
-  **Loop** loops the section you are in; **‹ Start ›** and **‹ End ›** move either end
-  by a bar. Mute and solo reset when the app restarts, the faders are kept.
+  sections, a count-in of one or two bars, and section loops: **Loop** loops the section
+  you are in, a section button moves the loop there. Zoom with **−** / **+** or a pinch,
+  drag or tap in the tempo view (or **‹ Bar ›**) to start anywhere. Mute and solo reset
+  when the app restarts, the faders are kept.
 - **Record:** from the built-in microphone, a headset or a USB audio interface. Latency
   is measured once with **Settings > Calibrate** (the same 20 clicks as on the desktop).
 - **Takes:** saved into the song's `takes/` folder in the desktop's format
@@ -59,7 +60,8 @@ Apple Developer account.
      sessions > Create new app password*) and the library folder, e.g. `StemLibrary`.
      The app talks to the server directly (WebDAV): the Files app can't hand whole
      Nextcloud folders to other apps. Songs are downloaded when you open them and kept
-     on the phone; takes are uploaded right after recording.
+     on the phone; takes are saved on the phone first and uploaded in the background (tried
+     again later when there's no connection).
    - **iCloud Drive or On My iPhone:** tap *Choose a folder in Files*, for example
      *iCloud Drive > Rip It Out*. On the Mac, put the library in that folder with
      *Settings > Library folder*.
