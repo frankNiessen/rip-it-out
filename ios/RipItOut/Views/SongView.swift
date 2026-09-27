@@ -87,7 +87,10 @@ struct SongView: View {
                         await video.show(player.take, engine: player)
                     }
                 }
-                .task { await recorder.updateCamera(active: mode == .record) }
+                .task {
+                    recorder.recordPageOpen = mode == .record
+                    await recorder.updateCamera(active: mode == .record)
+                }
                 .onChange(of: recorder.cameraOn) { Task { await recorder.updateCamera(active: mode == .record) } }
                 .onChange(of: recorder.frontCamera) { Task { await recorder.updateCamera(active: mode == .record) } }
                 .alert("Rip It Out", isPresented: Binding(get: { player.error != nil }, set: { if !$0 { player.error = nil } })) {
@@ -100,6 +103,7 @@ struct SongView: View {
         .onDisappear {
             player.pause()
             video.stop()
+            if mode == .record { recorder.recordPageOpen = false }
             Task { await recorder.updateCamera(active: false) }
         }
     }

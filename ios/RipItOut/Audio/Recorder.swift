@@ -123,6 +123,27 @@ final class Recorder {
         try? session.setPreferredInput(port)
     }
 
+    // MARK: - microphone on only while it's needed
+
+    /// Set while a Record page is open; the microphone is switched off when it closes.
+    var recordPageOpen = false {
+        didSet { if !recordPageOpen { releaseInput() } }
+    }
+
+    /// Switches the microphone off unless something is being recorded or calibrated.
+    func releaseInput() {
+        guard state == .idle else { return }
+        if tapInstalled { stopCapture() }
+        player.disableInput()
+    }
+
+    /// The app goes to the background: save a take being recorded, then let go.
+    func appInBackground() async {
+        if state == .recording { await stopRecording() }
+        releaseInput()
+        player.suspend()
+    }
+
     // MARK: - camera
 
     /// Starts or stops the camera preview to match the setting (while a song is open).
@@ -301,7 +322,10 @@ final class Recorder {
         try? await Task.sleep(for: .milliseconds(400)) // let the engine settle with the input on
         player.pause()
         state = .calibrating
-        defer { state = .idle }
+        defer {
+            state = .idle
+            if !recordPageOpen { releaseInput() }
+        }
         let interval = 0.5, count = 20, listen = 4
         let cap: Capture
         do { cap = try startCapture() } catch { calibrationNote = error.localizedDescription; return }

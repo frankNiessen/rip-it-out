@@ -115,7 +115,26 @@ final class PlayerEngine {
         return nil
     }
 
-    private func rebuildEngine() {
+    /// Switches the microphone off again (leaving Record, the app going to the
+    /// background): the engine is built again without the input, so iOS releases it.
+    func disableInput() {
+        guard inputEnabled else { return }
+        let was = isPlaying
+        pause()
+        inputEnabled = false
+        rebuildEngine(withInput: false)
+        if was { play(countInBars: 0) }
+    }
+
+    /// In the background with nothing playing: let go of the audio session entirely.
+    func suspend() {
+        guard !isPlaying else { return }
+        disableInput()
+        engine.stop()
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    private func rebuildEngine(withInput: Bool = true) {
         let old = engine
         old.stop()
         for p in players.values { old.detach(p) }
@@ -123,7 +142,7 @@ final class PlayerEngine {
         if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
 
         let fresh = AVAudioEngine()
-        _ = fresh.inputNode // before anything runs, so the engine starts with the input
+        if withInput { _ = fresh.inputNode } // before anything runs, so the engine starts with the input
         fresh.attach(countPlayer)
         fresh.connect(countPlayer, to: fresh.mainMixerNode, format: AudioIO.stereo(44100))
         for (key, p) in players {

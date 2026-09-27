@@ -5,6 +5,7 @@ struct RipItOutApp: App {
     @State private var library = LibraryStore()
     @State private var player: PlayerEngine
     @State private var recorder: Recorder
+    @Environment(\.scenePhase) private var phase
 
     init() {
         let player = PlayerEngine()
@@ -20,6 +21,10 @@ struct RipItOutApp: App {
                 .environment(recorder)
                 .tint(Theme.accent)
                 .preferredColorScheme(.dark)
+                .onChange(of: phase) {
+                    if phase == .background { Task { await recorder.appInBackground() } }
+                    if phase == .active { player.startEngine() }
+                }
         }
     }
 }
