@@ -101,7 +101,7 @@ struct TakeView: View {
         .background(Theme.bg.ignoresSafeArea())
         .overlay {
             if player.loading {
-                Text("Loading the song and your take…").font(Theme.mono(12)).foregroundStyle(Theme.ink)
+                Text(player.loadProgress ?? "Loading the song and your take…").font(Theme.mono(12)).foregroundStyle(Theme.ink)
                     .padding(14).background(Theme.panel, in: .rect(cornerRadius: 3))
                     .overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.line, lineWidth: 1))
             }
@@ -171,9 +171,9 @@ struct TakeView: View {
         let folder = song.folder, id = takeID
         // The copy on this device first, so the page is there at once; the server only
         // if the take isn't here yet (recorded on another device).
-        var found = await Task.detached { LibraryStore.takes(of: folder, sync: false).first { $0.id == id } }.value
+        var found = await Background.get { LibraryStore.takes(of: folder, sync: false).first { $0.id == id } }
         if found == nil {
-            found = await Task.detached { LibraryStore.takes(of: folder).first { $0.id == id } }.value
+            found = await Background.get { LibraryStore.takes(of: folder).first { $0.id == id } }
         }
         guard let t = found else { missing = true; return }
         take = t
@@ -195,13 +195,13 @@ struct TakeView: View {
         let sources = player.mixSources()
         let audioURL = TakeExport.fileURL(song: song.title, take: take.displayName, ext: "m4a")
         do {
-            try await Task.detached(priority: .userInitiated) {
+            try await Background.run {
                 try TakeExport.mixAudio(sources, sampleRate: sr, start: start, frames: end - start, to: audioURL)
-            }.value
+            }
             var result = audioURL
             if video, let videoURL = take.videoURL, let vStart = take.videoStartS {
                 exporting = "Preparing the video…"
-                try await Task.detached { try Files.download(videoURL) }.value
+                try await Background.run { try Files.download(videoURL) }
                 let out = TakeExport.fileURL(song: song.title, take: take.displayName, ext: "mp4")
                 try await TakeExport.video(videoURL, videoStartS: vStart, audio: audioURL,
                                            fromS: Double(start) / sr, durationS: Double(end - start) / sr, to: out)
@@ -217,7 +217,7 @@ struct TakeView: View {
         guard let take else { return }
         await player.loadTake(nil)
         do {
-            try await Task.detached { try TakeStore.delete(take) }.value
+            try await Background.run { try TakeStore.delete(take) }
             dismiss()
         } catch {
             self.error = "Couldn't delete the take: \(error.localizedDescription)"

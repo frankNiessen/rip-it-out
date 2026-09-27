@@ -36,6 +36,14 @@ enum Files {
         return status == .current || status == .downloaded
     }
 
+    /// Whether a file can be opened without waiting for the network.
+    static func isOnDevice(_ url: URL) -> Bool {
+        if remoteFor(url) != nil {
+            return ((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) > 0
+        }
+        return isDownloaded(url)
+    }
+
     /// Asks iCloud to fetch a file in the background (no-op elsewhere).
     static func startDownload(_ url: URL) {
         try? fm.startDownloadingUbiquitousItem(at: url)

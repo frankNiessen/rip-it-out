@@ -211,8 +211,14 @@ final class PlayerEngine {
 
     // MARK: - loading
 
+    /// "2 of 5 tracks downloaded" while a song's tracks come from the server.
+    private(set) var loadProgress: String?
+    @ObservationIgnored private var loadGeneration = 0
+
     func load(_ song: Song) async {
-        if self.song?.folder == song.folder && self.song?.manifest == song.manifest { return }
+        // The same song: nothing to do if it's loaded or still loading; a load that
+        // failed is tried again.
+        if self.song?.folder == song.folder && self.song?.manifest == song.manifest && (loading || !trackKeys.isEmpty) { return }
         pause()
         unloadTracks()
         self.song = song
@@ -221,31 +227,65 @@ final class PlayerEngine {
         self.loop = nil
         self.offset = 0
         self.zoom = 1
+        loadGeneration += 1
+        let generation = loadGeneration
         loading = true
-        defer { loading = false }
+        loadProgress = nil
+        defer {
+            if generation == loadGeneration { loading = false; loadProgress = nil } // not a newer song's load
+        }
 
         var urls: [String: URL] = [:]
         for key in song.manifest.stemOrder { urls[key] = song.folder.appendingPathComponent(song.manifest.stems[key]!) }
         if let click = song.manifest.click?.audio { urls["click"] = song.folder.appendingPathComponent(click) }
+        let missing = urls.values.filter { !Files.isOnDevice($0) }.count
+        if missing > 0 { loadProgress = "Downloading tracks… 0 of \(missing)" }
         do {
-            let opened = try await Task.detached(priority: .userInitiated) { try Self.open(urls) }.value
-            guard self.song?.folder == song.folder else { return }
+            let opened = try await Background.run {
+                try Self.open(urls) { done in
+                    Task { @MainActor [weak self] in
+                        guard let self, generation == self.loadGeneration, missing > 0 else { return }
+                        self.loadProgress = "Downloading tracks… \(min(done, missing)) of \(missing)"
+                    }
+                }
+            }
+            guard generation == loadGeneration else { return }
             for key in song.manifest.stemOrder + ["click"] { if let f = opened[key] { add(key, f) } }
             trackKeys = song.manifest.stemOrder + (opened["click"] != nil ? ["click"] : [])
             startEngine()
         } catch {
-            self.error = error.localizedDescription
+            guard generation == loadGeneration else { return }
+            self.error = "Couldn't load the song's tracks: \(error.localizedDescription)"
         }
     }
 
-    /// Downloads (if needed) and opens the files. Blocks.
-    nonisolated private static func open(_ urls: [String: URL]) throws -> [String: AVAudioFile] {
-        var out: [String: AVAudioFile] = [:]
-        for (key, url) in urls {
-            try Files.download(url)
-            out[key] = try AVAudioFile(forReading: url)
+    /// Downloads (if needed, several at once) and opens the files. Blocks.
+    /// `downloaded` is told how many of the missing files are here so far.
+    nonisolated private static func open(_ urls: [String: URL], downloaded: @escaping @Sendable (Int) -> Void) throws -> [String: AVAudioFile] {
+        final class State: @unchecked Sendable {
+            let lock = NSLock()
+            var files: [String: AVAudioFile] = [:]
+            var error: Error?
+            var fetched = 0
         }
-        return out
+        let state = State()
+        let entries = Array(urls)
+        DispatchQueue.concurrentPerform(iterations: entries.count) { i in
+            let (key, url) = entries[i]
+            do {
+                let wasHere = Files.isOnDevice(url)
+                try Files.download(url)
+                let file = try AVAudioFile(forReading: url)
+                state.lock.lock()
+                state.files[key] = file
+                if !wasHere { state.fetched += 1; downloaded(state.fetched) }
+                state.lock.unlock()
+            } catch {
+                state.lock.lock(); if state.error == nil { state.error = error }; state.lock.unlock()
+            }
+        }
+        if let error = state.error { throw error }
+        return state.files
     }
 
     private func add(_ key: String, _ file: AVAudioFile) {
@@ -283,10 +323,10 @@ final class PlayerEngine {
         guard let take else { return }
         do {
             let url = take.myTakeURL
-            let file = try await Task.detached(priority: .userInitiated) { () throws -> AVAudioFile in
+            let file = try await Background.run { () throws -> AVAudioFile in
                 try Files.download(url)
                 return try AVAudioFile(forReading: url)
-            }.value
+            }
             add("take", file)
             self.take = take
             trackKeys.append("take")

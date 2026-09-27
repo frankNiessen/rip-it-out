@@ -86,13 +86,21 @@ struct TakesOverview: View {
 
     private func collect(sync: Bool) async -> [TakeRow] {
         let songs = library.songs
-        let found = await withTaskGroup(of: [TakeRow].self) { group in
-            for song in songs {
-                group.addTask { LibraryStore.takes(of: song.folder, sync: sync).map { TakeRow(song: song, take: $0) } }
+        // A few songs at a time (each one can wait on the server), off Swift's task threads.
+        let found = await Background.get { () -> [TakeRow] in
+            final class Parts: @unchecked Sendable { var rows: [[TakeRow]] = []; let lock = NSLock() }
+            let parts = Parts()
+            parts.rows = Array(repeating: [], count: songs.count)
+            let queue = OperationQueue()
+            queue.maxConcurrentOperationCount = 4
+            for (i, song) in songs.enumerated() {
+                queue.addOperation {
+                    let rows = LibraryStore.takes(of: song.folder, sync: sync).map { TakeRow(song: song, take: $0) }
+                    parts.lock.lock(); parts.rows[i] = rows; parts.lock.unlock()
+                }
             }
-            var all: [TakeRow] = []
-            for await part in group { all += part }
-            return all
+            queue.waitUntilAllOperationsAreFinished()
+            return parts.rows.flatMap { $0 }
         }
         return found.sorted { $0.take.createdAt > $1.take.createdAt }
     }
@@ -100,7 +108,7 @@ struct TakesOverview: View {
     private func delete(_ take: Take) async {
         if player.take?.id == take.id { await player.loadTake(nil) }
         do {
-            try await Task.detached { try TakeStore.delete(take) }.value
+            try await Background.run { try TakeStore.delete(take) }
             error = nil
             await load()
         } catch {

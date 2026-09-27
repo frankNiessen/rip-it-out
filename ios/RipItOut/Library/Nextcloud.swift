@@ -51,6 +51,9 @@ final class Nextcloud: @unchecked Sendable {
     private let password: String
     let mirror: URL
     private let session: URLSession
+    /// Take uploads (big files) have their own connections, so a song opened meanwhile
+    /// doesn't wait behind them.
+    private let uploadSession: URLSession
     private let stateLock = NSLock()
 
     init(account: NextcloudAccount, password: String) throws {
@@ -69,7 +72,13 @@ final class Nextcloud: @unchecked Sendable {
         config.timeoutIntervalForRequest = 60
         config.timeoutIntervalForResource = 3600
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        config.httpMaximumConnectionsPerHost = 6
         session = URLSession(configuration: config)
+        let up = URLSessionConfiguration.default
+        up.timeoutIntervalForRequest = 60
+        up.timeoutIntervalForResource = 3600
+        up.httpMaximumConnectionsPerHost = 2
+        uploadSession = URLSession(configuration: up)
     }
 
     // MARK: - connecting
@@ -209,7 +218,7 @@ final class Nextcloud: @unchecked Sendable {
     func upload(_ src: URL, to rel: String) throws {
         let done = DispatchSemaphore(value: 0)
         var result: Result<Void, Error> = .success(())
-        session.uploadTask(with: request("PUT", rel), fromFile: src) { _, response, error in
+        uploadSession.uploadTask(with: request("PUT", rel), fromFile: src) { _, response, error in
             defer { done.signal() }
             if let error { result = .failure(error); return }
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0

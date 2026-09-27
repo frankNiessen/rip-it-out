@@ -19,7 +19,7 @@ final class Uploads {
         let count = remote.pendingUploads.count
         text = count == 1 ? "Uploading the take to Nextcloud…" : "Uploading \(count) takes to Nextcloud…"
         Task {
-            let result = await Task.detached(priority: .utility) { remote.processUploads() }.value
+            let result = await Background.get(.utility) { remote.processUploads() }
             active = false
             if result.failed > 0 {
                 failed = true

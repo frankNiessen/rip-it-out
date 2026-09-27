@@ -172,7 +172,7 @@ final class Recorder {
     /// Starts or stops the camera preview to match the setting (while a song is open).
     func updateCamera(active: Bool) async {
         guard active, cameraOn, recordPageOpen else {
-            if cameraRunning { let cam = camera; await Task.detached { cam.stop() }.value }
+            if cameraRunning { let cam = camera; await Background.get { cam.stop() } }
             cameraRunning = false
             return
         }
@@ -183,7 +183,7 @@ final class Recorder {
         }
         let cam = camera, front = frontCamera
         do {
-            try await Task.detached { try cam.start(front: front) }.value
+            try await Background.run { try cam.start(front: front) }
             cameraRunning = true
         } catch {
             note = error.localizedDescription
@@ -322,9 +322,9 @@ final class Recorder {
         let latency = latencyMs, input = inputName
         let clip = video.map { (url: $0.url, startInCaptureS: $0.firstHost - first) }
         do {
-            let take = try await Task.detached(priority: .userInitiated) {
+            let take = try await Background.run {
                 try TakeStore.save(song: song, capture: cap, captureStartS: captureStartS, latencyMs: latency, input: input, video: clip)
-            }.value
+            }
             note = (take.peakDbfs ?? 0) < -45 ? "The take is almost silent. Check the input in Settings." : nil
             state = .idle
             lastSaved = take

@@ -52,9 +52,9 @@ final class LibraryStore {
 
     /// Checks the account and the folder, then uses it as the library.
     func connect(server: String, user: String, password: String, libraryPath: String) async throws {
-        let account = try await Task.detached(priority: .userInitiated) {
+        let account = try await Background.run {
             try Nextcloud.connect(server: server, user: user, password: password, libraryPath: libraryPath)
-        }.value
+        }
         stopAccess()
         UserDefaults.standard.removeObject(forKey: Self.bookmarkKey)
         Keychain.set(password, for: account.user + "@" + account.server)
@@ -98,7 +98,7 @@ final class LibraryStore {
         error = nil
         checking = true
         Task {
-            let problem = await Task.detached(priority: .userInitiated) { Files.checkReadable(url) }.value
+            let problem = await Background.get { Files.checkReadable(url) }
             checking = false
             if let problem {
                 if accessing { url.stopAccessingSecurityScopedResource() }
@@ -144,7 +144,7 @@ final class LibraryStore {
         loading = true
         defer { loading = false }
         let remote = Files.remote
-        let (found, waiting, problem) = await Task.detached(priority: .userInitiated) { () -> ([Song], Int, String?) in
+        let (found, waiting, problem) = await Background.get { () -> ([Song], Int, String?) in
             var failed = 0
             var problem: String?
             if let remote {
@@ -152,7 +152,7 @@ final class LibraryStore {
             }
             let (songs, waiting) = Self.scan(folder)
             return (songs, remote == nil ? waiting : failed, problem)
-        }.value
+        }
         guard folder == self.folder else { return } // switched libraries meanwhile
         Uploads.shared.run() // takes that didn't make it up last time
         songs = found

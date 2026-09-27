@@ -114,7 +114,7 @@ struct SongView: View {
         .background(Theme.bg)
         .overlay {
             if player.loading {
-                Text("Loading tracks…").font(Theme.mono(12)).foregroundStyle(Theme.ink)
+                Text(player.loadProgress ?? "Loading tracks…").font(Theme.mono(12)).foregroundStyle(Theme.ink)
                     .padding(14).background(Theme.panel, in: .rect(cornerRadius: 3))
                     .overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.line, lineWidth: 1))
             }
@@ -175,8 +175,8 @@ struct SongView: View {
     /// The takes on this device at once, then whatever changed on the server.
     private func loadTakes(_ song: Song) async {
         let folder = song.folder
-        takes = await Task.detached { LibraryStore.takes(of: folder, sync: false) }.value
-        takes = await Task.detached { LibraryStore.takes(of: folder) }.value
+        takes = await Background.get { LibraryStore.takes(of: folder, sync: false) }
+        takes = await Background.get { LibraryStore.takes(of: folder) }
     }
 }
 

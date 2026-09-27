@@ -30,7 +30,7 @@ final class TakeVideo {
         loading = true
         defer { loading = false }
         do {
-            try await Task.detached(priority: .userInitiated) { try Files.download(url) }.value
+            try await Background.run { try Files.download(url) }
         } catch {
             problem = "Couldn't load the video: \(error.localizedDescription)"
             return
