@@ -20,82 +20,7 @@ struct SongView: View {
     var body: some View {
         Group {
             if let song {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        HStack(spacing: 8) {
-                            Text(mode == .practice ? "PRACTICE" : "RECORD")
-                                .font(Theme.mono(10, .semibold))
-                                .foregroundStyle(mode == .practice ? Theme.onAccent : .white)
-                                .padding(.horizontal, 6).padding(.vertical, 2)
-                                .background(mode == .practice ? Theme.accent : Theme.record, in: .rect(cornerRadius: 2))
-                            Text(meta(song)).font(Theme.mono(12)).foregroundStyle(Theme.muted).lineLimit(1)
-                        }
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack(spacing: 8) {
-                                CounterView().frame(width: 104)
-                                SongTimeline(song: song)
-                            }
-                            .frame(height: 140)
-                            Caption()
-                            TransportView(mode: mode)
-                            Rectangle().fill(Theme.line).frame(height: 1)
-                            MixerView()
-                        }
-                        .panel()
-                        if mode == .record {
-                            if let note = recorder.note {
-                                Text(note).font(.system(size: 13)).foregroundStyle(Theme.muted)
-                            }
-                            if player.take != nil { TakeReview() }
-                            VideoBox(video: video)
-                            TakesView(takes: $takes, reload: { await loadTakes(song) })
-                        }
-                    }
-                    .padding(16)
-                }
-                .background(Theme.bg)
-                .overlay {
-                    if player.loading {
-                        Text("Loading tracks…").font(Theme.mono(12)).foregroundStyle(Theme.ink)
-                            .padding(14).background(Theme.panel, in: .rect(cornerRadius: 3))
-                            .overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.line, lineWidth: 1))
-                    }
-                }
-                .navigationTitle(song.title)
-                .navigationBarTitleDisplayMode(.inline)
-                .themedNavigation()
-                .task(id: song.id) {
-                    lastSong = song.id
-                    lastMode = mode.rawValue
-                    await player.load(song)
-                    if mode == .practice {
-                        if player.take != nil { await player.loadTake(nil) }
-                        return
-                    }
-                    await loadTakes(song)
-                    if let initialTake, !appliedInitialTake {
-                        appliedInitialTake = true
-                        if let t = takes.first(where: { $0.id == initialTake }), player.take?.id != t.id {
-                            await player.loadTake(t)
-                        }
-                    }
-                }
-                .onChange(of: player.take) {
-                    guard mode == .record else { return }
-                    Task {
-                        await loadTakes(song)
-                        await video.show(player.take, engine: player)
-                    }
-                }
-                .task {
-                    recorder.recordPageOpen = mode == .record
-                    await recorder.updateCamera(active: mode == .record)
-                }
-                .onChange(of: recorder.cameraOn) { Task { await recorder.updateCamera(active: mode == .record) } }
-                .onChange(of: recorder.frontCamera) { Task { await recorder.updateCamera(active: mode == .record) } }
-                .alert("Rip It Out", isPresented: Binding(get: { player.error != nil }, set: { if !$0 { player.error = nil } })) {
-                    Button("OK") { player.error = nil }
-                } message: { Text(player.error ?? "") }
+                page(song)
             } else {
                 ContentUnavailableView("Song not found", systemImage: "questionmark.folder")
             }
@@ -104,6 +29,106 @@ struct SongView: View {
             player.pause()
             video.stop()
             if mode == .record { recorder.recordPageOpen = false }
+        }
+    }
+
+    private var modeBadge: some View {
+        Text(mode == .practice ? "PRACTICE" : "RECORD")
+            .font(Theme.mono(10, .semibold))
+            .foregroundStyle(mode == .practice ? Theme.onAccent : Color.white)
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(mode == .practice ? Theme.accent : Theme.record, in: .rect(cornerRadius: 2))
+    }
+
+    private func deck(_ song: Song) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                CounterView().frame(width: 104)
+                SongTimeline(song: song)
+            }
+            .frame(height: 140)
+            Caption()
+            TransportView(mode: mode)
+            Rectangle().fill(Theme.line).frame(height: 1)
+            MixerView()
+        }
+        .panel()
+    }
+
+    @ViewBuilder
+    private func recordPart(_ song: Song) -> some View {
+        if let note = recorder.note {
+            Text(note).font(.system(size: 13)).foregroundStyle(Theme.muted)
+        }
+        if player.take != nil { TakeReview() }
+        VideoBox(video: video)
+        TakesView(takes: $takes, reload: { await loadTakes(song) })
+    }
+
+    private func content(_ song: Song) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 8) {
+                    modeBadge
+                    Text(meta(song)).font(Theme.mono(12)).foregroundStyle(Theme.muted).lineLimit(1)
+                }
+                deck(song)
+                if mode == .record { recordPart(song) }
+            }
+            .padding(16)
+        }
+        .background(Theme.bg)
+        .overlay {
+            if player.loading {
+                Text("Loading tracks…").font(Theme.mono(12)).foregroundStyle(Theme.ink)
+                    .padding(14).background(Theme.panel, in: .rect(cornerRadius: 3))
+                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.line, lineWidth: 1))
+            }
+        }
+    }
+
+    private func page(_ song: Song) -> some View {
+        content(song)
+            .navigationTitle(song.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .themedNavigation()
+            .task(id: song.id) { await open(song) }
+            .onChange(of: player.take) {
+                guard mode == .record else { return }
+                Task {
+                    await loadTakes(song)
+                    await video.show(player.take, engine: player)
+                }
+            }
+            .task {
+                recorder.recordPageOpen = mode == .record
+                await recorder.updateCamera(active: mode == .record)
+            }
+            .onChange(of: recorder.cameraOn) { Task { await recorder.updateCamera(active: mode == .record) } }
+            .onChange(of: recorder.frontCamera) { Task { await recorder.updateCamera(active: mode == .record) } }
+            .alert("Rip It Out", isPresented: errorShown) {
+                Button("OK") { player.error = nil }
+            } message: { Text(player.error ?? "") }
+    }
+
+    private var errorShown: Binding<Bool> {
+        Binding(get: { player.error != nil }, set: { if !$0 { player.error = nil } })
+    }
+
+    private func open(_ song: Song) async {
+        lastSong = song.id
+        lastMode = mode.rawValue
+        await player.load(song)
+        if mode == .practice {
+            if player.take != nil { await player.loadTake(nil) }
+            return
+        }
+        await loadTakes(song)
+        if let initialTake, !appliedInitialTake {
+            appliedInitialTake = true
+            if let t = takes.first(where: { $0.id == initialTake }), player.take?.id != t.id {
+                await player.loadTake(t)
+            }
         }
     }
 
