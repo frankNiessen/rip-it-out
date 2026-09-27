@@ -76,6 +76,7 @@ def reseparate(folder: str, settings: Settings, on_stage: StageCallback, style: 
                 m["stem_format"] = settings.stem_format
                 if song_sections is not None:
                     m["sections"] = song_sections
+                    m.pop("sections_detected", None)
                 m.setdefault("processing", {}).update(
                     separation_model=settings.separation_model, style=style,
                     stem_gain=round(gain, 4), drum_share=share,
@@ -266,4 +267,8 @@ def analyze_sections(song: Path) -> dict:
         raise RuntimeError("Sections need the four-track layout: convert the song first")
     stems = {name: audio.read(song / filename)[0] for name, filename in manifest["stems"].items()}
     found = sections.detect(stems, manifest["sample_rate"], manifest["downbeats"], manifest["duration_s"])
-    return library.update_manifest(song, lambda m: m.__setitem__("sections", found))
+
+    def change(m: dict) -> None:
+        m["sections"] = found
+        m.pop("sections_detected", None)
+    return library.update_manifest(song, change)

@@ -45,14 +45,49 @@ def from_segments(segments: list[dict], downbeats: list[float], duration: float)
         else:
             cleaned.append(p)
 
-    counts = {p["label"]: sum(q["label"] == p["label"] for q in cleaned) for p in cleaned}
-    seen: dict[str, int] = {}
     for p in cleaned:
-        base = NAMES.get(p["label"], p["label"].title())
-        seen[p["label"]] = seen.get(p["label"], 0) + 1
         p["kind"] = p["label"]
-        p["label"] = f"{base} {seen[p['label']]}" if counts[p["label"]] > 1 else base
-    return cleaned
+    return _number(cleaned)
+
+
+def edited(parts: list[dict], downbeats: list[float], duration: float) -> list[dict]:
+    """Sections as the user set them: [{"start", "kind"}] in any order. Starts snap to
+    bar lines, each section runs to the next one, and parts that occur more than once
+    are numbered again. Raises ValueError for an unknown kind."""
+    rows = []
+    for p in parts:
+        kind = str(p.get("kind", ""))
+        if kind not in NAMES:
+            raise ValueError(f"Unknown section kind {kind!r}")
+        rows.append({"start": max(0.0, min(float(p["start"]), duration)), "label": kind, "kind": kind})
+    rows.sort(key=lambda r: r["start"])
+    if not rows:
+        rows = [{"start": 0.0, "label": "verse", "kind": "verse"}]
+    rows[0]["start"] = 0.0
+    snapped = snap([dict(r, end=duration) for r in rows], downbeats, duration)
+    unique: list[dict] = []
+    for r in snapped:  # two starts on the same bar line: the later one wins
+        if unique and abs(unique[-1]["start"] - r["start"]) < 1e-3:
+            unique[-1] = r
+        else:
+            unique.append(r)
+    for a, b in zip(unique, unique[1:]):
+        a["end"] = b["start"]
+    unique[-1]["end"] = round(duration, 3)
+    for r in unique:
+        r["label"] = r["kind"]
+    return _number(unique)
+
+
+def _number(parts: list[dict]) -> list[dict]:
+    """Readable labels from the kinds: Verse 1, Verse 2, Chorus."""
+    counts = {p["kind"]: sum(q["kind"] == p["kind"] for q in parts) for p in parts}
+    seen: dict[str, int] = {}
+    for p in parts:
+        base = NAMES.get(p["kind"], p["kind"].title())
+        seen[p["kind"]] = seen.get(p["kind"], 0) + 1
+        p["label"] = f"{base} {seen[p['kind']]}" if counts[p["kind"]] > 1 else base
+    return parts
 
 
 def snap(sections: list[dict], downbeats: list[float], duration: float) -> list[dict]:
