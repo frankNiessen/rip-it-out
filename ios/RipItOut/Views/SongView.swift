@@ -104,7 +104,6 @@ struct SongView: View {
             player.pause()
             video.stop()
             if mode == .record { recorder.recordPageOpen = false }
-            Task { await recorder.updateCamera(active: false) }
         }
     }
 

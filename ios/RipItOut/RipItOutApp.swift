@@ -23,7 +23,7 @@ struct RipItOutApp: App {
                 .preferredColorScheme(.dark)
                 .onChange(of: phase) {
                     if phase == .background { Task { await recorder.appInBackground() } }
-                    if phase == .active { player.startEngine() }
+                    if phase == .active { Task { await recorder.appActive() } }
                 }
         }
     }

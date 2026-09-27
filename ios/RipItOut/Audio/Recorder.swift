@@ -125,9 +125,15 @@ final class Recorder {
 
     // MARK: - microphone on only while it's needed
 
-    /// Set while a Record page is open; the microphone is switched off when it closes.
+    /// Set while a Record page is open; the microphone and the camera are switched off
+    /// when it closes.
     var recordPageOpen = false {
-        didSet { if !recordPageOpen { releaseInput() } }
+        didSet {
+            if !recordPageOpen {
+                releaseInput()
+                Task { await updateCamera(active: false) }
+            }
+        }
     }
 
     /// Switches the microphone off unless something is being recorded or calibrated.
@@ -137,18 +143,27 @@ final class Recorder {
         player.disableInput()
     }
 
-    /// The app goes to the background: save a take being recorded, then let go.
+    /// The app goes to the background: save a take being recorded, then let go of the
+    /// microphone, the camera and the audio session.
     func appInBackground() async {
         if state == .recording { await stopRecording() }
         releaseInput()
+        await updateCamera(active: false)
         player.suspend()
+    }
+
+    /// Back in the foreground: the camera again if a Record page is open (the microphone
+    /// waits for Record or Calibrate).
+    func appActive() async {
+        player.startEngine()
+        if recordPageOpen { await updateCamera(active: true) }
     }
 
     // MARK: - camera
 
     /// Starts or stops the camera preview to match the setting (while a song is open).
     func updateCamera(active: Bool) async {
-        guard active, cameraOn else {
+        guard active, cameraOn, recordPageOpen else {
             if cameraRunning { let cam = camera; await Task.detached { cam.stop() }.value }
             cameraRunning = false
             return
