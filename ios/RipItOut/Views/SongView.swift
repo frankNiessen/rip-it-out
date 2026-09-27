@@ -6,7 +6,6 @@ struct SongView: View {
     @Environment(PlayerEngine.self) private var player
     @Environment(Recorder.self) private var recorder
     @State private var takes: [Take] = []
-    @State private var editing: Take?
 
     private var song: Song? { library.song(songID) }
 
@@ -31,7 +30,7 @@ struct SongView: View {
                         if let note = recorder.note {
                             Text(note).font(.system(size: 13)).foregroundStyle(Theme.muted)
                         }
-                        TakesView(takes: $takes, editing: $editing, reload: { await loadTakes(song) })
+                        TakesView(takes: $takes, reload: { await loadTakes(song) })
                     }
                     .padding(16)
                 }
@@ -51,7 +50,6 @@ struct SongView: View {
                     await loadTakes(song)
                 }
                 .onChange(of: player.take) { Task { await loadTakes(song) } }
-                .sheet(item: $editing) { take in TakeDetailView(song: song, take: take) { await loadTakes(song) } }
                 .alert("Rip It Out", isPresented: Binding(get: { player.error != nil }, set: { if !$0 { player.error = nil } })) {
                     Button("OK") { player.error = nil }
                 } message: { Text(player.error ?? "") }
@@ -346,11 +344,14 @@ struct Caption: View {
     }
 }
 
+/// The song's takes: tap one to play it with the song (the "My take" fader), Delete
+/// throws a bad one away. Timing, level and names are changed on the desktop.
 struct TakesView: View {
     @Binding var takes: [Take]
-    @Binding var editing: Take?
     let reload: () async -> Void
     @Environment(PlayerEngine.self) private var player
+    @State private var deleting: Take?
+    @State private var error: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -384,12 +385,30 @@ struct TakesView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    Button("Edit") { editing = take }
+                    Button("Delete") { deleting = take }
                         .buttonStyle(QuietButtonStyle())
                 }
                 .padding(.vertical, 10)
                 Rectangle().fill(Theme.line).frame(height: 1)
             }
+            if let error { Text(error).font(.system(size: 13)).foregroundStyle(Theme.fail).padding(.top, 8) }
+        }
+        .confirmationDialog("Delete this take?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+                            titleVisibility: .visible, presenting: deleting) { take in
+            Button("Delete \(take.displayName)", role: .destructive) { Task { await delete(take) } }
+        } message: { _ in
+            Text("The recording is removed from the library, also on your other devices.")
+        }
+    }
+
+    private func delete(_ take: Take) async {
+        if player.take?.id == take.id { await player.loadTake(nil) }
+        do {
+            try await Task.detached { try TakeStore.delete(take) }.value
+            error = nil
+            await reload()
+        } catch {
+            self.error = "Couldn't delete the take: \(error.localizedDescription)"
         }
     }
 }

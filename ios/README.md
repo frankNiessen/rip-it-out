@@ -19,14 +19,14 @@ fills, synced through iCloud Drive, Nextcloud, Dropbox or any other Files provid
   is measured once with **Settings > Calibrate** (the same 20 clicks as on the desktop).
 - **Takes:** saved into the song's `takes/` folder in the desktop's format
   (`take.json`, `raw.flac`, `my_drums.flac`), so the desktop app lists, plays and
-  exports them too. Play a take against the song with its own fader (**My take**), fix
-  its **Timing**, **Normalize** it (the loudest hit to just below full scale, stored as
-  `gain_db` like on the desktop, so turning it off brings the original back), rename or
-  delete it. Takes recorded on the desktop show up here as well.
+  exports them too. Tap a take to play it against the song with its own fader
+  (**My take**), or delete one you don't want. Takes recorded on the desktop show up
+  here as well.
 
-Not in this version: video, export, and editing the beat grid or the sections. Do those
-in the desktop app; the phone picks up the changes. The iOS app never changes a song's
-`manifest.json`, so two devices never write the same file.
+The app is for practice: everything that edits (the beat grid, sections, a take's
+timing, level or name, exports, video) stays in the desktop app, and the phone picks up
+the changes. The iOS app never changes a song's `manifest.json`, so two devices never
+write the same file.
 
 ## Run it on your iPhone
 
@@ -59,8 +59,8 @@ Apple Developer account.
   lot of delay, and with the speaker the song ends up in your recording.
 - Calibrate once per input (the value is remembered per input device), and again if you
   change the buffer size or the interface.
-- If a take sits a little early or late, open it (the slider button next to it) and
-  change **Timing**. More moves the take earlier, like on the desktop.
+- If a take sits a little early or late, fix its **Timing** in the desktop app, and
+  calibrate again on the phone for the next takes.
 
 ## How it works
 
@@ -71,7 +71,7 @@ Apple Developer account.
 | manifest.json and the beat grid (counter, count-in) | `RipItOut/Library/Manifest.swift`, `Grid.swift` |
 | Playback: one AVAudioPlayerNode per track, all started at the same host time; loops as back-to-back segments | `RipItOut/Audio/PlayerEngine.swift` |
 | Recording and calibration: a tap on the engine's input, placed on the song's timeline by host time and the calibrated latency | `RipItOut/Audio/Recorder.swift` |
-| Take files, same layout and math as `stemtool/takes.py` | `RipItOut/Library/Take.swift`, `TakeStore.swift`, `RipItOut/Audio/AudioIO.swift` |
+| Take files (recording, deleting), same layout and math as `stemtool/takes.py` | `RipItOut/Library/Take.swift`, `TakeStore.swift`, `RipItOut/Audio/AudioIO.swift` |
 | Screens | `RipItOut/Views/` |
 
 A take is built in the app's temporary folder and moved into `takes/<id>/` in one step,
