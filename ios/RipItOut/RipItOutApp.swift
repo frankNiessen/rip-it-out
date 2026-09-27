@@ -94,6 +94,7 @@ struct PrimaryButtonStyle: ButtonStyle {
 /// Secondary buttons: outlined (.btn.quiet); lime outline and text when on (the Loop button).
 struct QuietButtonStyle: ButtonStyle {
     var on = false
+    var danger = false
     @Environment(\.isEnabled) private var enabled
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -101,7 +102,7 @@ struct QuietButtonStyle: ButtonStyle {
             .lineLimit(1).fixedSize()
             .frame(minHeight: 20)
             .padding(.horizontal, 11).padding(.vertical, 8)
-            .foregroundStyle(on ? Theme.accent : Theme.ink)
+            .foregroundStyle(danger ? Theme.fail : on ? Theme.accent : Theme.ink)
             .background(configuration.isPressed ? Theme.field : .clear, in: .rect(cornerRadius: 3))
             .overlay(RoundedRectangle(cornerRadius: 3).stroke(on ? Theme.accent : Theme.lineStrong, lineWidth: 1))
             .opacity(enabled ? 1 : 0.4)

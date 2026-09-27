@@ -1,21 +1,19 @@
 import SwiftUI
 
-/// A song, to practise (mixer, loops, count-in) or to record (the same, plus Record, the
-/// camera and the song's takes to listen back to).
+/// A song. Practice: the mixer, loops and count-in. Record: the same, plus Record, the
+/// camera and the song's takes. The switch at the top keeps the song where it is.
 struct SongView: View {
     let songID: String
-    let mode: Mode
-    var initialTake: String? = nil
+    var openInRecord = false
     @Environment(LibraryStore.self) private var library
     @Environment(PlayerEngine.self) private var player
     @Environment(Recorder.self) private var recorder
     @State private var takes: [Take] = []
-    @State private var video = TakeVideo()
-    @State private var appliedInitialTake = false
+    @AppStorage("song.mode") private var modeRaw = Mode.practice.rawValue
     @AppStorage("last.song") private var lastSong = ""
-    @AppStorage("last.mode") private var lastMode = Mode.practice.rawValue
 
     private var song: Song? { library.song(songID) }
+    private var mode: Mode { Mode(rawValue: modeRaw) ?? .practice }
 
     var body: some View {
         Group {
@@ -27,17 +25,36 @@ struct SongView: View {
         }
         .onDisappear {
             player.pause()
-            video.stop()
-            if mode == .record { recorder.recordPageOpen = false }
+            recorder.recordPageOpen = false
         }
     }
 
-    private var modeBadge: some View {
-        Text(mode == .practice ? "PRACTICE" : "RECORD")
-            .font(Theme.mono(10, .semibold))
-            .foregroundStyle(mode == .practice ? Theme.onAccent : Color.white)
-            .padding(.horizontal, 6).padding(.vertical, 2)
-            .background(mode == .practice ? Theme.accent : Theme.record, in: .rect(cornerRadius: 2))
+    /// Practice | Record, like a segmented control in the desktop's colours.
+    private var modeSwitch: some View {
+        HStack(spacing: 0) {
+            ForEach([Mode.practice, .record], id: \.self) { m in
+                let on = m == mode
+                Button {
+                    modeRaw = m.rawValue
+                } label: {
+                    HStack(spacing: 6) {
+                        if m == .record { Circle().fill(on ? Color.white : Theme.record).frame(width: 8, height: 8) }
+                        Text(m == .practice ? "Practice" : "Record")
+                    }
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(on ? (m == .practice ? Theme.onAccent : Color.white) : Theme.muted)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 9)
+                    .background(on ? (m == .practice ? Theme.accent : Theme.record) : Color.clear, in: .rect(cornerRadius: 3))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3)
+        .background(Theme.panel, in: .rect(cornerRadius: 5))
+        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Theme.line, lineWidth: 1))
+        .disabled(recorder.state != .idle)
     }
 
     private func deck(_ song: Song) -> some View {
@@ -57,21 +74,31 @@ struct SongView: View {
 
     @ViewBuilder
     private func recordPart(_ song: Song) -> some View {
+        if let saved = recorder.lastSaved, saved.folder.deletingLastPathComponent().deletingLastPathComponent() == song.folder {
+            NavigationLink(value: Route.take(song: song.id, take: saved.id)) {
+                HStack(spacing: 10) {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.accent)
+                    Text("Take saved").font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.ink)
+                    Spacer(minLength: 0)
+                    Text("Listen").font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.accent)
+                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.accent)
+                }
+                .panel()
+            }
+            .buttonStyle(.plain)
+        }
         if let note = recorder.note {
             Text(note).font(.system(size: 13)).foregroundStyle(Theme.muted)
         }
-        if player.take != nil { TakeReview() }
-        VideoBox(video: video)
-        TakesView(takes: $takes, reload: { await loadTakes(song) })
+        CameraBox()
+        TakesView(song: song, takes: takes)
     }
 
     private func content(_ song: Song) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(spacing: 8) {
-                    modeBadge
-                    Text(meta(song)).font(Theme.mono(12)).foregroundStyle(Theme.muted).lineLimit(1)
-                }
+            VStack(alignment: .leading, spacing: 14) {
+                modeSwitch
+                Text(meta(song)).font(Theme.mono(12)).foregroundStyle(Theme.muted).lineLimit(1)
                 deck(song)
                 if mode == .record { recordPart(song) }
             }
@@ -93,22 +120,23 @@ struct SongView: View {
             .navigationBarTitleDisplayMode(.inline)
             .themedNavigation()
             .task(id: song.id) { await open(song) }
-            .onChange(of: player.take) {
-                guard mode == .record else { return }
-                Task {
-                    await loadTakes(song)
-                    await video.show(player.take, engine: player)
-                }
+            .onAppear {
+                if openInRecord { modeRaw = Mode.record.rawValue }
+                applyMode()
             }
-            .task {
-                recorder.recordPageOpen = mode == .record
-                await recorder.updateCamera(active: mode == .record)
-            }
+            .onChange(of: modeRaw) { applyMode() }
+            .onChange(of: recorder.lastSaved?.id) { Task { await loadTakes(song) } }
             .onChange(of: recorder.cameraOn) { Task { await recorder.updateCamera(active: mode == .record) } }
             .onChange(of: recorder.frontCamera) { Task { await recorder.updateCamera(active: mode == .record) } }
             .alert("Rip It Out", isPresented: errorShown) {
                 Button("OK") { player.error = nil }
             } message: { Text(player.error ?? "") }
+    }
+
+    /// The microphone and the camera only in Record.
+    private func applyMode() {
+        recorder.recordPageOpen = mode == .record
+        if mode == .record { Task { await recorder.updateCamera(active: true) } }
     }
 
     private var errorShown: Binding<Bool> {
@@ -117,19 +145,9 @@ struct SongView: View {
 
     private func open(_ song: Song) async {
         lastSong = song.id
-        lastMode = mode.rawValue
         await player.load(song)
-        if mode == .practice {
-            if player.take != nil { await player.loadTake(nil) }
-            return
-        }
+        if player.take != nil { await player.loadTake(nil) } // takes play on their own page
         await loadTakes(song)
-        if let initialTake, !appliedInitialTake {
-            appliedInitialTake = true
-            if let t = takes.first(where: { $0.id == initialTake }), player.take?.id != t.id {
-                await player.loadTake(t)
-            }
-        }
     }
 
     private func meta(_ song: Song) -> String {
@@ -391,38 +409,6 @@ struct MixerView: View {
     }
 }
 
-/// Listening back to the selected take: what plays, and the quick switches.
-struct TakeReview: View {
-    @Environment(PlayerEngine.self) private var player
-
-    var body: some View {
-        if let take = player.take {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("Listening to").font(Theme.mono(11)).foregroundStyle(Theme.muted)
-                    Text(take.displayName).font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.ink).lineLimit(1)
-                    Spacer(minLength: 0)
-                    Button("Close") { Task { await player.loadTake(nil) } }
-                        .buttonStyle(QuietButtonStyle())
-                }
-                HStack(spacing: 6) {
-                    Button("Take only") { player.setTakeOnly(!player.takeOnly) }
-                        .buttonStyle(QuietButtonStyle(on: player.takeOnly))
-                    Button("With band") { player.setTakeOnly(false) }
-                        .buttonStyle(QuietButtonStyle(on: !player.takeOnly))
-                    Spacer(minLength: 0)
-                    Button("From take start") { player.seek(player.takeStart(take)) }
-                        .buttonStyle(QuietButtonStyle())
-                }
-                Text("Play plays your take (the My take fader) with the song, from \(Theme.time(take.startS)) to \(Theme.time(take.startS + take.capturedS)).")
-                    .font(.system(size: 12)).foregroundStyle(Theme.muted)
-            }
-            .panel()
-            .overlay(alignment: .leading) { Rectangle().fill(Theme.record).frame(width: 3) }
-        }
-    }
-}
-
 /// A slim fader like the desktop's: a thin track, filled up to a small knob.
 struct Fader: View {
     @Binding var value: Double
@@ -489,69 +475,43 @@ struct Caption: View {
 
 /// The song's takes: tap one to play it with the song (the "My take" fader), Delete
 /// throws a bad one away. Timing, level and names are changed on the desktop.
+/// The song's takes, newest first. Each opens the take page (watch and listen).
 struct TakesView: View {
-    @Binding var takes: [Take]
-    let reload: () async -> Void
-    @Environment(PlayerEngine.self) private var player
-    @State private var deleting: Take?
-    @State private var error: String?
+    let song: Song
+    let takes: [Take]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("Takes").font(.system(size: 17, weight: .bold))
+                Text("Takes of this song").font(.system(size: 17, weight: .bold))
                 Text("\(takes.count)").font(Theme.mono(12)).foregroundStyle(Theme.muted)
             }
             .padding(.bottom, 8)
             Rectangle().fill(Theme.line).frame(height: 1)
             if takes.isEmpty {
-                Text("No takes of this song yet. Press Record to play along and record yourself.")
+                Text("No takes yet. Press Record to play along and record yourself.")
                     .font(.system(size: 14)).foregroundStyle(Theme.muted)
                     .padding(.vertical, 12)
             }
             ForEach(takes) { take in
-                let selected = player.take?.id == take.id
-                HStack(spacing: 12) {
-                    Button {
-                        Task { await player.loadTake(selected ? nil : take) }
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: selected ? "checkmark.square.fill" : "square")
-                                .foregroundStyle(selected ? Theme.accent : Theme.lineStrong)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(take.displayName).font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.ink)
-                                Text("\(Theme.time(take.startS)) to \(Theme.time(take.startS + take.capturedS))\(take.hasVideo ? " · video" : "")")
-                                    .font(Theme.mono(11)).foregroundStyle(Theme.muted)
-                            }
-                            Spacer(minLength: 0)
+                NavigationLink(value: Route.take(song: song.id, take: take.id)) {
+                    HStack(spacing: 12) {
+                        Image(systemName: take.hasVideo ? "video" : "waveform")
+                            .foregroundStyle(Theme.muted).frame(width: 22)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(take.displayName).font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.ink)
+                            Text("\(Theme.time(take.startS)) to \(Theme.time(take.startS + take.capturedS))")
+                                .font(Theme.mono(11)).foregroundStyle(Theme.muted)
                         }
-                        .contentShape(Rectangle())
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.muted)
                     }
-                    .buttonStyle(.plain)
-                    Button("Delete") { deleting = take }
-                        .buttonStyle(QuietButtonStyle())
+                    .padding(.vertical, 10)
+                    .contentShape(Rectangle())
                 }
-                .padding(.vertical, 10)
+                .buttonStyle(.plain)
                 Rectangle().fill(Theme.line).frame(height: 1)
             }
-            if let error { Text(error).font(.system(size: 13)).foregroundStyle(Theme.fail).padding(.top, 8) }
-        }
-        .confirmationDialog("Delete this take?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
-                            titleVisibility: .visible, presenting: deleting) { take in
-            Button("Delete \(take.displayName)", role: .destructive) { Task { await delete(take) } }
-        } message: { _ in
-            Text("The recording is removed from the library, also on your other devices.")
-        }
-    }
-
-    private func delete(_ take: Take) async {
-        if player.take?.id == take.id { await player.loadTake(nil) }
-        do {
-            try await Task.detached { try TakeStore.delete(take) }.value
-            error = nil
-            await reload()
-        } catch {
-            self.error = "Couldn't delete the take: \(error.localizedDescription)"
         }
     }
 }

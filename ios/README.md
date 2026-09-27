@@ -7,9 +7,13 @@ fills, synced through iCloud Drive, Nextcloud, Dropbox or any other Files provid
 
 ## What it does
 
-The home screen has three pages: **Practice** (choose a song and play along), **Record**
-(choose a song, record yourself, listen back) and **Takes** (all your recordings, newest
-first; tap one to listen to it with its song). **Continue** goes back to the last song.
+Three tabs: **Songs**, **Takes** and **Settings**. Open a song and switch between
+**Practice** (play along) and **Record** (record yourself, on video too) at the top; the
+song stays where it is. Microphone and camera are only on in Record. After a take,
+**Take saved: Listen** opens the take page: its video, your take with the band (faders
+for **My take** and **Band**, **Take only**), **Record again** and **Delete**. The
+**Takes** tab lists every take in the library; **Continue** at the top of Songs goes back
+to the last song.
 
 - **Library:** your songs by group, with search. Songs that are only in the cloud are
   downloaded when you open them.

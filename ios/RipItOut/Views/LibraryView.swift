@@ -1,34 +1,52 @@
 import SwiftUI
 
-/// What the app does, as pages: practise a song, record yourself, find your takes.
+/// The song page has two modes, switched at the top without leaving the song.
 enum Mode: String, Hashable {
     case practice, record
 }
 
 enum Route: Hashable {
-    case library(Mode)
-    case song(id: String, mode: Mode, take: String?)
-    case takes
+    case song(id: String, record: Bool = false)
+    case take(song: String, take: String)
 }
 
+/// Three tabs, always one tap away: Songs (practise and record), Takes (watch and
+/// listen back), Settings.
 struct RootView: View {
     @Environment(LibraryStore.self) private var library
-    @State private var path: [Route] = []
+    @State private var songsPath: [Route] = []
+    @State private var takesPath: [Route] = []
 
     var body: some View {
         if library.folder == nil {
             WelcomeView()
         } else {
-            NavigationStack(path: $path) {
-                HomeView()
-                    .navigationDestination(for: Route.self) { route in
-                        switch route {
-                        case .library(let mode): LibraryView(mode: mode)
-                        case .song(let id, let mode, let take): SongView(songID: id, mode: mode, initialTake: take)
-                        case .takes: TakesOverview()
-                        }
-                    }
+            TabView {
+                NavigationStack(path: $songsPath) {
+                    LibraryView()
+                        .navigationDestination(for: Route.self) { destination($0) }
+                }
+                .tabItem { Label("Songs", systemImage: "music.note.list") }
+
+                NavigationStack(path: $takesPath) {
+                    TakesOverview()
+                        .navigationDestination(for: Route.self) { destination($0) }
+                }
+                .tabItem { Label("Takes", systemImage: "waveform") }
+
+                SettingsView(inTab: true)
+                    .tabItem { Label("Settings", systemImage: "gearshape") }
             }
+            .toolbarBackground(Theme.panel, for: .tabBar)
+            .toolbarBackground(.visible, for: .tabBar)
+        }
+    }
+
+    @ViewBuilder
+    private func destination(_ route: Route) -> some View {
+        switch route {
+        case .song(let id, let record): SongView(songID: id, openInRecord: record)
+        case .take(let song, let take): TakeView(songID: song, takeID: take)
         }
     }
 }
@@ -114,10 +132,10 @@ private struct FolderPicker: ViewModifier {
     }
 }
 
-/// Choosing a song, to practise or to record.
+/// The songs, by group. Tap one to practise or record it.
 struct LibraryView: View {
-    let mode: Mode
     @Environment(LibraryStore.self) private var library
+    @AppStorage("last.song") private var lastSong = ""
     @State private var search = ""
     /// Collapsed groups, remembered (like the desktop's folded groups).
     @AppStorage("library.collapsed") private var collapsedRaw = ""
@@ -135,6 +153,18 @@ struct LibraryView: View {
 
     var body: some View {
         List {
+            if search.isEmpty, let last = library.song(lastSong) {
+                NavigationLink(value: Route.song(id: last.id)) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "arrow.uturn.forward").foregroundStyle(Theme.accent)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Continue").font(Theme.mono(11)).foregroundStyle(Theme.muted)
+                            Text(last.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.ink).lineLimit(1)
+                        }
+                    }
+                }
+                .listRowBackground(Theme.panel)
+            }
             if let error = library.error, !library.songs.isEmpty {
                 Text(error).font(.system(size: 13)).foregroundStyle(Theme.muted)
                     .listRowBackground(Theme.bg)
@@ -150,7 +180,7 @@ struct LibraryView: View {
                 if !songs.isEmpty {
                     Section {
                         ForEach(open ? songs : []) { song in
-                            NavigationLink(value: Route.song(id: song.id, mode: mode, take: nil)) { SongRow(song: song) }
+                            NavigationLink(value: Route.song(id: song.id)) { SongRow(song: song) }
                                 .listRowBackground(Theme.bg)
                                 .listRowSeparatorTint(Theme.line)
                         }
@@ -188,9 +218,10 @@ struct LibraryView: View {
         }
         .searchable(text: $search)
         .refreshable { await library.reload() }
-        .navigationTitle(mode == .practice ? "Practice: choose a song" : "Record: choose a song")
+        .navigationTitle("Songs")
         .navigationBarTitleDisplayMode(.inline)
         .themedNavigation()
+        .toolbar { ToolbarItem(placement: .principal) { Logo().fixedSize() } }
     }
 }
 

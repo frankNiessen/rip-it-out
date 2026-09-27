@@ -53,6 +53,8 @@ final class Recorder {
     private(set) var state: State = .idle
     private(set) var permission: Bool? = nil
     var note: String?
+    /// The take just recorded, for "Take saved: Listen".
+    private(set) var lastSaved: Take?
     var calibrationNote: String?
 
     @ObservationIgnored private let player: PlayerEngine
@@ -264,6 +266,7 @@ final class Recorder {
         try? await Task.sleep(for: .milliseconds(400)) // let the engine settle with the input on
         player.setLoop(nil) // a take is one pass through the song
         note = nil
+        lastSaved = nil
         do {
             _ = try startCapture()
         } catch {
@@ -316,9 +319,9 @@ final class Recorder {
             let take = try await Task.detached(priority: .userInitiated) {
                 try TakeStore.save(song: song, capture: cap, captureStartS: captureStartS, latencyMs: latency, input: input, video: clip)
             }.value
-            note = (take.peakDbfs ?? 0) < -45 ? "Saved, but the take is almost silent. Check the input." : "Take saved. Press Play to listen to it with the song."
+            note = (take.peakDbfs ?? 0) < -45 ? "The take is almost silent. Check the input in Settings." : nil
             state = .idle
-            await player.loadTake(take)
+            lastSaved = take
         } catch {
             note = "Saving failed: \(error.localizedDescription)"
             state = .idle

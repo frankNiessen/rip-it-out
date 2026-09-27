@@ -86,32 +86,18 @@ final class TakeVideo {
     }
 }
 
-/// The picture above the takes: the selected take's video, or the camera while it is on,
-/// like the desktop's video box.
-struct VideoBox: View {
-    @Environment(PlayerEngine.self) private var player
+/// The camera picture on the Record page, while Record video is on.
+struct CameraBox: View {
     @Environment(Recorder.self) private var recorder
-    let video: TakeVideo
 
     var body: some View {
-        let showTake = video.player != nil || video.loading || video.problem != nil
-        if showTake || recorder.cameraRunning {
-            ZStack {
-                Theme.hex(0x0b0c0d)
-                if let p = video.player {
-                    VideoPlayerLayer(player: p)
-                } else if video.loading {
-                    Text("Loading video…").font(Theme.mono(12)).foregroundStyle(Theme.muted)
-                } else if let problem = video.problem {
-                    Text(problem).font(.system(size: 13)).foregroundStyle(Theme.muted).padding()
-                } else {
-                    CameraPreview(session: recorder.camera.session)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 260)
-            .clipShape(.rect(cornerRadius: 3))
-            .overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.line, lineWidth: 1))
+        if recorder.cameraRunning {
+            CameraPreview(session: recorder.camera.session)
+                .frame(maxWidth: .infinity)
+                .frame(height: 240)
+                .background(Theme.hex(0x0b0c0d))
+                .clipShape(.rect(cornerRadius: 3))
+                .overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.line, lineWidth: 1))
         }
     }
 }

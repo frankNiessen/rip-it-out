@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
+    var inTab = false
     @Environment(LibraryStore.self) private var library
     @Environment(Recorder.self) private var recorder
     @Environment(\.dismiss) private var dismiss
@@ -66,7 +67,7 @@ struct SettingsView: View {
             .themedNavigation()
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .toolbar { if !inTab { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } } }
             .folderPicker(isPresented: $picking)
             .sheet(isPresented: $signingIn) { NextcloudLoginView() }
             .onAppear { recorder.refreshInputs() }
