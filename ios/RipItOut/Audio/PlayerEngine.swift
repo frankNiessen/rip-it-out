@@ -41,7 +41,7 @@ final class PlayerEngine {
     @ObservationIgnored private var files: [String: AVAudioFile] = [:]
     @ObservationIgnored private let countPlayer = AVAudioPlayerNode()
     @ObservationIgnored private var generation = 0
-    @ObservationIgnored private var offset: Double = 0
+    private var offset: Double = 0   // observed: the playhead follows a jump while stopped
     @ObservationIgnored private var pos0: Double = 0
     @ObservationIgnored private(set) var startHost: Double = 0   // host seconds at which pos0 plays
     @ObservationIgnored private var activeLoop: Loop?
@@ -220,6 +220,7 @@ final class PlayerEngine {
         self.take = nil
         self.loop = nil
         self.offset = 0
+        self.zoom = 1
         loading = true
         defer { loading = false }
 
@@ -492,6 +493,21 @@ final class PlayerEngine {
         loop = l.flatMap { $0.b - $0.a > 0.2 ? $0 : nil }
         if let L = loop, pos < L.a || pos >= L.b { offset = L.a } else { offset = pos }
         if was { play(countInBars: 0) }
+    }
+
+    /// How far the tempo view is zoomed in (1 = the whole song).
+    var zoom: Double = 1
+
+    /// To the previous or next bar line (the previous one from just after a bar line).
+    func stepBar(_ dir: Int) {
+        let pos = position, db = grid.downbeats
+        guard !db.isEmpty else { return }
+        if dir < 0 {
+            let i = Grid.lastLE(db, pos - 0.25)
+            seek(i >= 0 ? db[i] : 0)
+        } else if let next = db.first(where: { $0 > pos + 0.05 }) {
+            seek(next)
+        }
     }
 
     /// Moves the loop's start (or end) by `dir` bars, keeping at least one bar.

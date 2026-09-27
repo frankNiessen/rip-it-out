@@ -215,62 +215,92 @@ struct CounterView: View {
 struct SongTimeline: View {
     let song: Song
     @Environment(PlayerEngine.self) private var player
+    @State private var frozenStart: Double?   // the window stays put while you drag
+    @State private var pinchBase: Double?
     private let band: CGFloat = 22
+
+    /// The visible part of the song: all of it, or zoomed in around the playhead.
+    private func window(_ duration: Double) -> (start: Double, span: Double) {
+        let zoom = max(1, player.zoom)
+        let span = duration / zoom
+        guard zoom > 1 else { return (0, duration) }
+        let start = frozenStart ?? (player.position - span / 2)
+        return (min(max(0, start), duration - span), span)
+    }
 
     var body: some View {
         let duration = max(song.manifest.durationS, 0.1)
         GeometryReader { geo in
             let w = geo.size.width, h = geo.size.height
-            ZStack(alignment: .topLeading) {
-                Canvas { ctx, size in drawStatic(ctx, size, duration) }
-                ForEach(song.manifest.sections ?? []) { s in
-                    let looped = player.loop == PlayerEngine.Loop(a: s.start, b: s.end)
-                    Text(s.label)
-                        .font(Theme.mono(9, .medium))
-                        .lineLimit(1)
-                        .foregroundStyle(Theme.ink)
-                        .padding(.leading, 3)
-                        .frame(width: max(1, (s.end - s.start) / duration * w - 1), height: band, alignment: .leading)
-                        .background(Theme.sectionColor(s).opacity(looped ? 0.9 : 0.45))
-                        .clipped()
-                        .offset(x: s.start / duration * w)
-                }
-                if let L = player.loop {
-                    Rectangle().fill(Theme.accent.opacity(0.10))
-                        .overlay(alignment: .leading) { Rectangle().fill(Theme.accent).frame(width: 1.5) }
-                        .overlay(alignment: .trailing) { Rectangle().fill(Theme.accent).frame(width: 1.5) }
-                        .frame(width: max(2, (L.b - L.a) / duration * w), height: h - band)
-                        .offset(x: L.a / duration * w, y: band)
-                }
-                if let take = player.take {
-                    Rectangle().fill(Theme.record.opacity(0.7))
-                        .frame(width: max(2, min(take.capturedS, duration) / duration * w), height: 3)
-                        .offset(x: max(0, take.startS) / duration * w, y: h - 3)
-                }
-                TimelineView(.animation(minimumInterval: 1 / 30, paused: !player.isPlaying)) { _ in
+            TimelineView(.animation(minimumInterval: 1 / 30, paused: !player.isPlaying)) { _ in
+                let win = window(duration)
+                let x = { (t: Double) in CGFloat((t - win.start) / win.span) * w }
+                ZStack(alignment: .topLeading) {
+                    Canvas { ctx, size in drawStatic(ctx, size, win) }
+                    ForEach((song.manifest.sections ?? []).filter { $0.end > win.start && $0.start < win.start + win.span }) { s in
+                        let looped = player.loop == PlayerEngine.Loop(a: s.start, b: s.end)
+                        Text(s.label)
+                            .font(Theme.mono(9, .medium))
+                            .lineLimit(1)
+                            .foregroundStyle(Theme.ink)
+                            .padding(.leading, 3)
+                            .frame(width: max(1, x(s.end) - x(s.start) - 1), height: band, alignment: .leading)
+                            .background(Theme.sectionColor(s).opacity(looped ? 0.9 : 0.45))
+                            .clipped()
+                            .offset(x: x(s.start))
+                    }
+                    if let L = player.loop {
+                        Rectangle().fill(Theme.accent.opacity(0.10))
+                            .overlay(alignment: .leading) { Rectangle().fill(Theme.accent).frame(width: 1.5) }
+                            .overlay(alignment: .trailing) { Rectangle().fill(Theme.accent).frame(width: 1.5) }
+                            .frame(width: max(2, x(L.b) - x(L.a)), height: h - band)
+                            .offset(x: x(L.a), y: band)
+                    }
+                    if let take = player.take {
+                        Rectangle().fill(Theme.record.opacity(0.7))
+                            .frame(width: max(2, x(take.startS + take.capturedS) - x(max(0, take.startS))), height: 3)
+                            .offset(x: x(max(0, take.startS)), y: h - 3)
+                    }
                     Rectangle().fill(Theme.accent).frame(width: 2, height: h)
-                        .offset(x: player.position / duration * w - 1)
+                        .offset(x: x(player.position) - 1)
                 }
+                .frame(width: w, height: h, alignment: .topLeading)
+                .clipped()
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0)
+                    .onChanged { v in
+                        if frozenStart == nil { frozenStart = win.start }
+                        // scrub: move the playhead along while stopped
+                        if !player.isPlaying && v.startLocation.y >= band {
+                            player.seek(min(max(0, win.start + Double(v.location.x / w) * win.span), duration))
+                        }
+                    }
+                    .onEnded { v in
+                        let t = min(max(0, win.start + Double(v.location.x / w) * win.span), duration)
+                        frozenStart = nil
+                        if v.startLocation.y < band, abs(v.translation.width) < 8,
+                           let s = song.manifest.sections?.last(where: { $0.start <= t }) {
+                            let l = PlayerEngine.Loop(a: s.start, b: s.end)
+                            player.setLoop(player.loop == l ? nil : l)
+                        } else {
+                            player.seek(t)
+                        }
+                    })
+                .simultaneousGesture(MagnificationGesture()
+                    .onChanged { scale in
+                        if pinchBase == nil { pinchBase = player.zoom }
+                        player.zoom = min(max(1, (pinchBase ?? 1) * scale), 16)
+                    }
+                    .onEnded { _ in pinchBase = nil })
             }
-            .contentShape(Rectangle())
-            .gesture(DragGesture(minimumDistance: 0).onEnded { v in
-                let t = min(max(0, v.location.x / w), 1) * duration
-                if v.startLocation.y < band, abs(v.translation.width) < 8,
-                   let s = song.manifest.sections?.last(where: { $0.start <= t }) {
-                    let l = PlayerEngine.Loop(a: s.start, b: s.end)
-                    player.setLoop(player.loop == l ? nil : l)
-                } else {
-                    player.seek(t)
-                }
-            })
         }
         .background(Theme.timeline)
         .clipShape(.rect(cornerRadius: 3))
         .overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.line, lineWidth: 1))
     }
 
-    /// The tempo curve (bpm from beat to beat) and bar numbers.
-    private func drawStatic(_ ctx: GraphicsContext, _ size: CGSize, _ duration: Double) {
+    /// The tempo curve (bpm from beat to beat) and bar numbers, for the visible part.
+    private func drawStatic(_ ctx: GraphicsContext, _ size: CGSize, _ win: (start: Double, span: Double)) {
         let beats = song.manifest.beats
         guard beats.count > 3 else { return }
         let top = band + 6, bottom = size.height - 16
@@ -282,20 +312,23 @@ struct SongTimeline: View {
         let sorted = points.map(\.1).sorted()
         var lo = sorted[sorted.count / 20], hi = sorted[sorted.count * 19 / 20]
         if hi - lo < 6 { let mid = (hi + lo) / 2; lo = mid - 3; hi = mid + 3 }
-        let x = { (t: Double) in CGFloat(t / duration) * size.width }
+        let x = { (t: Double) in CGFloat((t - win.start) / win.span) * size.width }
         let y = { (bpm: Double) in bottom - CGFloat((min(max(bpm, lo), hi) - lo) / (hi - lo)) * (bottom - top) }
         var path = Path()
-        for (i, p) in points.enumerated() {
+        var started = false
+        for p in points where p.0 >= win.start - 2 && p.0 <= win.start + win.span + 2 {
             let pt = CGPoint(x: x(p.0), y: y(p.1))
-            if i == 0 { path.move(to: pt) } else { path.addLine(to: pt) }
+            if !started { path.move(to: pt); started = true } else { path.addLine(to: pt) }
         }
         ctx.stroke(path, with: .color(Theme.muted.opacity(0.8)), lineWidth: 1)
 
         // bar numbers along the bottom, as many as fit
         let downbeats = song.manifest.downbeats
         guard !downbeats.isEmpty else { return }
-        let every = max(1, Int(ceil(Double(downbeats.count) * 26 / Double(size.width) / 4)) * 4)
-        for i in stride(from: 0, to: downbeats.count, by: every) {
+        let visible = downbeats.filter { $0 >= win.start && $0 <= win.start + win.span }.count
+        let step = Double(max(1, visible)) * 26 / Double(size.width)
+        let every = step <= 1 ? 1 : step <= 2 ? 2 : max(4, Int(ceil(step / 4)) * 4)
+        for i in stride(from: 0, to: downbeats.count, by: every) where downbeats[i] >= win.start && downbeats[i] <= win.start + win.span {
             let px = x(downbeats[i])
             ctx.fill(Path(CGRect(x: px, y: bottom + 2, width: 1, height: 3)), with: .color(Theme.lineStrong))
             ctx.draw(Text("\(i + 1)").font(Theme.mono(8)).foregroundColor(Theme.muted),
@@ -494,15 +527,26 @@ struct Caption: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 4, paused: !player.isPlaying)) { _ in
             VStack(alignment: .leading, spacing: 8) {
-                HStack {
+                HStack(spacing: 8) {
                     Text("\(Theme.time(player.position)) / \(Theme.time(player.duration))")
-                        .foregroundStyle(Theme.muted)
-                    Spacer()
-                    if let L = player.loop {
-                        Text("Loop: \(loopLabel(L))").foregroundStyle(Theme.accent).lineLimit(1)
+                        .font(Theme.mono(12)).foregroundStyle(Theme.muted)
+                    Spacer(minLength: 0)
+                    Stepper2(label: "Bar", back: { player.stepBar(-1) }, forward: { player.stepBar(1) })
+                    HStack(spacing: 0) {
+                        Button { player.zoom = max(1, player.zoom / 2) } label: { Text("−").frame(width: 30, height: 30) }
+                            .disabled(player.zoom <= 1)
+                        Button { player.zoom = min(16, player.zoom * 2) } label: { Text("+").frame(width: 30, height: 30) }
+                            .disabled(player.zoom >= 16)
                     }
+                    .buttonStyle(.plain)
+                    .font(Theme.mono(15))
+                    .foregroundStyle(Theme.ink)
+                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.lineStrong, lineWidth: 1))
+                    .accessibilityLabel("Zoom")
                 }
-                .font(Theme.mono(12))
+                if let L = player.loop {
+                    Text("Loop: \(loopLabel(L))").font(Theme.mono(12)).foregroundStyle(Theme.accent).lineLimit(1)
+                }
                 if player.loop != nil {
                     HStack(spacing: 8) {
                         Stepper2(label: "Start", back: { player.nudgeLoop(end: false, by: -1) },
