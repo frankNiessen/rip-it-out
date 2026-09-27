@@ -118,6 +118,7 @@ final class Camera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unc
             // The capture clock to the host clock, which the audio engine uses too.
             let clock = session.synchronizationClock ?? CMClockGetHostTimeClock()
             firstHost = CMSyncConvertTime(pts, from: clock, to: CMClockGetHostTimeClock()).seconds
+            if let firstHost { Log.write("video first frame: \(Log.ms(firstHost - PlayerEngine.hostNow)) from now (capture clock \(clock === CMClockGetHostTimeClock() ? "is" : "isn't") the host clock)") }
         }
         if let input, input.isReadyForMoreMediaData {
             input.append(sampleBuffer)

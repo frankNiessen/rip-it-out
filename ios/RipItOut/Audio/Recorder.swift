@@ -347,6 +347,8 @@ final class Recorder {
         note = "Saving take…"
         let latency = latencyMs, input = inputName
         let clip = video.map { (url: $0.url, startInCaptureS: $0.firstHost - first) }
+        if let clip { Log.write("take video: first frame \(Log.ms(clip.startInCaptureS)) after the first input buffer, at \(String(format: "%.3f", captureStartS - latency / 1000 + clip.startInCaptureS)) s in the song") }
+        else if cameraOn { Log.write("take video: none recorded") }
         do {
             let take = try await Background.run {
                 try TakeStore.save(song: song, capture: cap, captureStartS: captureStartS, latencyMs: latency, input: input, video: clip)
