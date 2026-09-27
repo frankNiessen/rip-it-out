@@ -11,7 +11,9 @@ Three tabs: **Songs**, **Takes** and **Settings**. Open a song and switch betwee
 **Practice** (play along) and **Record** (record yourself, on video too) at the top; the
 song stays where it is. Microphone and camera are only on in Record. After a take,
 **Take saved: Listen** opens the take page: its video, your take with the band (faders
-for **My take** and **Band**, **Take only**), **Record again** and **Delete**. The
+and the full mixer, **My take instead of** drums, bass, vocals or other, **Take only**),
+**Share** (audio, or video with that sound, mixed the way you hear it), **Record again**
+and **Delete**. The
 **Takes** tab lists every take in the library; **Continue** at the top of Songs goes back
 to the last song.
 
@@ -33,7 +35,7 @@ to the last song.
   here as well.
 
 The app is for practice: everything that edits (the beat grid, sections, a take's
-timing, level or name, exports, video) stays in the desktop app, and the phone picks up
+timing, level or name) stays in the desktop app, and the phone picks up
 the changes. The iOS app never changes a song's `manifest.json`, so two devices never
 write the same file.
 
