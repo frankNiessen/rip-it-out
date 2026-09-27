@@ -138,7 +138,10 @@ struct SongView: View {
     /// The microphone and the camera only in Record.
     private func applyMode() {
         recorder.recordPageOpen = mode == .record
-        if mode == .record { Task { await recorder.updateCamera(active: true) } }
+        if mode == .record {
+            if player.loop != nil { player.setLoop(nil) } // a take is one pass through the song
+            Task { await recorder.updateCamera(active: true) }
+        }
     }
 
     private var errorShown: Binding<Bool> {
