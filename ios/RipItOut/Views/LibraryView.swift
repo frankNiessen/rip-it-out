@@ -18,21 +18,23 @@ struct RootView: View {
 struct WelcomeView: View {
     @Environment(LibraryStore.self) private var library
     @State private var picking = false
+    @State private var signingIn = false
 
     var body: some View {
         VStack(spacing: 20) {
             Spacer()
             Image(systemName: "waveform.path").font(.system(size: 64)).foregroundStyle(Theme.accent)
             Text("Rip It Out").font(.largeTitle.bold())
-            Text("Play along with your songs and record yourself. Choose the library folder the desktop app fills, for example in iCloud Drive, Nextcloud or Dropbox.")
+            Text("Play along with your songs and record yourself. Connect to the library the desktop app fills: on your Nextcloud, or in a folder in the Files app (iCloud Drive, On My iPhone).")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 32)
             if library.checking {
                 ProgressView("Opening the folder…")
             } else {
-                Button("Choose library folder") { picking = true }
+                Button("Connect to Nextcloud") { signingIn = true }
                     .buttonStyle(.borderedProminent)
+                Button("Choose a folder in Files") { picking = true }
             }
             if let error = library.error {
                 Text(error).foregroundStyle(.red).font(.footnote)
@@ -42,6 +44,7 @@ struct WelcomeView: View {
             Spacer()
         }
         .folderPicker(isPresented: $picking)
+        .sheet(isPresented: $signingIn) { NextcloudLoginView() }
     }
 }
 
@@ -91,6 +94,9 @@ struct LibraryView: View {
 
     var body: some View {
         List {
+            if let error = library.error, !library.songs.isEmpty {
+                Label(error, systemImage: "exclamationmark.triangle").font(.footnote).foregroundStyle(.secondary)
+            }
             if library.pending > 0 {
                 Label("\(library.pending) songs couldn't be fetched yet, trying again…", systemImage: "icloud.and.arrow.down")
                     .foregroundStyle(.secondary)
@@ -109,7 +115,7 @@ struct LibraryView: View {
         .overlay {
             if library.songs.isEmpty && !library.loading && library.pending == 0 {
                 ContentUnavailableView("No songs yet", systemImage: "music.note.list",
-                                       description: Text("Songs you add in Rip It Out on your Mac appear here once \(library.folderName) has synced."))
+                                       description: Text(library.error ?? "Songs you add in Rip It Out on your Mac appear here once \(library.folderName) has synced."))
             } else if library.songs.isEmpty && library.loading {
                 ProgressView("Fetching the song list from \(library.folderName)…")
             }

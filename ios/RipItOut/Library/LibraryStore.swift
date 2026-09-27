@@ -7,6 +7,9 @@ import Observation
 @Observable
 final class LibraryStore {
     private static let bookmarkKey = "library.bookmark"
+    private static let nextcloudKey = "library.nextcloud"
+
+    private(set) var nextcloud: NextcloudAccount?
 
     private(set) var folder: URL?
     private(set) var songs: [Song] = []
@@ -15,10 +18,62 @@ final class LibraryStore {
     var error: String?
 
     init() {
-        restore()
+        if !restoreNextcloud() { restore() }
     }
 
-    var folderName: String { folder?.lastPathComponent ?? "" }
+    var folderName: String { nextcloud?.libraryPath ?? folder?.lastPathComponent ?? "" }
+    var locationLabel: String { nextcloud.map { "Nextcloud: \($0.label)" } ?? folderName }
+
+    // MARK: - Nextcloud
+
+    private func restoreNextcloud() -> Bool {
+        guard let data = UserDefaults.standard.data(forKey: Self.nextcloudKey),
+              let account = try? JSONDecoder().decode(NextcloudAccount.self, from: data) else { return false }
+        guard let password = Keychain.get(account.user + "@" + account.server) else {
+            error = "Sign in to Nextcloud again."
+            return false
+        }
+        use(account, password: password)
+        return true
+    }
+
+    private func use(_ account: NextcloudAccount, password: String) {
+        do {
+            let remote = try Nextcloud(account: account, password: password)
+            Files.remote = remote
+            nextcloud = account
+            folder = remote.mirror
+            songs = []
+            Task { await reload() }
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    /// Checks the account and the folder, then uses it as the library.
+    func connect(server: String, user: String, password: String, libraryPath: String) async throws {
+        let account = try await Task.detached(priority: .userInitiated) {
+            try Nextcloud.connect(server: server, user: user, password: password, libraryPath: libraryPath)
+        }.value
+        stopAccess()
+        UserDefaults.standard.removeObject(forKey: Self.bookmarkKey)
+        Keychain.set(password, for: account.user + "@" + account.server)
+        UserDefaults.standard.set(try JSONEncoder().encode(account), forKey: Self.nextcloudKey)
+        error = nil
+        use(account, password: password)
+    }
+
+    func disconnect() {
+        if let account = nextcloud {
+            Keychain.delete(account.user + "@" + account.server)
+            if let mirror = Files.remote?.mirror { try? FileManager.default.removeItem(at: mirror) }
+        }
+        UserDefaults.standard.removeObject(forKey: Self.nextcloudKey)
+        Files.remote = nil
+        nextcloud = nil
+        folder = nil
+        songs = []
+    }
 
     struct SongGroup: Identifiable {
         var name: String
@@ -51,6 +106,7 @@ final class LibraryStore {
                     + "may not have downloaded it yet: open it once in the Files app, then choose it again."
                 return
             }
+            if nextcloud != nil { disconnect() }
             if folder != url { stopAccess() }
             do {
                 let data = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
@@ -80,16 +136,28 @@ final class LibraryStore {
     }
 
     private func stopAccess() {
-        folder?.stopAccessingSecurityScopedResource()
+        if nextcloud == nil { folder?.stopAccessingSecurityScopedResource() }
     }
 
     func reload() async {
         guard let folder, !loading else { return }
         loading = true
         defer { loading = false }
-        let (found, waiting) = await Task.detached(priority: .userInitiated) { Self.scan(folder) }.value
+        let remote = Files.remote
+        let (found, waiting, problem) = await Task.detached(priority: .userInitiated) { () -> ([Song], Int, String?) in
+            var failed = 0
+            var problem: String?
+            if let remote {
+                do { failed = try remote.syncLibrary() } catch { problem = error.localizedDescription }
+            }
+            let (songs, waiting) = Self.scan(folder)
+            return (songs, remote == nil ? waiting : failed, problem)
+        }.value
+        guard folder == self.folder else { return } // switched libraries meanwhile
         songs = found
         pending = waiting
+        if let problem { error = "Couldn't reach Nextcloud (\(problem)). Showing the songs on this iPhone." }
+        else if nextcloud != nil { error = nil }
         if waiting > 0 { // manifests that couldn't be fetched (offline, still syncing): try again
             Task {
                 try? await Task.sleep(for: .seconds(10))
@@ -125,6 +193,9 @@ final class LibraryStore {
 
     /// Takes of a song, newest first. Blocks while take.json files download.
     nonisolated static func takes(of song: URL) -> [Take] {
+        if let remote = Files.remote, remote.relative(song) != nil {
+            try? remote.syncTakes(song.lastPathComponent)
+        }
         let root = song.appendingPathComponent("takes")
         var out: [Take] = []
         for name in Files.list(root) {

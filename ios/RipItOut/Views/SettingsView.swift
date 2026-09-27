@@ -5,15 +5,22 @@ struct SettingsView: View {
     @Environment(Recorder.self) private var recorder
     @Environment(\.dismiss) private var dismiss
     @State private var picking = false
+    @State private var signingIn = false
 
     var body: some View {
         @Bindable var recorder = recorder
         NavigationStack {
             Form {
                 Section {
-                    LabeledContent("Folder", value: library.folderName)
+                    LabeledContent(library.nextcloud == nil ? "Folder" : "Nextcloud", value: library.nextcloud?.label ?? library.folderName)
                     if library.checking { ProgressView("Opening the folder…") }
-                    else { Button("Choose another folder") { picking = true } }
+                    else {
+                        Button(library.nextcloud == nil ? "Connect to Nextcloud" : "Change Nextcloud account") { signingIn = true }
+                        Button("Choose a folder in Files") { picking = true }
+                        if library.nextcloud != nil {
+                            Button("Disconnect from Nextcloud", role: .destructive) { library.disconnect(); dismiss() }
+                        }
+                    }
                     if let error = library.error { Text(error).font(.footnote).foregroundStyle(.red) }
                 } header: {
                     Text("Library")
@@ -45,6 +52,7 @@ struct SettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .folderPicker(isPresented: $picking)
+            .sheet(isPresented: $signingIn) { NextcloudLoginView() }
         }
     }
 }
