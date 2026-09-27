@@ -7,7 +7,7 @@
 <meta name="description" content="Rip It Out splits a song into drums, bass, vocals and everything else, finds its beats and sections, and lets you play along and record yourself. For Mac and Windows.">
 <meta property="og:title" content="Rip It Out">
 <meta property="og:description" content="Take a song apart, practice your part, record yourself.">
-<meta property="og:image" content="img/drummer.jpg">
+<meta property="og:image" content="img/record.png">
 <link rel="icon" href="icon.png">
 <style>
   /* The app's own look (stemtool/static/index.html): studio hardware, matte panels,
@@ -101,16 +101,13 @@
 
   .device { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: .6rem; box-shadow: 0 30px 80px -40px #000; }
   .device img { border-radius: 2px; border: 1px solid var(--line); }
-  .photo { position: relative; }
-  .photo img { border-radius: 4px; border: 1px solid var(--line); box-shadow: 0 30px 80px -40px #000; }
-  .photo .lcd { position: absolute; left: 1rem; bottom: 1rem; margin: 0; box-shadow: 0 10px 30px -10px #000; }
   .shots .device img { aspect-ratio: 1600 / 700; object-fit: cover; object-position: top; } /* the app's lower part is empty */
   .device figcaption { display: flex; justify-content: space-between; gap: 1rem; padding: .5rem .2rem 0; font: .7rem var(--mono); color: var(--muted); }
   .device figcaption b { color: var(--lcd-ink); font-weight: 500; }
   figure { margin: 0; }
 
   /* the LCD counter, as in the app */
-  .lcd { display: inline-flex; align-items: center; gap: 1.1rem; padding: .7rem 1.1rem;
+  .lcd { display: inline-flex; align-items: center; gap: 1.1rem; margin-top: 1.75rem; padding: .7rem 1.1rem;
          background: var(--lcd); border: 1px solid var(--line); border-radius: 3px; font-family: var(--mono); }
   .lcd .num { font: 600 2.2rem/1 var(--mono); color: var(--lcd-ink); min-width: 1.2ch; text-align: center; }
   .lcd .bar { font-size: .72rem; color: var(--lcd-dim); }
@@ -199,13 +196,14 @@
           </a>
         </div>
         <p class="release-line" id="release-line">Free and open source (MIT) · <a href="https://github.com/frankNiessen/rip-it-out/releases">all releases</a></p>
-      </div>
-      <figure class="photo">
-        <img src="img/drummer.jpg" width="1600" height="1067" alt="A drummer with headphones playing an electronic drum kit at home.">
         <div class="lcd" aria-hidden="true">
           <span class="num" id="lcd-num">1</span>
           <span><span class="bar" id="lcd-bar">Count-in</span><span class="beats" id="lcd-beats"><i class="on"></i><i></i><i></i><i></i></span></span>
         </div>
+      </div>
+      <figure class="device">
+        <img src="img/record.png" width="1600" height="1000" alt="Rip It Out's Record page: the bar counter, the song's sections, the mixer, and a take on video of a drummer playing electronic drums at home.">
+        <figcaption><span>Record · a take on video, next to the band</span><b>0:30 to 0:50</b></figcaption>
       </figure>
     </div>
   </section>
