@@ -78,7 +78,7 @@ struct LibraryView: View {
     var body: some View {
         List {
             if library.pending > 0 {
-                Label("\(library.pending) songs are still downloading", systemImage: "icloud.and.arrow.down")
+                Label("\(library.pending) songs couldn't be fetched yet, trying again…", systemImage: "icloud.and.arrow.down")
                     .foregroundStyle(.secondary)
             }
             ForEach(library.groups) { group in
@@ -97,7 +97,7 @@ struct LibraryView: View {
                 ContentUnavailableView("No songs yet", systemImage: "music.note.list",
                                        description: Text("Songs you add in Rip It Out on your Mac appear here once \(library.folderName) has synced."))
             } else if library.songs.isEmpty && library.loading {
-                ProgressView("Reading \(library.folderName)…")
+                ProgressView("Fetching the song list from \(library.folderName)…")
             }
         }
         .searchable(text: $search)

@@ -90,34 +90,35 @@ final class LibraryStore {
         let (found, waiting) = await Task.detached(priority: .userInitiated) { Self.scan(folder) }.value
         songs = found
         pending = waiting
-        if waiting > 0 { // manifests still coming down from the cloud: look again shortly
+        if waiting > 0 { // manifests that couldn't be fetched (offline, still syncing): try again
             Task {
-                try? await Task.sleep(for: .seconds(3))
+                try? await Task.sleep(for: .seconds(10))
                 await reload()
             }
         }
     }
 
+    /// Songs in the library. A manifest that isn't on the device yet is fetched through a
+    /// coordinated read, which makes iCloud Drive and File Provider apps (Nextcloud,
+    /// Dropbox) download it; several at once. Returns the songs and how many manifests
+    /// couldn't be read (offline, still syncing), to try again later.
     nonisolated static func scan(_ library: URL) -> ([Song], Int) {
-        var songs: [Song] = []
-        var waiting = 0
-        for name in Files.list(library) {
-            let dir = library.appendingPathComponent(name)
-            guard Files.isDirectory(dir) else { continue }
-            let manifestURL = dir.appendingPathComponent("manifest.json")
-            guard Files.exists(manifestURL) else { continue } // not a song (yet)
-            if !Files.isDownloaded(manifestURL) {
-                Files.startDownload(manifestURL)
-                waiting += 1
-                continue
-            }
-            guard let data = try? Files.read(manifestURL), let manifest = try? Manifest.decode(data) else { continue }
+        let dirs = Files.list(library).map { library.appendingPathComponent($0) }
+            .filter { Files.isDirectory($0) && Files.exists($0.appendingPathComponent("manifest.json")) }
+        var results = [Song?](repeating: nil, count: dirs.count)
+        let lock = NSLock()
+        DispatchQueue.concurrentPerform(iterations: dirs.count) { i in
+            let dir = dirs[i]
+            guard let data = try? Files.read(dir.appendingPathComponent("manifest.json")),
+                  let manifest = try? Manifest.decode(data) else { return }
             let takes = Files.list(dir.appendingPathComponent("takes"))
                 .filter { Files.exists(dir.appendingPathComponent("takes/\($0)/take.json")) }.count
-            songs.append(Song(folder: dir, manifest: manifest, takeCount: takes))
+            lock.lock()
+            results[i] = Song(folder: dir, manifest: manifest, takeCount: takes)
+            lock.unlock()
         }
-        songs.sort { ($0.manifest.createdAt ?? "") > ($1.manifest.createdAt ?? "") }
-        return (songs, waiting)
+        let songs = results.compactMap { $0 }.sorted { ($0.manifest.createdAt ?? "") > ($1.manifest.createdAt ?? "") }
+        return (songs, dirs.count - songs.count)
     }
 
     func song(_ id: String) -> Song? { songs.first { $0.id == id } }

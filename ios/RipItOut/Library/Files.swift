@@ -75,8 +75,9 @@ enum Files {
     }
 
     /// Makes sure a file is on the device (downloads it if needed). Blocks.
+    /// (Always coordinated: File Provider apps like Nextcloud don't all report whether a
+    /// file is on the device, and a coordinated read of a local file costs nothing.)
     static func download(_ url: URL) throws {
-        if isDownloaded(url) { return }
         var coordError: NSError?
         var found = false
         NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordError) { url in
