@@ -302,7 +302,9 @@ final class PlayerEngine {
         countPlayer.stop()
     }
 
-    func toggle() { isPlaying ? pause() : play() }
+    func toggle() {
+        if isPlaying { pause() } else { play() }
+    }
 
     func seek(_ t: Double) {
         let was = isPlaying
