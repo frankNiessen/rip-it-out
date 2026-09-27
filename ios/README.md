@@ -36,8 +36,16 @@ Apple Developer account.
 3. Connect your iPhone, choose it as the run destination and press **Run**. The first
    time, allow the developer on the phone in *Settings > General > VPN & Device
    Management*.
-4. In the app, choose your library folder, for example *iCloud Drive > Rip It Out*.
-   On the Mac, put the library in that folder with *Settings > Library folder*.
+4. In the app, connect to your library:
+   - **Nextcloud:** tap *Connect to Nextcloud* and enter the server address, your user
+     name, an app password (Nextcloud in the browser: *Settings > Security > Devices &
+     sessions > Create new app password*) and the library folder, e.g. `StemLibrary`.
+     The app talks to the server directly (WebDAV): the Files app can't hand whole
+     Nextcloud folders to other apps. Songs are downloaded when you open them and kept
+     on the phone; takes are uploaded right after recording.
+   - **iCloud Drive or On My iPhone:** tap *Choose a folder in Files*, for example
+     *iCloud Drive > Rip It Out*. On the Mac, put the library in that folder with
+     *Settings > Library folder*.
 
 ## Recording tips
 
@@ -53,6 +61,7 @@ Apple Developer account.
 | Part | File |
 |---|---|
 | Library folder, bookmarks, iCloud downloads | `RipItOut/Library/LibraryStore.swift`, `Files.swift` |
+| Nextcloud: WebDAV, the local mirror, uploads | `RipItOut/Library/Nextcloud.swift` |
 | manifest.json and the beat grid (counter, count-in) | `RipItOut/Library/Manifest.swift`, `Grid.swift` |
 | Playback: one AVAudioPlayerNode per track, all started at the same host time; loops as back-to-back segments | `RipItOut/Audio/PlayerEngine.swift` |
 | Recording and calibration: a tap on the engine's input, placed on the song's timeline by host time and the calibrated latency | `RipItOut/Audio/Recorder.swift` |
