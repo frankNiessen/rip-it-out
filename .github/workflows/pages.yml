@@ -35,7 +35,8 @@ jobs:
         run: |
           mkdir -p _site/img _site/fonts
           cp site/index.html _site/
-          cp docs/library.png docs/play-countin.png docs/record.png _site/img/
+          cp site/img/* _site/img/
+          cp docs/library.png docs/play-countin.png _site/img/
           cp stemtool/static/fonts/*.woff2 stemtool/static/fonts/OFL-*.txt _site/fonts/
           cp ios/RipItOut/Assets.xcassets/AppIcon.appiconset/icon-1024.png _site/icon.png
           touch _site/.nojekyll
