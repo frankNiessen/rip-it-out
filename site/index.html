@@ -160,6 +160,13 @@
   .legal { font-size: .9rem; color: var(--muted); max-width: 52rem; }
   .legal strong { color: var(--ink); }
 
+  .support .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1.25rem 2rem; }
+  .support h2 { margin: 0 0 .3rem; }
+  .support p { margin: 0; color: var(--muted); max-width: 38rem; }
+  .tip { display: inline-flex; align-items: center; gap: .55rem; padding: .8rem 1.2rem; border: 1px solid var(--accent); border-radius: 3px;
+         color: var(--accent); font: 700 1rem var(--sans); text-decoration: none; white-space: nowrap; }
+  .tip:hover { background: var(--accent); color: var(--on-accent); }
+
   footer { padding: 2rem var(--gutter) 3rem; font: .75rem var(--mono); color: var(--muted); }
   footer .wrap { display: flex; flex-wrap: wrap; gap: .5rem 2rem; justify-content: space-between; }
   footer a { color: var(--muted); }
@@ -342,7 +349,7 @@
       <div>
         <p class="kicker">Privacy</p>
         <h2>Stays on your computer</h2>
-        <p class="muted">There is no Rip It Out server. Your songs, tracks and recordings are processed and stored on your computer. The app connects to YouTube when it downloads audio, to the model publishers the first time it needs a model, and to GitHub only when you check for updates.</p>
+        <p class="muted">There is no Rip It Out server. Your songs, tracks and recordings are processed and stored on your computer. The app connects to YouTube when it downloads audio, to the model publishers the first time it needs a model, and to GitHub only when you check for updates. <a href="privacy.html">Privacy policy</a></p>
         <p class="kicker" style="margin-top:2.5rem">Please note</p>
         <div class="legal">
           <p><strong>Only download or process content you are authorized to use.</strong> You are responsible for complying with copyright law and the terms of the source service; YouTube's Terms of Service restrict downloading unless YouTube, the rights holders or applicable law permit it. <strong>Don't share separated tracks, downloads or exports of third-party music</strong> without the necessary rights.</p>
@@ -351,12 +358,21 @@
       </div>
     </div>
   </section>
+  <section id="support" class="support" hidden>
+    <div class="wrap">
+      <div>
+        <h2>Free, and made by a musician</h2>
+        <p>Rip It Out is free and open source. If it helps you practise, you can buy me a coffee: it keeps the app going and new versions coming.</p>
+      </div>
+      <a class="tip" data-tip href="#">☕ Buy me a coffee</a>
+    </div>
+  </section>
 </main>
 
 <footer>
   <div class="wrap">
     <span>Rip It Out · free and open source · photo by <a href="https://www.pexels.com/photo/a-man-playing-electronic-drums-7715296/">Boris Pavlikovsky</a> on Pexels</span>
-    <span><a href="https://github.com/frankNiessen/rip-it-out">Source on GitHub</a> · <a href="https://github.com/frankNiessen/rip-it-out/releases">Releases</a></span>
+    <span><a href="privacy.html">Privacy</a> · <a href="https://github.com/frankNiessen/rip-it-out">Source on GitHub</a> · <a href="https://github.com/frankNiessen/rip-it-out/releases">Releases</a><span data-tip-wrap hidden> · <a data-tip href="#">Buy me a coffee</a></span></span>
   </div>
 </footer>
 
@@ -365,6 +381,12 @@
   // version), found through GitHub's API; without it they open the release page.
   (function () {
     const repo = "frankNiessen/rip-it-out";
+    // Where tips go (Ko-fi). Empty: the tip section and links stay hidden.
+    const TIP_URL = "";
+    if (TIP_URL) {
+      document.querySelectorAll("[data-tip]").forEach((a) => { a.href = TIP_URL; });
+      document.querySelectorAll("#support, [data-tip-wrap]").forEach((el) => { el.hidden = false; });
+    }
     const mb = (bytes) => Math.round(bytes / 1e6) + " MB";
     fetch("https://api.github.com/repos/" + repo + "/releases/latest", { headers: { Accept: "application/vnd.github+json" } })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))

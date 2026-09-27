@@ -563,6 +563,8 @@
 <script>
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+const SITE_URL = "https://frankniessen.github.io/rip-it-out/";
+const TIP_URL = ""; // Ko-fi page for tips; empty: no Support line in About
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtTime = (s) => { s = Math.max(0, Math.round(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
 const fileUrl = (folder, ...parts) => `/files/${[folder, ...parts].map(encodeURIComponent).join("/")}`;
@@ -622,6 +624,9 @@ async function loadSettings() {
     ["Version", s.version], ["Separation model", s.separation_model], ["Device", s.device],
     ["Settings file", s.config_file],
   ].map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("");
+  $("#about").insertAdjacentHTML("beforeend",
+    `<dt>Website</dt><dd><a href="${SITE_URL}" target="_blank" rel="noopener">${esc(SITE_URL.replace(/^https:\/\//, ""))}</a> · <a href="${SITE_URL}privacy.html" target="_blank" rel="noopener">Privacy</a></dd>`
+    + (TIP_URL ? `<dt>Support</dt><dd><a href="${TIP_URL}" target="_blank" rel="noopener">Buy me a coffee</a> if Rip It Out helps you practise</dd>` : ""));
 }
 function showConvert(n) {
   $("#convert").hidden = !n;

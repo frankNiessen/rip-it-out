@@ -34,7 +34,7 @@ jobs:
       - name: Assemble the site
         run: |
           mkdir -p _site/img _site/fonts
-          cp site/index.html _site/
+          cp site/*.html _site/
           cp site/img/* _site/img/
           cp docs/library.png docs/play-countin.png _site/img/
           cp stemtool/static/fonts/*.woff2 stemtool/static/fonts/OFL-*.txt _site/fonts/
