@@ -351,6 +351,11 @@ final class PlayerEngine {
         return level(key)
     }
 
+    /// Every loaded track at the level you hear it (faders, mute, solo), for exporting.
+    func mixSources() -> [TakeExport.Source] {
+        trackKeys.compactMap { key in files[key].map { TakeExport.Source(url: $0.url, gain: effectiveLevel(key)) } }
+    }
+
     func clearMutes() {
         muted = []
         applyVolumes()
