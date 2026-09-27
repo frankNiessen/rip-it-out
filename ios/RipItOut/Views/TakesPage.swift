@@ -11,11 +11,19 @@ struct TakesOverview: View {
     @Environment(PlayerEngine.self) private var player
     @State private var rows: [TakeRow] = []
     @State private var loading = false
+    @State private var checking = false
     @State private var deleting: TakeRow?
     @State private var error: String?
 
     var body: some View {
         List {
+            if checking {
+                HStack(spacing: 8) {
+                    ProgressView().tint(Theme.muted)
+                    Text("Checking Nextcloud for new takes…").font(Theme.mono(11)).foregroundStyle(Theme.muted)
+                }
+                .listRowBackground(Theme.bg)
+            }
             if let error {
                 Text(error).font(.system(size: 13)).foregroundStyle(Theme.fail).listRowBackground(Theme.bg)
             }
@@ -66,19 +74,27 @@ struct TakesOverview: View {
         }
     }
 
+    /// The takes on this device at once, then whatever changed on the server.
     private func load() async {
         loading = true
         defer { loading = false }
+        rows = await collect(sync: false)
+        checking = library.nextcloud != nil
+        defer { checking = false }
+        if checking { rows = await collect(sync: true) }
+    }
+
+    private func collect(sync: Bool) async -> [TakeRow] {
         let songs = library.songs
         let found = await withTaskGroup(of: [TakeRow].self) { group in
             for song in songs {
-                group.addTask { LibraryStore.takes(of: song.folder).map { TakeRow(song: song, take: $0) } }
+                group.addTask { LibraryStore.takes(of: song.folder, sync: sync).map { TakeRow(song: song, take: $0) } }
             }
             var all: [TakeRow] = []
             for await part in group { all += part }
             return all
         }
-        rows = found.sorted { $0.take.createdAt > $1.take.createdAt }
+        return found.sorted { $0.take.createdAt > $1.take.createdAt }
     }
 
     private func delete(_ take: Take) async {

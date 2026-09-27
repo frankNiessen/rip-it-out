@@ -159,8 +159,10 @@ struct SongView: View {
                 Theme.time(m.durationS)].compactMap { $0 }.joined(separator: " · ")
     }
 
+    /// The takes on this device at once, then whatever changed on the server.
     private func loadTakes(_ song: Song) async {
         let folder = song.folder
+        takes = await Task.detached { LibraryStore.takes(of: folder, sync: false) }.value
         takes = await Task.detached { LibraryStore.takes(of: folder) }.value
     }
 }

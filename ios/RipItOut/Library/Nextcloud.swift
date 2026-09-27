@@ -231,12 +231,30 @@ final class Nextcloud: @unchecked Sendable {
 
     private var stateURL: URL { mirror.appendingPathComponent(".etags.json") }
 
+    // What was fetched, by etag (folders and take folders), so unchanged things aren't
+    // asked for again. Kept in memory, written through to .etags.json.
+    private var stateCache: [String: String]?
+    /// The song folders' etags from the last library listing.
+    private var songEtags: [String: String] = [:]
+
     private func loadState() -> [String: String] {
-        (try? JSONSerialization.jsonObject(with: Data(contentsOf: stateURL))) as? [String: String] ?? [:]
+        stateLock.lock(); defer { stateLock.unlock() }
+        if stateCache == nil {
+            stateCache = (try? JSONSerialization.jsonObject(with: Data(contentsOf: stateURL))) as? [String: String] ?? [:]
+        }
+        return stateCache!
     }
 
-    private func saveState(_ state: [String: String]) {
-        if let data = try? JSONSerialization.data(withJSONObject: state) { try? data.write(to: stateURL, options: .atomic) }
+    private func updateState(_ change: (inout [String: String]) -> Void) {
+        _ = loadState()
+        stateLock.lock(); defer { stateLock.unlock() }
+        change(&stateCache!)
+        if let data = try? JSONSerialization.data(withJSONObject: stateCache!) { try? data.write(to: stateURL, options: .atomic) }
+    }
+
+    private func songEtag(_ song: String) -> String? {
+        stateLock.lock(); defer { stateLock.unlock() }
+        return songEtags[song]
     }
 
     /// Brings the song manifests of the mirror up to date. A song folder whose etag didn't
@@ -247,11 +265,15 @@ final class Nextcloud: @unchecked Sendable {
     func syncLibrary() throws -> Int {
         let fm = FileManager.default
         let remote = try list("").filter { $0.isDirectory && !$0.name.hasPrefix(".") }
+        stateLock.lock()
+        songEtags = Dictionary(remote.map { ($0.name, $0.etag) }, uniquingKeysWith: { a, _ in a })
+        stateLock.unlock()
         var state = loadState()
         let names = Set(remote.map(\.name))
+        var removed: [String] = []
         for name in (try? fm.contentsOfDirectory(atPath: mirror.path)) ?? [] where !name.hasPrefix(".") && !names.contains(name) {
             try? fm.removeItem(at: local(name)) // removed on the server
-            state[name] = nil
+            removed.append(name)
         }
         let changed = remote.filter { state[$0.name] != $0.etag || !fm.fileExists(atPath: local("\($0.name)/manifest.json").path) }
         var failed = 0
@@ -271,7 +293,11 @@ final class Nextcloud: @unchecked Sendable {
             }
         }
         queue.waitUntilAllOperationsAreFinished()
-        saveState(state)
+        let fetched = changed.compactMap { e in state[e.name].map { (e.name, $0) } }
+        updateState { s in
+            for name in removed { s[name] = nil; s["takes:" + name] = nil }
+            for (name, etag) in fetched { s[name] = etag }
+        }
         return failed
     }
 
@@ -294,21 +320,35 @@ final class Nextcloud: @unchecked Sendable {
 
     /// Brings a song's takes in the mirror up to date: take.json of every take on the
     /// server, and takes deleted elsewhere removed. Audio is fetched when a take is played.
+    /// Nothing is asked for when the song's folder didn't change since the last time, and
+    /// a take's take.json only when its folder changed.
     func syncTakes(_ song: String) throws {
         let fm = FileManager.default
+        let songTag = songEtag(song)
+        if let songTag, loadState()["takes:" + song] == songTag { return }
         let remote = try list("\(song)/takes").filter { $0.isDirectory && !$0.name.hasPrefix(".") }
         let root = local("\(song)/takes")
         let names = Set(remote.map(\.name))
         for name in (try? fm.contentsOfDirectory(atPath: root.path)) ?? [] where !name.hasPrefix(".") && !names.contains(name) {
             try? fm.removeItem(at: root.appendingPathComponent(name))
         }
+        let known = loadState()
+        var fetched: [String: String] = [:]
+        var complete = true
         for take in remote {
+            let key = "take:\(song)/\(take.name)"
             let json = root.appendingPathComponent("\(take.name)/take.json")
+            if known[key] == take.etag, fm.fileExists(atPath: json.path) { continue }
             do {
                 try download("\(song)/takes/\(take.name)/take.json", to: json)
+                fetched[key] = take.etag
             } catch Failure.http(404, _) {
-                continue // still uploading (take.json comes last)
+                complete = false // still uploading (take.json comes last): look again next time
             }
+        }
+        updateState { s in
+            for (k, v) in fetched { s[k] = v }
+            if complete, let songTag { s["takes:" + song] = songTag }
         }
     }
 
