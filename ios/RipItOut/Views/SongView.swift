@@ -229,45 +229,46 @@ struct TransportView: View {
         @Bindable var player = player
         let recording = recorder.state == .recording
         let busy = recorder.state == .saving || recorder.state == .calibrating
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
+            // the two main actions
             HStack(spacing: 8) {
                 Button(player.isPlaying ? "Pause" : "Play") { player.toggle() }
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(recording || busy)
-                Button("To start") { player.seek(player.loop?.a ?? 0) }
+                Button(recording ? "Stop" : "Record") { Task { await recorder.toggleRecording() } }
+                    .buttonStyle(RecordButtonStyle(recording: recording))
+                    .disabled(busy)
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 6) {
+                Button { player.seek(player.loop?.a ?? 0) } label: { Image(systemName: "backward.end.fill") }
                     .buttonStyle(QuietButtonStyle())
                     .disabled(recording)
+                    .accessibilityLabel("To start")
                 Button("Loop") { player.toggleSectionLoop() }
                     .buttonStyle(QuietButtonStyle(on: player.loop != nil))
                     .disabled(recording)
-                Spacer(minLength: 0)
-            }
-            HStack(spacing: 8) {
-                Text("Count-in").font(.system(size: 14)).foregroundStyle(Theme.muted)
                 Menu {
                     Picker("Count-in", selection: $player.countInBars) {
-                        Text("Off").tag(0)
+                        Text("No count-in").tag(0)
                         Text("1 bar").tag(1)
                         Text("2 bars").tag(2)
                     }
                 } label: {
-                    HStack(spacing: 6) {
-                        Text(player.countInBars == 0 ? "Off" : player.countInBars == 1 ? "1 bar" : "2 bars")
-                        Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+                    HStack(spacing: 5) {
+                        Text(player.countInBars == 0 ? "No count-in" : player.countInBars == 1 ? "Count-in 1" : "Count-in 2")
+                        Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
                     }
                 }
                 .buttonStyle(QuietButtonStyle())
                 .disabled(recording)
+                Spacer(minLength: 0)
                 Button { recorder.cameraOn.toggle() } label: {
                     Image(systemName: recorder.cameraOn ? "video.fill" : "video.slash")
                 }
                 .buttonStyle(QuietButtonStyle(on: recorder.cameraOn))
                 .disabled(recording)
                 .accessibilityLabel(recorder.cameraOn ? "Camera on" : "Camera off")
-                Spacer(minLength: 0)
-                Button(recording ? "Stop" : "Record") { Task { await recorder.toggleRecording() } }
-                    .buttonStyle(RecordButtonStyle(recording: recording))
-                    .disabled(busy)
             }
             if recording {
                 TimelineView(.animation(minimumInterval: 1 / 20)) { _ in
@@ -313,8 +314,8 @@ struct MixerView: View {
                         .font(.system(size: 14, weight: mine ? .semibold : .regular))
                         .foregroundStyle(mine ? Theme.ink : Theme.muted)
                         .frame(width: 70, alignment: .leading)
-                    Slider(value: Binding(get: { Double(player.level(key)) }, set: { player.setLevel(key, Float($0)) }), in: 0...1)
-                        .tint(silent ? Theme.lineStrong : Theme.ink)
+                    Fader(value: Binding(get: { Double(player.level(key)) }, set: { player.setLevel(key, Float($0)) }),
+                          dimmed: silent)
                     if key != "count" {
                         ChannelButton(letter: "M", on: player.muted.contains(key), color: Theme.mute) { player.toggleMute(key) }
                         ChannelButton(letter: "S", on: player.soloed.contains(key), color: Theme.accent) { player.toggleSolo(key) }
@@ -323,6 +324,33 @@ struct MixerView: View {
                     }
                 }
             }
+        }
+    }
+}
+
+/// A slim fader like the desktop's: a thin track, filled up to a small knob.
+struct Fader: View {
+    @Binding var value: Double
+    var dimmed = false
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width, knob: CGFloat = 16
+            let x = CGFloat(min(max(value, 0), 1)) * (w - knob)
+            ZStack(alignment: .leading) {
+                Capsule().fill(Theme.lineStrong).frame(height: 3)
+                Capsule().fill(dimmed ? Theme.muted : Theme.ink).frame(width: x + knob / 2, height: 3)
+                Circle().fill(dimmed ? Theme.muted : Theme.ink).frame(width: knob, height: knob).offset(x: x)
+            }
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0).onChanged { g in
+                value = Double(min(max((g.location.x - knob / 2) / (w - knob), 0), 1))
+            })
+        }
+        .frame(height: 30)
+        .accessibilityRepresentation {
+            Slider(value: $value, in: 0...1)
         }
     }
 }

@@ -78,7 +78,8 @@ struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 16, weight: .bold))
-            .padding(.horizontal, 18).padding(.vertical, 11)
+            .lineLimit(1).fixedSize()
+            .padding(.horizontal, 20).padding(.vertical, 10)
             .foregroundStyle(Theme.onAccent)
             .background(Theme.accent.opacity(configuration.isPressed ? 0.85 : 1), in: .rect(cornerRadius: 3))
             .opacity(enabled ? 1 : 0.4)
@@ -91,8 +92,10 @@ struct QuietButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 15, weight: .medium))
-            .padding(.horizontal, 12).padding(.vertical, 9)
+            .font(.system(size: 14, weight: .medium))
+            .lineLimit(1).fixedSize()
+            .frame(minHeight: 20)
+            .padding(.horizontal, 11).padding(.vertical, 8)
             .foregroundStyle(on ? Theme.accent : Theme.ink)
             .background(configuration.isPressed ? Theme.field : .clear, in: .rect(cornerRadius: 3))
             .overlay(RoundedRectangle(cornerRadius: 3).stroke(on ? Theme.accent : Theme.lineStrong, lineWidth: 1))
@@ -107,10 +110,10 @@ struct RecordButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         HStack(spacing: 7) {
             RoundedRectangle(cornerRadius: recording ? 1 : 6).frame(width: 11, height: 11)
-            configuration.label
+            configuration.label.lineLimit(1).fixedSize()
         }
         .font(.system(size: 16, weight: .bold))
-        .padding(.horizontal, 16).padding(.vertical, 11)
+        .padding(.horizontal, 18).padding(.vertical, 10)
         .foregroundStyle(.white)
         .background(Theme.record.opacity(configuration.isPressed ? 0.85 : 1), in: .rect(cornerRadius: 3))
         .opacity(enabled ? 1 : 0.4)
