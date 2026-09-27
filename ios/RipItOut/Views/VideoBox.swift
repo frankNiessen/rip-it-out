@@ -91,6 +91,7 @@ struct CameraBox: View {
     @Environment(Recorder.self) private var recorder
 
     var body: some View {
+        @Bindable var recorder = recorder
         if recorder.cameraRunning {
             CameraPreview(session: recorder.camera.session)
                 .frame(maxWidth: .infinity)
@@ -98,6 +99,20 @@ struct CameraBox: View {
                 .background(Theme.hex(0x0b0c0d))
                 .clipShape(.rect(cornerRadius: 3))
                 .overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.line, lineWidth: 1))
+                .overlay(alignment: .topTrailing) {
+                    // front or back camera, like the Camera app's switch
+                    Button { recorder.frontCamera.toggle() } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath.camera")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(Theme.ink)
+                            .frame(width: 40, height: 40)
+                            .background(.black.opacity(0.55), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(8)
+                    .disabled(recorder.state == .recording)
+                    .accessibilityLabel(recorder.frontCamera ? "Switch to the back camera" : "Switch to the front camera")
+                }
         }
     }
 }

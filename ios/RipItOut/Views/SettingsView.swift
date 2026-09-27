@@ -50,13 +50,6 @@ struct SettingsView: View {
                     } else if !recorder.latencyIsMeasured {
                         Text("Estimate reported by iOS; calibrating is more exact.").font(.footnote).foregroundStyle(.secondary)
                     }
-                    Toggle("Record video", isOn: $recorder.cameraOn).tint(Theme.accent)
-                    if recorder.cameraOn {
-                        Picker("Camera", selection: $recorder.frontCamera) {
-                            Text("Front").tag(true)
-                            Text("Back").tag(false)
-                        }
-                    }
                 } header: {
                     Text("Recording")
                 } footer: {
