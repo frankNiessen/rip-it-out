@@ -16,10 +16,15 @@ struct Take: Identifiable, Equatable {
     var myTakeFile: String
     var rawFile: String
     var hasVideo: Bool
+    var videoFile: String?
+    var videoStartS: Double?   // song time of the video's first frame
     var folder: URL
 
     var myTakeURL: URL { folder.appendingPathComponent(myTakeFile) }
     var rawURL: URL { folder.appendingPathComponent(rawFile) }
+    var videoURL: URL? { videoFile.map { folder.appendingPathComponent($0) } }
+    /// AVPlayer plays mp4 and mov, not the webm some browsers record.
+    var videoPlayable: Bool { videoFile.map { ["mp4", "mov", "m4v"].contains(($0 as NSString).pathExtension.lowercased()) } ?? false }
 
     init?(json: [String: Any], folder: URL) {
         guard let id = json["id"] as? String,
@@ -40,7 +45,10 @@ struct Take: Identifiable, Equatable {
         self.startS = (json["start_s"] as? NSNumber)?.doubleValue ?? captureStart - latencyMs / 1000
         self.myTakeFile = files["my_drums"] ?? "my_drums.flac"
         self.rawFile = files["raw"] ?? "raw.flac"
-        self.hasVideo = json["video"] is [String: Any]
+        let video = json["video"] as? [String: Any]
+        self.hasVideo = video != nil
+        self.videoFile = video?["file"] as? String
+        self.videoStartS = (video?["start_s"] as? NSNumber)?.doubleValue
         self.folder = folder
     }
 

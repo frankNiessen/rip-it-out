@@ -27,6 +27,9 @@ final class PlayerEngine {
     }
     var error: String?
     var onEnded: (() -> Void)?
+    /// Told when playback starts (host seconds at which `pos` plays) and stops (nil), so
+    /// a take's video can follow.
+    @ObservationIgnored var onTransport: ((_ host: Double?, _ pos: Double) -> Void)?
 
     private(set) var levels: [String: Float] = [:]
 
@@ -81,8 +84,6 @@ final class PlayerEngine {
         }
     }
 
-    /// Turns on the input (after the microphone permission was granted). The engine
-    /// restarts once so the input and output run together.
     /// Turns on the input (after the microphone permission was granted). An engine that
     /// already ran for playback alone often reports an input without channels, so the
     /// engine is built again with the input, and the tracks are attached to the new one.
@@ -91,7 +92,10 @@ final class PlayerEngine {
         pause()
         let session = AVAudioSession.sharedInstance()
         do {
-            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP])
+            // Only when it differs: every change makes iOS reconfigure the audio route.
+            if session.category != .playAndRecord || !session.categoryOptions.contains(.defaultToSpeaker) {
+                try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP])
+            }
             try session.setActive(true)
         } catch {
             return "The audio session couldn't be set up for recording (\(error.localizedDescription))."
@@ -140,11 +144,25 @@ final class PlayerEngine {
         }
     }
 
+    @ObservationIgnored private var configPending = false
+
+    /// A device came or went (headphones, an audio interface), or the input was switched
+    /// on. iOS often sends several of these in a row, and restarting the engine can send
+    /// another, so they are handled once, a moment later, and only if the engine really
+    /// stopped.
     private func configurationChanged() {
-        // A device came or went (headphones, an audio interface): the engine stopped.
-        if Self.hostNow < settleUntil && !isPlaying { startEngine(); return }
-        let was = isPlaying
-        if was { offset = position; stopAll() }
+        guard !configPending else { return }
+        configPending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            MainActor.assumeIsolated { self?.handleConfigurationChange() }
+        }
+    }
+
+    private func handleConfigurationChange() {
+        configPending = false
+        if engine.isRunning { return }
+        let was = isPlaying && Self.hostNow >= settleUntil
+        if isPlaying { offset = position; stopAll() }
         startEngine()
         if was { onEnded?() } // a take being recorded is saved up to here
     }
@@ -325,6 +343,7 @@ final class PlayerEngine {
         pos0 = plan.pos
         startHost = start
         isPlaying = true
+        onTransport?(start, plan.pos)
         endTimer?.invalidate()
         endTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.checkEnd() }
@@ -376,6 +395,7 @@ final class PlayerEngine {
 
     private func stopAll() {
         generation += 1
+        if isPlaying { onTransport?(nil, position) }
         isPlaying = false
         countInHosts = []
         endTimer?.invalidate()

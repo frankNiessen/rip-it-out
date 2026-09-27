@@ -6,6 +6,7 @@ struct SongView: View {
     @Environment(PlayerEngine.self) private var player
     @Environment(Recorder.self) private var recorder
     @State private var takes: [Take] = []
+    @State private var video = TakeVideo()
 
     private var song: Song? { library.song(songID) }
 
@@ -27,6 +28,7 @@ struct SongView: View {
                             MixerView()
                         }
                         .panel()
+                        VideoBox(video: video)
                         if let note = recorder.note {
                             Text(note).font(.system(size: 13)).foregroundStyle(Theme.muted)
                         }
@@ -49,7 +51,15 @@ struct SongView: View {
                     await player.load(song)
                     await loadTakes(song)
                 }
-                .onChange(of: player.take) { Task { await loadTakes(song) } }
+                .onChange(of: player.take) {
+                    Task {
+                        await loadTakes(song)
+                        await video.show(player.take, engine: player)
+                    }
+                }
+                .task { await recorder.updateCamera(active: true) }
+                .onChange(of: recorder.cameraOn) { Task { await recorder.updateCamera(active: true) } }
+                .onChange(of: recorder.frontCamera) { Task { await recorder.updateCamera(active: true) } }
                 .alert("Rip It Out", isPresented: Binding(get: { player.error != nil }, set: { if !$0 { player.error = nil } })) {
                     Button("OK") { player.error = nil }
                 } message: { Text(player.error ?? "") }
@@ -57,7 +67,11 @@ struct SongView: View {
                 ContentUnavailableView("Song not found", systemImage: "questionmark.folder")
             }
         }
-        .onDisappear { player.pause() }
+        .onDisappear {
+            player.pause()
+            video.stop()
+            Task { await recorder.updateCamera(active: false) }
+        }
     }
 
     private func meta(_ song: Song) -> String {
@@ -244,6 +258,12 @@ struct TransportView: View {
                 }
                 .buttonStyle(QuietButtonStyle())
                 .disabled(recording)
+                Button { recorder.cameraOn.toggle() } label: {
+                    Image(systemName: recorder.cameraOn ? "video.fill" : "video.slash")
+                }
+                .buttonStyle(QuietButtonStyle(on: recorder.cameraOn))
+                .disabled(recording)
+                .accessibilityLabel(recorder.cameraOn ? "Camera on" : "Camera off")
                 Spacer(minLength: 0)
                 Button(recording ? "Stop" : "Record") { Task { await recorder.toggleRecording() } }
                     .buttonStyle(RecordButtonStyle(recording: recording))

@@ -59,6 +59,17 @@ final class Recorder {
     @ObservationIgnored private var capture: Capture?
     @ObservationIgnored private var started: (host: Double, pos: Double)?
     @ObservationIgnored private var tapInstalled = false
+    @ObservationIgnored let camera = Camera()
+    private(set) var cameraRunning = false
+    private(set) var inputs: [AVAudioSessionPortDescription] = []
+
+    /// Record video too (remembered). Front or back camera.
+    var cameraOn: Bool = UserDefaults.standard.bool(forKey: "camera.on") {
+        didSet { UserDefaults.standard.set(cameraOn, forKey: "camera.on") }
+    }
+    var frontCamera: Bool = UserDefaults.standard.object(forKey: "camera.front") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(frontCamera, forKey: "camera.front") }
+    }
 
     init(player: PlayerEngine) {
         self.player = player
@@ -67,12 +78,73 @@ final class Recorder {
         case .denied: permission = false
         default: permission = nil
         }
+        refreshInputs()
+        NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshInputs() }
+        }
     }
 
     var level: Float { capture?.level ?? 0 }
 
     var inputName: String {
-        AVAudioSession.sharedInstance().currentRoute.inputs.first?.portName ?? "Input"
+        _ = inputs // changes when the route changes, so views update
+        return AVAudioSession.sharedInstance().currentRoute.inputs.first?.portName ?? "Input"
+    }
+
+    // MARK: - choosing the input
+
+    private static let inputKey = "input.preferred"
+
+    /// The inputs iOS offers right now (iPhone microphone, headset, USB interface).
+    func refreshInputs() {
+        inputs = AVAudioSession.sharedInstance().availableInputs ?? []
+    }
+
+    var selectedInputUID: String? { AVAudioSession.sharedInstance().currentRoute.inputs.first?.uid }
+
+    func selectInput(_ uid: String) {
+        guard let port = (AVAudioSession.sharedInstance().availableInputs ?? []).first(where: { $0.uid == uid }) else { return }
+        UserDefaults.standard.set(uid, forKey: Self.inputKey)
+        do {
+            try AVAudioSession.sharedInstance().setPreferredInput(port)
+            calibrationNote = nil
+        } catch {
+            calibrationNote = "Couldn't switch to \(port.portName): \(error.localizedDescription)"
+        }
+        refreshInputs()
+    }
+
+    /// The input chosen earlier, when it's plugged in.
+    private func applyPreferredInput() {
+        let session = AVAudioSession.sharedInstance()
+        guard let uid = UserDefaults.standard.string(forKey: Self.inputKey),
+              session.currentRoute.inputs.first?.uid != uid,
+              let port = (session.availableInputs ?? []).first(where: { $0.uid == uid }) else { return }
+        try? session.setPreferredInput(port)
+    }
+
+    // MARK: - camera
+
+    /// Starts or stops the camera preview to match the setting (while a song is open).
+    func updateCamera(active: Bool) async {
+        guard active, cameraOn else {
+            if cameraRunning { let cam = camera; await Task.detached { cam.stop() }.value }
+            cameraRunning = false
+            return
+        }
+        guard await Camera.requestPermission() else {
+            note = "Allow camera access in Settings > Privacy & Security > Camera to record video."
+            cameraOn = false
+            return
+        }
+        let cam = camera, front = frontCamera
+        do {
+            try await Task.detached { try cam.start(front: front) }.value
+            cameraRunning = true
+        } catch {
+            note = error.localizedDescription
+            cameraRunning = false
+        }
     }
 
     // MARK: - latency
@@ -108,6 +180,7 @@ final class Recorder {
             note = "Allow microphone access in Settings > Privacy & Security > Microphone to record."
             return false
         }
+        applyPreferredInput()
         if let problem = player.enableInput() {
             note = problem
             calibrationNote = problem
@@ -161,10 +234,13 @@ final class Recorder {
             note = error.localizedDescription
             return
         }
+        let withVideo = cameraOn && cameraRunning
+        if withVideo { camera.startRecording() }
         guard let started = player.play() else {
             stopCapture()
             capture?.discard()
             capture = nil
+            if withVideo { _ = await camera.stopRecording() }
             note = "Couldn't start playback."
             return
         }
@@ -180,6 +256,8 @@ final class Recorder {
         stopCapture()
         capture = nil
         self.started = nil
+        var video: (url: URL, firstHost: Double)?
+        if cameraRunning { video = await camera.stopRecording() }
         guard let first = cap.firstHost else {
             cap.discard()
             state = .idle
@@ -197,9 +275,10 @@ final class Recorder {
         state = .saving
         note = "Saving take…"
         let latency = latencyMs, input = inputName
+        let clip = video.map { (url: $0.url, startInCaptureS: $0.firstHost - first) }
         do {
             let take = try await Task.detached(priority: .userInitiated) {
-                try TakeStore.save(song: song, capture: cap, captureStartS: captureStartS, latencyMs: latency, input: input)
+                try TakeStore.save(song: song, capture: cap, captureStartS: captureStartS, latencyMs: latency, input: input, video: clip)
             }.value
             note = (take.peakDbfs ?? 0) < -45 ? "Saved, but the take is almost silent. Check the input." : "Take saved."
             state = .idle
@@ -209,6 +288,7 @@ final class Recorder {
             state = .idle
         }
         cap.discard()
+        if let video { try? FileManager.default.removeItem(at: video.url) }
     }
 
     // MARK: - calibration

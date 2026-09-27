@@ -155,8 +155,7 @@ struct LibraryView: View {
         .navigationBarTitleDisplayMode(.inline)
         .themedNavigation()
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) { Logo() }
-            ToolbarItem(placement: .principal) { Text("") }
+            ToolbarItem(placement: .principal) { Logo().fixedSize() }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { settings = true } label: { Image(systemName: "gearshape").foregroundStyle(Theme.muted) }
             }

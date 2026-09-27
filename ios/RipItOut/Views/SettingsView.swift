@@ -29,7 +29,14 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    LabeledContent("Input", value: recorder.inputName)
+                    if recorder.inputs.count > 1 {
+                        Picker("Input", selection: Binding(get: { recorder.selectedInputUID ?? "" },
+                                                           set: { recorder.selectInput($0) })) {
+                            ForEach(recorder.inputs, id: \.uid) { Text($0.portName).tag($0.uid) }
+                        }
+                    } else {
+                        LabeledContent("Input", value: recorder.inputName)
+                    }
                     Stepper(value: $recorder.latencyMs, in: 0...1000, step: 1) {
                         LabeledContent("Latency", value: "\(Int(recorder.latencyMs)) ms")
                     }
@@ -41,6 +48,13 @@ struct SettingsView: View {
                         Text(note).font(.footnote)
                     } else if !recorder.latencyIsMeasured {
                         Text("Estimate reported by iOS; calibrating is more exact.").font(.footnote).foregroundStyle(.secondary)
+                    }
+                    Toggle("Record video", isOn: $recorder.cameraOn).tint(Theme.accent)
+                    if recorder.cameraOn {
+                        Picker("Camera", selection: $recorder.frontCamera) {
+                            Text("Front").tag(true)
+                            Text("Back").tag(false)
+                        }
                     }
                 } header: {
                     Text("Recording")
@@ -55,6 +69,7 @@ struct SettingsView: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .folderPicker(isPresented: $picking)
             .sheet(isPresented: $signingIn) { NextcloudLoginView() }
+            .onAppear { recorder.refreshInputs() }
         }
     }
 }
