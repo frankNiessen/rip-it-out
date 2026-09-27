@@ -345,17 +345,15 @@ final class PlayerEngine {
 
     /// What a track plays at: its fader, unless muted, or unless another track is
     /// soloed. The click (and the count-in) is never silenced by another track's solo.
-    /// The song's tracks also follow the Band fader (the take page's balance).
     func effectiveLevel(_ key: String) -> Float {
         if muted.contains(key) { return 0 }
         if !soloed.isEmpty && !soloed.contains(key) && key != "click" && key != "count" { return 0 }
-        let isBand = song?.manifest.stems[key] != nil
-        return level(key) * (isBand ? bandLevel : 1)
+        return level(key)
     }
 
-    /// The whole band against your take, on the take page (1 elsewhere).
-    var bandLevel: Float = 1 {
-        didSet { applyVolumes() }
+    func clearMutes() {
+        muted = []
+        applyVolumes()
     }
 
     private func applyVolumes() {

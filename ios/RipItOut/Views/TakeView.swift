@@ -14,7 +14,6 @@ struct TakeView: View {
     @State private var missing = false
     @State private var confirmDelete = false
     @State private var error: String?
-    @AppStorage("take.band") private var band = 0.8
 
     private var song: Song? { library.song(songID) }
 
@@ -91,8 +90,8 @@ struct TakeView: View {
         .onDisappear {
             player.pause()
             video.stop()
-            player.bandLevel = 1
             player.setTakeOnly(false)
+            player.clearMutes()
             Task { await player.loadTake(nil) } // the song pages play without it
         }
         .confirmationDialog("Delete this take?", isPresented: $confirmDelete, titleVisibility: .visible) {
@@ -122,25 +121,22 @@ struct TakeView: View {
         }
     }
 
-    /// Your take against the band: two faders.
+    /// The whole mixer, with My take, and one tap to put your take in place of one
+    /// of the band's tracks (it mutes that track).
     private var balance: some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 10) {
-                Text("My take").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.ink)
-                    .frame(width: 70, alignment: .leading)
-                Fader(value: Binding(get: { Double(player.level("take")) }, set: { player.setLevel("take", Float($0)) }))
+        VStack(alignment: .leading, spacing: 10) {
+            if let stems = player.song?.manifest.stemOrder, !stems.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("My take instead of").font(Theme.mono(11)).foregroundStyle(Theme.muted)
+                    HStack(spacing: 6) {
+                        ForEach(stems, id: \.self) { key in
+                            Button(TrackNames.label(key)) { player.toggleMute(key) }
+                                .buttonStyle(QuietButtonStyle(on: player.muted.contains(key)))
+                        }
+                    }
+                }
             }
-            HStack(spacing: 10) {
-                Text("Band").font(.system(size: 14)).foregroundStyle(Theme.muted)
-                    .frame(width: 70, alignment: .leading)
-                Fader(value: Binding(get: { band }, set: { band = $0; player.bandLevel = Float($0) }),
-                      dimmed: player.takeOnly)
-            }
-            HStack(spacing: 10) {
-                Text("Click").font(.system(size: 14)).foregroundStyle(Theme.muted)
-                    .frame(width: 70, alignment: .leading)
-                Fader(value: Binding(get: { Double(player.level("click")) }, set: { player.setLevel("click", Float($0)) }))
-            }
+            MixerView()
         }
     }
 
@@ -157,7 +153,6 @@ struct TakeView: View {
         guard let t = found else { missing = true; return }
         take = t
         await player.load(song)
-        player.bandLevel = Float(band)
         if player.take?.id != t.id { await player.loadTake(t) } else { player.seek(player.takeStart(t)) }
         await video.show(t, engine: player)
     }
