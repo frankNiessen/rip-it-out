@@ -12,6 +12,7 @@ struct Take: Identifiable, Equatable {
     var captureStartS: Double
     var latencyMs: Double
     var peakDbfs: Double?
+    var gainDb: Double      // set by Normalize, applied when my_drums is rendered
     var startS: Double
     var myTakeFile: String
     var rawFile: String
@@ -37,6 +38,7 @@ struct Take: Identifiable, Equatable {
         self.captureStartS = captureStart
         self.latencyMs = (json["latency_ms"] as? NSNumber)?.doubleValue ?? 0
         self.peakDbfs = (json["peak_dbfs"] as? NSNumber)?.doubleValue
+        self.gainDb = (json["gain_db"] as? NSNumber)?.doubleValue ?? 0
         self.startS = (json["start_s"] as? NSNumber)?.doubleValue ?? captureStart - latencyMs / 1000
         self.myTakeFile = files["my_drums"] ?? "my_drums.flac"
         self.rawFile = files["raw"] ?? "raw.flac"

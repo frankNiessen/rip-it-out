@@ -281,29 +281,28 @@ struct LevelMeter: View {
     }
 }
 
+/// One channel strip per track, like the desktop's console: name, fader, M and S.
 struct MixerView: View {
     @Environment(PlayerEngine.self) private var player
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             ForEach(player.trackKeys + (player.countInBars > 0 ? ["count"] : []), id: \.self) { key in
                 let mine = key == "take"
-                HStack(spacing: 10) {
+                let silent = player.effectiveLevel(key) == 0 && player.level(key) > 0
+                HStack(spacing: 8) {
                     Text(TrackNames.label(key))
                         .font(.system(size: 14, weight: mine ? .semibold : .regular))
                         .foregroundStyle(mine ? Theme.ink : Theme.muted)
-                        .frame(width: 76, alignment: .leading)
+                        .frame(width: 70, alignment: .leading)
                     Slider(value: Binding(get: { Double(player.level(key)) }, set: { player.setLevel(key, Float($0)) }), in: 0...1)
-                        .tint(Theme.ink)
-                    Button {
-                        player.setLevel(key, player.level(key) > 0 ? 0 : 1)
-                    } label: {
-                        Image(systemName: player.level(key) > 0 ? "speaker.wave.2.fill" : "speaker.slash.fill")
-                            .font(.system(size: 13))
-                            .foregroundStyle(player.level(key) > 0 ? Theme.muted : Theme.lineStrong)
-                            .frame(width: 26, height: 26)
+                        .tint(silent ? Theme.lineStrong : Theme.ink)
+                    if key != "count" {
+                        ChannelButton(letter: "M", on: player.muted.contains(key), color: Theme.mute) { player.toggleMute(key) }
+                        ChannelButton(letter: "S", on: player.soloed.contains(key), color: Theme.accent) { player.toggleSolo(key) }
+                    } else {
+                        Color.clear.frame(width: 60, height: 26)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
@@ -316,15 +315,26 @@ struct Caption: View {
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 4, paused: !player.isPlaying)) { _ in
-            HStack {
-                Text("\(Theme.time(player.position)) / \(Theme.time(player.duration))")
-                    .foregroundStyle(Theme.muted)
-                Spacer()
-                if let L = player.loop {
-                    Text("Loop: \(loopLabel(L))").foregroundStyle(Theme.accent).lineLimit(1)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("\(Theme.time(player.position)) / \(Theme.time(player.duration))")
+                        .foregroundStyle(Theme.muted)
+                    Spacer()
+                    if let L = player.loop {
+                        Text("Loop: \(loopLabel(L))").foregroundStyle(Theme.accent).lineLimit(1)
+                    }
+                }
+                .font(Theme.mono(12))
+                if player.loop != nil {
+                    HStack(spacing: 8) {
+                        Stepper2(label: "Start", back: { player.nudgeLoop(end: false, by: -1) },
+                                 forward: { player.nudgeLoop(end: false, by: 1) })
+                        Stepper2(label: "End", back: { player.nudgeLoop(end: true, by: -1) },
+                                 forward: { player.nudgeLoop(end: true, by: 1) })
+                        Spacer(minLength: 0)
+                    }
                 }
             }
-            .font(Theme.mono(12))
         }
     }
 

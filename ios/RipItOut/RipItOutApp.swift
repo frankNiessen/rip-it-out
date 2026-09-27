@@ -47,6 +47,7 @@ enum Theme {
     static let lcdOff = hex(0x1b2613)
     static let timeline = hex(0x101214)
     static let record = hex(0xff4d5e)
+    static let mute = hex(0xe8a33d) // a lit mute button, like on a console
     static let fail = hex(0xff6b6b)
 
     static func mono(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
@@ -113,6 +114,45 @@ struct RecordButtonStyle: ButtonStyle {
         .foregroundStyle(.white)
         .background(Theme.record.opacity(configuration.isPressed ? 0.85 : 1), in: .rect(cornerRadius: 3))
         .opacity(enabled ? 1 : 0.4)
+    }
+}
+
+/// The M and S buttons of a channel strip: outlined, lit when on (mute amber, solo lime).
+struct ChannelButton: View {
+    let letter: String
+    let on: Bool
+    let color: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(letter)
+                .font(Theme.mono(11, .semibold))
+                .foregroundStyle(on ? Theme.onAccent : Theme.muted)
+                .frame(width: 28, height: 26)
+                .background(on ? color : .clear, in: .rect(cornerRadius: 2))
+                .overlay(RoundedRectangle(cornerRadius: 2).stroke(on ? color : Theme.lineStrong, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// A value between ‹ and › buttons (the desktop's loop Start and End steppers).
+struct Stepper2: View {
+    let label: String
+    let back: () -> Void
+    let forward: () -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Button(action: back) { Text("‹").frame(width: 30, height: 30) }
+            Text(label).font(Theme.mono(12)).foregroundStyle(Theme.ink)
+            Button(action: forward) { Text("›").frame(width: 30, height: 30) }
+        }
+        .buttonStyle(.plain)
+        .font(Theme.mono(15))
+        .foregroundStyle(Theme.muted)
+        .overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.lineStrong, lineWidth: 1))
     }
 }
 

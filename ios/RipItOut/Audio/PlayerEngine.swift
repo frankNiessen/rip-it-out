@@ -126,7 +126,7 @@ final class PlayerEngine {
             guard let file = files[key] else { continue }
             fresh.attach(p)
             fresh.connect(p, to: fresh.mainMixerNode, format: file.processingFormat)
-            p.volume = level(key)
+            p.volume = effectiveLevel(key)
         }
         engine = fresh
         settleUntil = Self.hostNow + 1
@@ -193,7 +193,7 @@ final class PlayerEngine {
         let player = AVAudioPlayerNode()
         engine.attach(player)
         engine.connect(player, to: engine.mainMixerNode, format: file.processingFormat)
-        player.volume = level(key)
+        player.volume = effectiveLevel(key)
         players[key] = player
         files[key] = file
     }
@@ -246,7 +246,36 @@ final class PlayerEngine {
     func setLevel(_ key: String, _ value: Float) {
         levels[key] = value
         UserDefaults.standard.set(value, forKey: "level.\(key)")
-        if key == "count" { countPlayer.volume = value } else { players[key]?.volume = value }
+        applyVolumes()
+    }
+
+    // MARK: - mute and solo (for this session only, like the desktop: a forgotten solo
+    // would be confusing next time)
+
+    private(set) var muted: Set<String> = []
+    private(set) var soloed: Set<String> = []
+
+    func toggleMute(_ key: String) {
+        if muted.contains(key) { muted.remove(key) } else { muted.insert(key) }
+        applyVolumes()
+    }
+
+    func toggleSolo(_ key: String) {
+        if soloed.contains(key) { soloed.remove(key) } else { soloed.insert(key) }
+        applyVolumes()
+    }
+
+    /// What a track plays at: its fader, unless muted, or unless another track is
+    /// soloed. The click (and the count-in) is never silenced by another track's solo.
+    func effectiveLevel(_ key: String) -> Float {
+        if muted.contains(key) { return 0 }
+        if !soloed.isEmpty && !soloed.contains(key) && key != "click" && key != "count" { return 0 }
+        return level(key)
+    }
+
+    private func applyVolumes() {
+        for (key, p) in players { p.volume = effectiveLevel(key) }
+        countPlayer.volume = effectiveLevel("count")
     }
 
     // MARK: - transport
@@ -287,7 +316,7 @@ final class PlayerEngine {
         if !plan.clicks.isEmpty {
             let first = start + (plan.clicks[0].s - plan.pos)
             let buffer = Ticks.buffer(clicks: plan.clicks.map { ($0.s - plan.clicks[0].s, $0.down) })
-            countPlayer.volume = level("count")
+            countPlayer.volume = effectiveLevel("count")
             countPlayer.scheduleBuffer(buffer, at: nil)
             countPlayer.play(at: AVAudioTime(hostTime: AVAudioTime.hostTime(forSeconds: first)))
         }
@@ -373,6 +402,18 @@ final class PlayerEngine {
         loop = l.flatMap { $0.b - $0.a > 0.2 ? $0 : nil }
         if let L = loop, pos < L.a || pos >= L.b { offset = L.a } else { offset = pos }
         if was { play(countInBars: 0) }
+    }
+
+    /// Moves the loop's start (or end) by `dir` bars, keeping at least one bar.
+    func nudgeLoop(end: Bool, by dir: Int) {
+        guard let L = loop else { return }
+        let lines = Array(Set(([0] + grid.downbeats + [duration]).map { ($0 * 1000).rounded() / 1000 })).sorted()
+        let edge = end ? L.b : L.a
+        guard let i = lines.indices.min(by: { abs(lines[$0] - edge) < abs(lines[$1] - edge) }) else { return }
+        let t = lines[max(0, min(lines.count - 1, i + dir))]
+        let next = end ? Loop(a: L.a, b: t) : Loop(a: t, b: L.b)
+        if next.b - next.a < 0.5 { return } // at least a bar
+        setLoop(next)
     }
 
     /// Loops the section at the current position, or ends the loop.

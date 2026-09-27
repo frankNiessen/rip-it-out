@@ -40,9 +40,13 @@ enum TakeStore {
         return take
     }
 
-    /// Changes the timing (the latency used to place the take) and/or the name. A new
-    /// latency re-renders the take on the song timeline from raw.flac, like the desktop.
-    static func update(song: Song, take: Take, latencyMs: Double?, name: String?) throws -> Take {
+    /// where Normalize puts a take's loudest peak (stemtool/takes.py NORMALIZE_DBFS)
+    static let normalizeDbfs = -1.0
+
+    /// Changes the timing (the latency used to place the take), the name and/or the level
+    /// (normalize: true, the loudest peak to -1 dBFS; false, as recorded). A new latency or
+    /// level re-renders the take on the song timeline from raw.flac, like the desktop.
+    static func update(song: Song, take: Take, latencyMs: Double?, name: String?, normalize: Bool? = nil) throws -> Take {
         let jsonURL = take.folder.appendingPathComponent("take.json")
         guard var json = try JSONSerialization.jsonObject(with: Files.read(jsonURL)) as? [String: Any] else {
             throw AudioIO.Failure.message("take.json is damaged")
@@ -53,6 +57,14 @@ enum TakeStore {
             rerender = true
         }
         if let name { json["name"] = String(name.trimmingCharacters(in: .whitespaces).prefix(120)) }
+        if let normalize {
+            let peak = (json["peak_dbfs"] as? NSNumber)?.doubleValue ?? 0
+            let gain = normalize ? TakeJSON.round(normalizeDbfs - peak, 1) : 0
+            if gain != ((json["gain_db"] as? NSNumber)?.doubleValue ?? 0) {
+                json["gain_db"] = gain
+                rerender = true
+            }
+        }
         TakeJSON.derive(&json)
         if rerender {
             try Files.download(take.rawURL)

@@ -9,18 +9,24 @@ fills, synced through iCloud Drive, Nextcloud, Dropbox or any other Files provid
 
 - **Library:** your songs by group, with search. Songs that are only in the cloud are
   downloaded when you open them.
-- **Play along:** a fader per track (drums, bass, vocals, other, click), the bar and
-  beat counter, the song's sections, a count-in of one or two bars, and loops: tap a
-  section to loop it, or use the loop button to loop the section you are in.
+- **Play along:** a channel strip per track (drums, bass, vocals, other, click) with its
+  fader, **M** (mute) and **S** (solo: hear only the soloed tracks, the click keeps
+  playing unless muted), the bar and beat counter, the tempo view with the song's
+  sections, a count-in of one or two bars, and loops: tap a section to loop it, or
+  **Loop** loops the section you are in; **‹ Start ›** and **‹ End ›** move either end
+  by a bar. Mute and solo reset when the app restarts, the faders are kept.
 - **Record:** from the built-in microphone, a headset or a USB audio interface. Latency
   is measured once with **Settings > Calibrate** (the same 20 clicks as on the desktop).
 - **Takes:** saved into the song's `takes/` folder in the desktop's format
   (`take.json`, `raw.flac`, `my_drums.flac`), so the desktop app lists, plays and
   exports them too. Play a take against the song with its own fader (**My take**), fix
-  its **Timing**, rename or delete it. Takes recorded on the desktop show up here as well.
+  its **Timing**, **Normalize** it (the loudest hit to just below full scale, stored as
+  `gain_db` like on the desktop, so turning it off brings the original back), rename or
+  delete it. Takes recorded on the desktop show up here as well.
 
-Not in this version: video, export, and editing the beat grid. Do those in the desktop
-app. The iOS app never changes a song's `manifest.json`.
+Not in this version: video, export, and editing the beat grid or the sections. Do those
+in the desktop app; the phone picks up the changes. The iOS app never changes a song's
+`manifest.json`, so two devices never write the same file.
 
 ## Run it on your iPhone
 

@@ -10,6 +10,7 @@ struct TakeDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var latency = 0.0
+    @State private var normalized = false
     @State private var working = false
     @State private var error: String?
     @State private var confirmDelete = false
@@ -29,6 +30,15 @@ struct TakeDetailView: View {
                     Text("Timing")
                 } footer: {
                     Text("If your playing sits early or late, change this and save: more moves the take earlier. Recorded with \(Int(take.latencyMs)) ms.")
+                }
+                Section {
+                    Toggle("Normalize", isOn: $normalized).tint(Theme.accent)
+                } header: {
+                    Text("Level")
+                } footer: {
+                    Text(normalized && take.gainDb != 0
+                         ? String(format: "Raised by %.1f dB so the loudest hit sits just below full scale. The recording itself is kept: turn it off for the original.", take.gainDb)
+                         : "Raises (or lowers) the take so its loudest hit sits just below full scale. The recording itself is kept, so turning it off brings it back as it was.")
                 }
                 Section {
                     LabeledContent("Recorded", value: take.createdDate?.formatted(date: .abbreviated, time: .shortened) ?? take.createdAt)
@@ -58,6 +68,7 @@ struct TakeDetailView: View {
             .onAppear {
                 name = take.name
                 latency = take.latencyMs
+                normalized = take.gainDb != 0
             }
             .interactiveDismissDisabled(working)
         }
@@ -68,10 +79,11 @@ struct TakeDetailView: View {
         defer { working = false }
         let wasLoaded = player.take?.id == take.id
         if wasLoaded { await player.loadTake(nil) }
-        let song = song, take = take, latency = latency, name = name
+        let song = song, take = take, latency = latency, name = name, normalized = normalized
         do {
             let updated = try await Task.detached(priority: .userInitiated) {
-                try TakeStore.update(song: song, take: take, latencyMs: latency, name: name)
+                try TakeStore.update(song: song, take: take, latencyMs: latency, name: name,
+                                     normalize: normalized == (take.gainDb != 0) ? nil : normalized)
             }.value
             if wasLoaded { await player.loadTake(updated) }
             await changed()
