@@ -54,14 +54,28 @@ extension View {
 private struct FolderPicker: ViewModifier {
     @Environment(LibraryStore.self) private var library
     @Binding var isPresented: Bool
+    @State private var answered = false
 
     func body(content: Content) -> some View {
-        content.fileImporter(isPresented: $isPresented, allowedContentTypes: [.folder]) { result in
-            switch result {
-            case .success(let url): library.choose(url)
-            case .failure(let error): library.error = "Couldn't open that folder: \(error.localizedDescription)"
+        content
+            .fileImporter(isPresented: $isPresented, allowedContentTypes: [.folder]) { result in
+                answered = true
+                switch result {
+                case .success(let url): library.choose(url)
+                case .failure(let error): library.error = "Couldn't open that folder: \(error.localizedDescription)"
+                }
             }
-        }
+            .onChange(of: isPresented) { was, now in
+                if now { answered = false; return }
+                guard was else { return }
+                // When the storage app can't prepare the folder, the picker closes without
+                // handing over anything (and without an error). Say so instead of doing nothing.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    guard !answered, !library.checking else { return }
+                    library.error = "No folder was opened. If you tapped Open, the storage app couldn't prepare it: "
+                        + "open the folder once in the Files app and wait until its songs are listed, then try again."
+                }
+            }
     }
 }
 
