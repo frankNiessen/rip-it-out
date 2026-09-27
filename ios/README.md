@@ -10,8 +10,8 @@ fills, synced through iCloud Drive, Nextcloud, Dropbox or any other Files provid
 Three tabs: **Songs**, **Takes** and **Settings**. Open a song and switch between
 **Practice** (play along) and **Record** (record yourself, on video too) at the top; the
 song stays where it is. Microphone and camera are only on in Record; with video on, the camera picture stays in view while you scroll (beside the page with the phone on its side, and the video is then recorded in landscape). After a take,
-**Take saved: Listen** opens the take page: its video, your take with the band (faders
-and the full mixer with a **Band** fader that turns the whole song up or down against your take, **My take instead of** drums, bass, vocals or other, **Take only**),
+**Take saved: Listen** opens the take page: its video, your take with the band (the song
+page's mixer, with **Me** for your take; the band's drums start muted),
 **Share** (audio, or video with that sound, mixed the way you hear it), **Record again**
 and **Delete**. The
 **Takes** tab lists every take in the library; **Continue** at the top of Songs goes back
