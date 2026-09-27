@@ -48,6 +48,16 @@ enum Files {
         return names.sorted()
     }
 
+    /// nil if the folder's contents can be listed, else what went wrong.
+    static func checkReadable(_ dir: URL) -> String? {
+        var problem: String?
+        var coordError: NSError?
+        NSFileCoordinator().coordinate(readingItemAt: dir, options: .immediatelyAvailableMetadataOnly, error: &coordError) { url in
+            do { _ = try fm.contentsOfDirectory(atPath: url.path) } catch { problem = error.localizedDescription }
+        }
+        return coordError?.localizedDescription ?? problem
+    }
+
     static func isDirectory(_ url: URL) -> Bool {
         var isDir: ObjCBool = false
         return fm.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue

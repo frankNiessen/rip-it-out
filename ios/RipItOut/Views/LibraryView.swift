@@ -28,9 +28,17 @@ struct WelcomeView: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 32)
-            Button("Choose library folder") { picking = true }
-                .buttonStyle(.borderedProminent)
-            if let error = library.error { Text(error).foregroundStyle(.red).font(.footnote) }
+            if library.checking {
+                ProgressView("Opening the folder…")
+            } else {
+                Button("Choose library folder") { picking = true }
+                    .buttonStyle(.borderedProminent)
+            }
+            if let error = library.error {
+                Text(error).foregroundStyle(.red).font(.footnote)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+            }
             Spacer()
         }
         .folderPicker(isPresented: $picking)
@@ -51,7 +59,7 @@ private struct FolderPicker: ViewModifier {
         content.fileImporter(isPresented: $isPresented, allowedContentTypes: [.folder]) { result in
             switch result {
             case .success(let url): library.choose(url)
-            case .failure(let error): library.error = error.localizedDescription
+            case .failure(let error): library.error = "Couldn't open that folder: \(error.localizedDescription)"
             }
         }
     }

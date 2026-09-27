@@ -34,31 +34,44 @@ final class LibraryStore {
         }.map { SongGroup(name: $0, songs: byGroup[$0]!) }
     }
 
+    private(set) var checking = false
+
     func choose(_ url: URL) {
-        stopAccess()
-        guard url.startAccessingSecurityScopedResource() else {
-            error = "No access to \(url.lastPathComponent)"
-            return
+        // Some providers report false here and still allow access, so only a failed
+        // read below counts as no access.
+        let accessing = url.startAccessingSecurityScopedResource()
+        error = nil
+        checking = true
+        Task {
+            let problem = await Task.detached(priority: .userInitiated) { Files.checkReadable(url) }.value
+            checking = false
+            if let problem {
+                if accessing { url.stopAccessingSecurityScopedResource() }
+                error = "Rip It Out can't read the folder \(url.lastPathComponent) (\(problem)). The app that stores it "
+                    + "may not have downloaded it yet: open it once in the Files app, then choose it again."
+                return
+            }
+            if folder != url { stopAccess() }
+            do {
+                let data = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+                UserDefaults.standard.set(data, forKey: Self.bookmarkKey)
+            } catch {
+                self.error = "The folder works now, but the app can't remember it for next time (\(error.localizedDescription))."
+            }
+            folder = url
+            songs = []
+            await reload()
         }
-        do {
-            let data = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
-            UserDefaults.standard.set(data, forKey: Self.bookmarkKey)
-        } catch {
-            self.error = "Couldn't remember the folder: \(error.localizedDescription)"
-        }
-        folder = url
-        songs = []
-        Task { await reload() }
     }
 
     private func restore() {
         guard let data = UserDefaults.standard.data(forKey: Self.bookmarkKey) else { return }
         var stale = false
-        guard let url = try? URL(resolvingBookmarkData: data, options: [], relativeTo: nil, bookmarkDataIsStale: &stale),
-              url.startAccessingSecurityScopedResource() else {
+        guard let url = try? URL(resolvingBookmarkData: data, options: [], relativeTo: nil, bookmarkDataIsStale: &stale) else {
             error = "The library folder isn't available any more. Choose it again."
             return
         }
+        _ = url.startAccessingSecurityScopedResource()
         if stale, let fresh = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) {
             UserDefaults.standard.set(fresh, forKey: Self.bookmarkKey)
         }

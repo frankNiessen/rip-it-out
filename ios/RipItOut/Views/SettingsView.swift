@@ -12,7 +12,9 @@ struct SettingsView: View {
             Form {
                 Section {
                     LabeledContent("Folder", value: library.folderName)
-                    Button("Choose another folder") { picking = true }
+                    if library.checking { ProgressView("Opening the folder…") }
+                    else { Button("Choose another folder") { picking = true } }
+                    if let error = library.error { Text(error).font(.footnote).foregroundStyle(.red) }
                 } header: {
                     Text("Library")
                 } footer: {
