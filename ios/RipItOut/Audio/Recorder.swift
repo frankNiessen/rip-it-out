@@ -164,6 +164,10 @@ final class Recorder {
     /// waits for Record or Calibrate).
     func appActive() async {
         player.startEngine()
+        if !player.engine.isRunning { // iOS often hands the audio back a moment later
+            try? await Task.sleep(for: .milliseconds(500))
+            player.startEngine()
+        }
         if recordPageOpen { await updateCamera(active: true) }
     }
 
@@ -186,7 +190,7 @@ final class Recorder {
             try await Background.run { try cam.start(front: front) }
             cameraRunning = true
         } catch {
-            note = error.localizedDescription
+            note = Explain.camera(error)
             cameraRunning = false
         }
     }

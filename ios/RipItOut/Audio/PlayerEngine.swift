@@ -71,9 +71,13 @@ final class PlayerEngine {
             try session.setPreferredIOBufferDuration(0.005)
             try session.setActive(true)
         } catch {
-            self.error = "Audio session: \(error.localizedDescription)"
+            // Tried again when the engine starts; play() says so if it still fails.
         }
     }
+
+    /// Why the engine didn't start last time (said only when Play doesn't work: coming
+    /// back from the background, iOS often refuses once and is fine a moment later).
+    @ObservationIgnored private var startError: Error?
 
     func startEngine() {
         guard !engine.isRunning else { return }
@@ -81,8 +85,9 @@ final class PlayerEngine {
             try AVAudioSession.sharedInstance().setActive(true)
             engine.prepare()
             try engine.start()
+            startError = nil
         } catch {
-            self.error = "Couldn't start audio: \(error.localizedDescription)"
+            startError = error
         }
     }
 
@@ -131,7 +136,7 @@ final class PlayerEngine {
             }
             try session.setActive(true)
         } catch {
-            self.error = "Audio session: \(error.localizedDescription)"
+            // Recording sets it up again (and says what's wrong), playback works either way.
         }
         startEngine()
     }
@@ -242,7 +247,7 @@ final class PlayerEngine {
         if missing > 0 { loadProgress = "Downloading tracks… 0 of \(missing)" }
         do {
             let opened = try await Background.run {
-                try Self.open(urls) { done in
+                try Self.openRetrying(urls) { done in
                     Task { @MainActor [weak self] in
                         guard let self, generation == self.loadGeneration, missing > 0 else { return }
                         self.loadProgress = "Downloading tracks… \(min(done, missing)) of \(missing)"
@@ -255,7 +260,18 @@ final class PlayerEngine {
             startEngine()
         } catch {
             guard generation == loadGeneration else { return }
-            self.error = "Couldn't load the song's tracks: \(error.localizedDescription)"
+            self.error = Explain.isNetwork(error)
+                ? "The song's tracks couldn't be downloaded: \(Explain.network(error)) Open the song again to retry."
+                : "The song's tracks couldn't be opened: \(error.localizedDescription)"
+        }
+    }
+
+    /// `open`, once more after a dropped connection (downloads that ran while the phone
+    /// was locked fail when it comes back).
+    nonisolated private static func openRetrying(_ urls: [String: URL], downloaded: @escaping @Sendable (Int) -> Void) throws -> [String: AVAudioFile] {
+        do { return try open(urls, downloaded: downloaded) } catch where Explain.isNetwork(error) {
+            Thread.sleep(forTimeInterval: 1)
+            return try open(urls, downloaded: downloaded)
         }
     }
 
@@ -425,7 +441,10 @@ final class PlayerEngine {
     func play(countInBars bars: Int? = nil) -> (host: Double, pos: Double)? {
         guard !isPlaying, song != nil, !players.isEmpty else { return nil }
         startEngine()
-        guard engine.isRunning else { return nil }
+        guard engine.isRunning else {
+            error = Explain.audio(startError ?? AudioIO.Failure.message(""))
+            return nil
+        }
         var from = offset >= duration - 0.05 ? 0 : offset
         if let L = loop, from < L.a || from >= L.b { from = L.a }
         var plan = grid.planStart(from: from, bars: bars ?? countInBars)
