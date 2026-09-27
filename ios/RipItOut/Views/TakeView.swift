@@ -150,11 +150,11 @@ struct TakeView: View {
         let folder = song.folder, id = takeID
         // The copy on this device first, so the page is there at once; the server only
         // if the take isn't here yet (recorded on another device).
-        var t = await Task.detached { LibraryStore.takes(of: folder, sync: false).first { $0.id == id } }.value
-        if t == nil {
-            t = await Task.detached { LibraryStore.takes(of: folder).first { $0.id == id } }.value
+        var found = await Task.detached { LibraryStore.takes(of: folder, sync: false).first { $0.id == id } }.value
+        if found == nil {
+            found = await Task.detached { LibraryStore.takes(of: folder).first { $0.id == id } }.value
         }
-        guard let t else { missing = true; return }
+        guard let t = found else { missing = true; return }
         take = t
         await player.load(song)
         player.bandLevel = Float(band)
