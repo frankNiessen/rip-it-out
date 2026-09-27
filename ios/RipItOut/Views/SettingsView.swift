@@ -36,7 +36,7 @@ struct SettingsView: View {
                             ForEach(recorder.inputs, id: \.uid) { Text($0.portName).tag($0.uid) }
                         }
                     } else {
-                        LabeledContent("Input", value: recorder.inputs.isEmpty ? "Chosen on the Record page" : recorder.inputName)
+                        LabeledContent("Input", value: recorder.inputName)
                     }
                     Stepper(value: $recorder.latencyMs, in: -300...1000, step: 1) {
                         LabeledContent("Timing correction", value: "\(Int(recorder.latencyMs)) ms")

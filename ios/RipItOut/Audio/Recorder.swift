@@ -89,9 +89,21 @@ final class Recorder {
 
     var level: Float { capture?.level ?? 0 }
 
+    /// The input in use, or (outside Record, where the microphone is off and iOS lists
+    /// no input) the one used last. The latency is kept per input under this name, so
+    /// Settings shows the calibrated value, not the estimate for "no input".
     var inputName: String {
         _ = inputs // changes when the route changes, so views update
-        return AVAudioSession.sharedInstance().currentRoute.inputs.first?.portName ?? "Input"
+        if let name = AVAudioSession.sharedInstance().currentRoute.inputs.first?.portName { return name }
+        return UserDefaults.standard.string(forKey: Self.lastInputKey) ?? "iPhone Microphone"
+    }
+
+    private static let lastInputKey = "input.lastName"
+
+    private func rememberInput() {
+        if let name = AVAudioSession.sharedInstance().currentRoute.inputs.first?.portName {
+            UserDefaults.standard.set(name, forKey: Self.lastInputKey)
+        }
     }
 
     // MARK: - choosing the input
@@ -100,6 +112,7 @@ final class Recorder {
 
     /// The inputs iOS offers right now (iPhone microphone, headset, USB interface).
     func refreshInputs() {
+        rememberInput()
         inputs = AVAudioSession.sharedInstance().availableInputs ?? []
     }
 
@@ -108,6 +121,7 @@ final class Recorder {
     func selectInput(_ uid: String) {
         guard let port = (AVAudioSession.sharedInstance().availableInputs ?? []).first(where: { $0.uid == uid }) else { return }
         UserDefaults.standard.set(uid, forKey: Self.inputKey)
+        UserDefaults.standard.set(port.portName, forKey: Self.lastInputKey)
         do {
             try AVAudioSession.sharedInstance().setPreferredInput(port)
             calibrationNote = nil
@@ -236,6 +250,7 @@ final class Recorder {
             calibrationNote = problem
             return false
         }
+        rememberInput()
         return true
     }
 
