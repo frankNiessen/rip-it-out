@@ -39,12 +39,7 @@ final class PlayerEngine {
     @ObservationIgnored private var settleUntil: Double = 0 // our own engine rebuild, not a device change
     @ObservationIgnored private var players: [String: AVAudioPlayerNode] = [:]
     @ObservationIgnored private var files: [String: AVAudioFile] = [:]
-    @ObservationIgnored private var countPlayer = AVAudioPlayerNode()
-    /// When the song's first player really played `pos0` (host seconds), read back from
-    /// the render timeline once it runs: a start can come later than asked for (right
-    /// after the input was switched on), and a take placed by the asked-for time would
-    /// then be out of sync.
-    @ObservationIgnored private(set) var measuredStartHost: Double?
+    @ObservationIgnored private let countPlayer = AVAudioPlayerNode()
     @ObservationIgnored private var generation = 0
     private var offset: Double = 0   // observed: the playhead follows a jump while stopped
     @ObservationIgnored private var pos0: Double = 0
@@ -59,7 +54,6 @@ final class PlayerEngine {
         configureSession()
         engine.attach(countPlayer)
         engine.connect(countPlayer, to: engine.mainMixerNode, format: AudioIO.stereo(44100))
-        wireOutput(engine)
         observe(engine)
         NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.pause() }
@@ -74,7 +68,7 @@ final class PlayerEngine {
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(.playback, mode: .default, options: [])
-            try session.setPreferredIOBufferDuration(Self.playbackBuffer)
+            try session.setPreferredIOBufferDuration(0.005)
             try session.setActive(true)
         } catch {
             // Tried again when the engine starts; play() says so if it still fails.
@@ -84,26 +78,6 @@ final class PlayerEngine {
     /// Why the engine didn't start last time (said only when Play doesn't work: coming
     /// back from the background, iOS often refuses once and is fine a moment later).
     @ObservationIgnored private var startError: Error?
-
-    // Audio buffers: 5 ms was too little for five tracks plus the input (short crackles).
-    // One size for playing and recording: changing it makes iOS rebuild the audio route
-    // (another crackle), and the delay it adds is part of the calibrated latency (you
-    // don't listen to yourself through the phone).
-    nonisolated static let playbackBuffer = 0.02
-    nonisolated static let recordBuffer = 0.02
-
-    /// The tracks together can go over full scale (separated stems don't add up exactly):
-    /// a peak limiter before the output keeps that from crackling.
-    private func wireOutput(_ e: AVAudioEngine) {
-        let limiter = AVAudioUnitEffect(audioComponentDescription: AudioComponentDescription(
-            componentType: kAudioUnitType_Effect, componentSubType: kAudioUnitSubType_PeakLimiter,
-            componentManufacturer: kAudioUnitManufacturer_Apple, componentFlags: 0, componentFlagsMask: 0))
-        e.attach(limiter)
-        let format = e.outputNode.outputFormat(forBus: 0)
-        let f = format.sampleRate > 0 && format.channelCount > 0 ? format : nil
-        e.connect(e.mainMixerNode, to: limiter, format: f)
-        e.connect(limiter, to: e.outputNode, format: f)
-    }
 
     func startEngine() {
         guard !engine.isRunning else { return }
@@ -130,7 +104,6 @@ final class PlayerEngine {
             if session.category != .playAndRecord || !session.categoryOptions.contains(.defaultToSpeaker) {
                 try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP])
             }
-            try? session.setPreferredIOBufferDuration(Self.recordBuffer)
             try session.setActive(true)
         } catch {
             return "The audio session couldn't be set up for recording (\(error.localizedDescription))."
@@ -162,7 +135,6 @@ final class PlayerEngine {
             } else {
                 try session.setCategory(.playback, mode: .default, options: [])
             }
-            try? session.setPreferredIOBufferDuration(on ? Self.recordBuffer : Self.playbackBuffer)
             try session.setActive(true)
         } catch {
             // Recording sets it up again (and says what's wrong), playback works either way.
@@ -198,20 +170,14 @@ final class PlayerEngine {
         old.detach(countPlayer)
         if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
 
-        // New player nodes as well: a node moved from one engine to another didn't
-        // always start at the time it was given (a silent count-in, clicks out of step).
         let fresh = AVAudioEngine()
         if withInput { _ = fresh.inputNode } // before anything runs, so the engine starts with the input
-        countPlayer = AVAudioPlayerNode()
         fresh.attach(countPlayer)
         fresh.connect(countPlayer, to: fresh.mainMixerNode, format: AudioIO.stereo(44100))
-        for key in Array(players.keys) {
+        for (key, p) in players {
             guard let file = files[key] else { continue }
-            let p = AVAudioPlayerNode()
-            players[key] = p
             connect(key, p, file, in: fresh)
         }
-        wireOutput(fresh)
         engine = fresh
         settleUntil = Self.hostNow + 1
         observe(fresh)
@@ -245,14 +211,11 @@ final class PlayerEngine {
     private func handleConfigurationChange() {
         configPending = false
         if engine.isRunning { return }
-        let was = isPlaying
-        Log.write("engine stopped by iOS\(was ? " while playing" : ""): restarting")
+        let was = isPlaying && Self.hostNow >= settleUntil
+        Log.write("engine stopped by iOS\(isPlaying ? " while playing" : ""): restarting")
         if isPlaying { offset = position; stopAll() }
         startEngine()
-        guard was else { return }
-        // A take being recorded is saved up to here (its timing after a restart is
-        // unknown); practice just goes on.
-        if let onEnded { onEnded() } else { play(countInBars: 0) }
+        if was { onEnded?() } // a take being recorded is saved up to here
     }
 
     /// Waits until the audio has stopped changing after the input was switched on
@@ -554,12 +517,9 @@ final class PlayerEngine {
         let lead = plan.clicks.first.map { max(0, plan.pos - $0.s) } ?? 0
         // With a count-in its clicks are the first sounds after silence: give the output a
         // moment (some USB interfaces swallow the first fraction of a second).
-        // An engine that has only just started needs a moment before it keeps time.
-        let warming = engine.outputNode.lastRenderTime?.isHostTimeValid != true
-        let start = Self.hostNow + (plan.clicks.isEmpty ? 0.12 : 0.3) + (warming ? 0.3 : 0) + lead
-        measuredStartHost = nil
+        let start = Self.hostNow + (plan.clicks.isEmpty ? 0.12 : 0.3) + lead
         let session = AVAudioSession.sharedInstance()
-        Log.write("play from \(String(format: "%.3f", plan.pos)) s, count-in \(plan.clicks.count) clicks, starts in \(Log.ms(start - Self.hostNow))\(warming ? " (engine warming up)" : ""); input \(inputEnabled ? "on" : "off"), \(Int(session.sampleRate)) Hz, buffer \(Log.ms(session.ioBufferDuration)), latency in \(Log.ms(session.inputLatency)) out \(Log.ms(session.outputLatency))")
+        Log.write("play from \(String(format: "%.3f", plan.pos)) s, count-in \(plan.clicks.count) clicks, starts in \(Log.ms(start - Self.hostNow)); input \(inputEnabled ? "on" : "off"), \(Int(session.sampleRate)) Hz, buffer \(Log.ms(session.ioBufferDuration)), latency in \(Log.ms(session.inputLatency)) out \(Log.ms(session.outputLatency))")
 
         generation += 1
         let gen = generation
@@ -700,23 +660,7 @@ final class PlayerEngine {
         song?.manifest.sections?.last { $0.start <= t + 0.01 }
     }
 
-    /// Host seconds at which a player's sample 0 plays, from its render timeline; nil
-    /// until it has rendered.
-    nonisolated static func actualStart(_ node: AVAudioPlayerNode) -> Double? {
-        guard let nt = node.lastRenderTime, nt.isHostTimeValid, nt.isSampleTimeValid,
-              let pt = node.playerTime(forNodeTime: nt), pt.isSampleTimeValid, pt.sampleRate > 0 else { return nil }
-        return AVAudioTime.seconds(forHostTime: nt.hostTime) - Double(pt.sampleTime) / pt.sampleRate
-    }
-
-    /// When the calibration clicks really started (see `actualStart`).
-    func measuredClicksStart() -> Double? { Self.actualStart(countPlayer) }
-
     private func checkEnd() {
-        if isPlaying, measuredStartHost == nil, Self.hostNow > startHost + 0.3,
-           let p = players.first(where: { $0.key != "take" })?.value, let t = Self.actualStart(p) {
-            measuredStartHost = t
-            Log.write("song really started \(Log.ms(t - startHost)) from the planned time")
-        }
         guard isPlaying, activeLoop == nil, pos0 + Self.hostNow - startHost >= duration else { return }
         stopAll()
         offset = duration

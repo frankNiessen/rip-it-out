@@ -318,7 +318,6 @@ final class Recorder {
     func stopRecording() async {
         guard state == .recording, let cap = capture, let started, let song = player.song else { return }
         player.onEnded = nil
-        let measured = player.measuredStartHost
         player.pause()
         stopCapture()
         capture = nil
@@ -331,11 +330,8 @@ final class Recorder {
             note = "Nothing was captured."
             return
         }
-        // Where the song really started (read from the render timeline) rather than
-        // where it was asked to; they differ when the start came late.
-        let songHost = measured.flatMap { abs($0 - started.host) < 2 ? $0 : nil } ?? started.host
-        let captureStartS = started.pos + (first - songHost)
-        Log.write("take: input \(inputName), correction \(Int(latencyMs)) ms; song start planned vs real \(measured.map { Log.ms($0 - started.host) } ?? "not measured"); first input buffer \(Log.ms(first - songHost)) after the song start; capture starts at \(String(format: "%.3f", captureStartS)) s, \(cap.frames) frames at \(Int(cap.sampleRate)) Hz")
+        let captureStartS = started.pos + (first - started.host)
+        Log.write("take: input \(inputName), correction \(Int(latencyMs)) ms; first input buffer \(Log.ms(first - started.host)) after the song start; capture starts at \(String(format: "%.3f", captureStartS)) s, \(cap.frames) frames at \(Int(cap.sampleRate)) Hz")
         let captureEndS = captureStartS + Double(cap.frames) / cap.sampleRate
         if captureEndS <= started.pos + 0.5 {
             cap.discard()
@@ -384,16 +380,10 @@ final class Recorder {
         let cap: Capture
         do { cap = try startCapture() } catch { calibrationNote = error.localizedDescription; return }
         defer { cap.discard(); capture = nil }
-        var t0 = PlayerEngine.hostNow + 0.6
+        let t0 = PlayerEngine.hostNow + 0.6
         player.playClicks(t0: t0, count: count, interval: interval)
         let end = t0 + Double(count) * interval + 0.5
-        var measured = false
         while PlayerEngine.hostNow < end {
-            // the clicks' real start, as for a take (see stopRecording)
-            if !measured, PlayerEngine.hostNow > t0 + 0.3, let t = player.measuredClicksStart() {
-                measured = true
-                if abs(t - t0) < 2 { t0 = t }
-            }
             let k = Int(floor((PlayerEngine.hostNow - t0) / interval))
             calibrationNote = k < 0 ? "Get ready…" : k < listen ? "Listen… \(k + 1)"
                 : "Play along with every click (\(min(count, k + 1) - listen) of \(count - listen))"
@@ -406,7 +396,7 @@ final class Recorder {
             return
         }
         let clicks = (0..<count).map { t0 + Double($0) * interval }
-        Log.write("calibration: input \(inputName), clicks measured \(measured ? "yes" : "no"), first input buffer \(Log.ms(first - t0)) after the first click")
+        Log.write("calibration: input \(inputName), first input buffer \(Log.ms(first - t0)) after the first click")
         switch Calibration.analyze(mono: got.samples, sampleRate: got.sampleRate, startTime: first, clicks: clicks, listen: listen) {
         case .success(let r):
             UserDefaults.standard.set(r.latencyMs, forKey: latencyKey)

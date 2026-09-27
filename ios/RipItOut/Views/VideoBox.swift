@@ -69,48 +69,24 @@ final class TakeVideo {
         let at = CMClockMakeHostTimeFromSystemUnits(AVAudioTime.hostTime(forSeconds: host + max(0, -t)))
         player.setRate(1, time: CMTime(seconds: max(0, t), preferredTimescale: 600), atHostTime: at)
         timer?.invalidate()
-        lastReport = 0
-        timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.keepInPlace() }
         }
     }
 
-    @ObservationIgnored private var lastReport: Double = 0
-
-    /// Keeps the picture with the sound: a small difference is caught up by playing the
-    /// video a little faster or slower (seeking is slow and lands late), a big one (a
-    /// loop wrapping, a late start) by a jump.
+    /// Loops and drift: when the picture is off by more than a quarter second, move it.
     private func keepInPlace() {
         guard let player, let engine, engine.isPlaying, engine.countInRemaining == 0 else { return }
         let want = engine.position - startS
-        guard want >= 0, player.currentItem?.status == .readyToPlay else { return }
-        let off = player.currentTime().seconds - want // > 0: the picture is ahead
-        let now = PlayerEngine.hostNow
-        if now - lastReport > 3 {
-            lastReport = now
-            Log.write("video vs sound \(Log.ms(off)) at \(String(format: "%.1f", engine.position)) s")
-        }
-        if abs(off) > 0.4 {
-            Log.write("video jumps \(Log.ms(-off))")
-            player.seek(to: CMTime(seconds: want + 0.1, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
-            player.rate = 1
-        } else if abs(off) > 0.015 {
-            player.rate = Float(1 - max(-0.15, min(0.15, off * 1.5)))
-        } else if player.rate != 1 {
-            player.rate = 1
+        guard want >= 0 else { return }
+        if abs(player.currentTime().seconds - want) > 0.25 {
+            player.seek(to: CMTime(seconds: want + 0.05, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+            if player.rate == 0 { player.play() }
         }
     }
 
-    /// Moves the picture while stopped and gets its first frames decoded, so the next
-    /// start is on time.
     private func seek(_ pos: Double) {
-        guard let player else { return }
-        player.seek(to: CMTime(seconds: max(0, pos - startS), preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { [weak player] done in
-            DispatchQueue.main.async {
-                guard done, let player, player.rate == 0, player.currentItem?.status == .readyToPlay else { return }
-                player.preroll(atRate: 1)
-            }
-        }
+        player?.seek(to: CMTime(seconds: max(0, pos - startS), preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
     }
 
     func stop() {

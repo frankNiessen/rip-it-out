@@ -21,6 +21,7 @@ final class Camera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unc
     private var recording = false
     private var firstHost: Double?
     private var url: URL?
+    private var transform = CGAffineTransform.identity
 
     static var permission: AVAuthorizationStatus { AVCaptureDevice.authorizationStatus(for: .video) }
 
@@ -51,7 +52,10 @@ final class Camera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unc
                 output.setSampleBufferDelegate(self, queue: queue)
                 session.addOutput(output)
             }
-            if let c = output.connection(with: .video), c.isVideoMirroringSupported { c.isVideoMirrored = front }
+            if let c = output.connection(with: .video) {
+                if c.isVideoRotationAngleSupported(90) { c.videoRotationAngle = 90 } // portrait frames
+                if c.isVideoMirroringSupported { c.isVideoMirrored = front }
+            }
             session.commitConfiguration()
             configuredPosition = position
             self.device = device
@@ -67,12 +71,13 @@ final class Camera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unc
     var isRunning: Bool { session.isRunning }
 
     func startRecording() {
-        // Which way up, fixed for the whole video.
-        if let c = output.connection(with: .video) {
-            let angle = rotation?.videoRotationAngleForHorizonLevelCapture ?? 90
-            if c.isVideoRotationAngleSupported(angle) { c.videoRotationAngle = angle }
-        }
+        // Which way up, fixed for the whole video: stored as the file's rotation, not by
+        // turning the camera's output while recording starts (that reconfigured the
+        // capture, and the audio with it: the click died).
+        let angle = rotation?.videoRotationAngleForHorizonLevelCapture ?? 90
+        let turn = CGAffineTransform(rotationAngle: (angle - 90) * .pi / 180)
         queue.sync {
+            transform = turn
             url = FileManager.default.temporaryDirectory.appendingPathComponent("video-\(UUID().uuidString.prefix(8)).mp4")
             writer = nil
             input = nil
@@ -108,6 +113,7 @@ final class Camera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unc
             ]
             let i = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
             i.expectsMediaDataInRealTime = true
+            i.transform = transform
             guard w.canAdd(i) else { return }
             w.add(i)
             w.shouldOptimizeForNetworkUse = true
