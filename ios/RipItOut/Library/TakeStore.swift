@@ -61,7 +61,8 @@ enum TakeStore {
             let stem = (take.myTakeFile as NSString).deletingPathExtension
             let rendered = try AudioIO.renderAligned(raw: take.rawURL, dir: work, name: stem,
                                                      sampleRate: Double(song.manifest.sampleRate),
-                                                     total: song.manifest.numSamples, startS: json["start_s"] as? Double ?? 0)
+                                                     total: song.manifest.numSamples, startS: json["start_s"] as? Double ?? 0,
+                                                     gainDb: (json["gain_db"] as? NSNumber)?.doubleValue ?? 0)
             if rendered != take.myTakeFile { // this device wrote WAV where the take had FLAC (or back)
                 var files = json["files"] as? [String: String] ?? [:]
                 files["my_drums"] = rendered

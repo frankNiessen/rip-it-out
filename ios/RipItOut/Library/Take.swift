@@ -85,7 +85,8 @@ enum TakeJSON {
         return (x * p).rounded() / p
     }
 
-    /// The song-time fields (stemtool/takes.py `_derive`).
+    /// The song-time fields (stemtool/takes.py `_derive`). gain_db (a normalized take,
+    /// set on the desktop) is kept as it is and applied when my_drums is rendered.
     static func derive(_ take: inout [String: Any]) {
         let captureStart = (take["capture_start_s"] as? NSNumber)?.doubleValue ?? 0
         let latency = (take["latency_ms"] as? NSNumber)?.doubleValue ?? 0

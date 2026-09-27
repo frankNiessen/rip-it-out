@@ -99,6 +99,15 @@ final class TakeTests: XCTestCase {
         XCTAssertEqual(l[Int(1.6 * 44100)], 0, accuracy: 1e-3)
     }
 
+    func testRenderAlignedAppliesGain() throws {
+        let raw = dir.appendingPathComponent("raw.caf")
+        try writeTestFile(raw, sampleRate: 44100, channels: 2, frames: 4410) { _ in 0.25 }
+        let name = try AudioIO.renderAligned(raw: raw, dir: dir, name: "my_drums", sampleRate: 44100, total: 4410,
+                                             startS: 0, gainDb: 20 * log10(2.0))
+        let (buf, _) = try readAll(dir.appendingPathComponent(name))
+        XCTAssertEqual(buf.floatChannelData![0][100], 0.5, accuracy: 1e-3)
+    }
+
     func testTicks() {
         let buf = Ticks.buffer(clicks: [(0, true), (0.5, false)])
         XCTAssertEqual(Int(buf.frameLength), Int(0.5 * 44100) + Int(0.035 * 44100))

@@ -74,8 +74,11 @@ enum AudioIO {
 
     /// The take on the song timeline (stemtool/takes.py `_render_aligned`): `total`
     /// frames at `sampleRate`, the capture starting at song time `startS`, silence
-    /// where nothing was captured. Returns the written file name.
-    static func renderAligned(raw: URL, dir: URL, name: String, sampleRate: Double, total: Int, startS: Double) throws -> String {
+    /// where nothing was captured, the level changed by `gainDb` (a normalized take).
+    /// Returns the written file name.
+    static func renderAligned(raw: URL, dir: URL, name: String, sampleRate: Double, total: Int, startS: Double,
+                              gainDb: Double = 0) throws -> String {
+        let gain = Float(pow(10, gainDb / 20))
         let src = try AVAudioFile(forReading: raw)
         let (out, filename) = try openWriter(dir: dir, name: name, sampleRate: sampleRate)
         let format = stereo(sampleRate)
@@ -107,6 +110,12 @@ enum AudioIO {
             }
             let take = min(n - from, total - written)
             guard take > 0 else { return written < total }
+            if gain != 1 {
+                for ch in 0..<2 {
+                    let d = buf.floatChannelData![ch]
+                    for i in from..<(from + take) { d[i] = min(1, max(-1, d[i] * gain)) }
+                }
+            }
             if from == 0 && take == n {
                 try out.write(from: buf)
             } else {
