@@ -335,6 +335,7 @@ final class Recorder {
         // where it was asked to; they differ when the start came late.
         let songHost = measured.flatMap { abs($0 - started.host) < 2 ? $0 : nil } ?? started.host
         let captureStartS = started.pos + (first - songHost)
+        Log.write("take: input \(inputName), correction \(Int(latencyMs)) ms; song start planned vs real \(measured.map { Log.ms($0 - started.host) } ?? "not measured"); first input buffer \(Log.ms(first - songHost)) after the song start; capture starts at \(String(format: "%.3f", captureStartS)) s, \(cap.frames) frames at \(Int(cap.sampleRate)) Hz")
         let captureEndS = captureStartS + Double(cap.frames) / cap.sampleRate
         if captureEndS <= started.pos + 0.5 {
             cap.discard()
@@ -355,6 +356,7 @@ final class Recorder {
             lastSaved = take
             Uploads.shared.run()
         } catch {
+            Log.write("saving the take failed: \(error)")
             note = "Saving failed: \(error.localizedDescription)"
             state = .idle
         }
@@ -402,11 +404,14 @@ final class Recorder {
             return
         }
         let clicks = (0..<count).map { t0 + Double($0) * interval }
+        Log.write("calibration: input \(inputName), clicks measured \(measured ? "yes" : "no"), first input buffer \(Log.ms(first - t0)) after the first click")
         switch Calibration.analyze(mono: got.samples, sampleRate: got.sampleRate, startTime: first, clicks: clicks, listen: listen) {
         case .success(let r):
             UserDefaults.standard.set(r.latencyMs, forKey: latencyKey)
+            Log.write("calibration: \(String(format: "%.1f", r.latencyMs)) ms from \(r.matched) notes, spread ±\(String(format: "%.1f", r.spreadMs)) ms")
             calibrationNote = "Measured \(Int(r.latencyMs)) ms from \(r.matched) notes (your timing varied by about ±\(Int(r.spreadMs)) ms)."
         case .failure(let e):
+            Log.write("calibration failed: \(e.message)")
             calibrationNote = e.message
         }
     }

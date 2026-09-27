@@ -373,7 +373,7 @@ final class Nextcloud: @unchecked Sendable {
 
     /// Uploads a finished take folder: the audio first, take.json last, so the desktop
     /// never lists a take whose files aren't all there.
-    func uploadFolder(_ local: URL) throws {
+    func uploadFolder(_ local: URL, stop: () -> Bool = { false }) throws {
         guard let rel = relative(local) else { return }
         let parent = (rel as NSString).deletingLastPathComponent
         if !parent.isEmpty { try makeFolder(parent) }
@@ -382,6 +382,7 @@ final class Nextcloud: @unchecked Sendable {
             .filter { !$0.hasPrefix(".") }
             .sorted { a, b in a == "take.json" ? false : b == "take.json" ? true : a < b }
         for file in files {
+            if stop() { throw Failure.message("Stopped") }
             try upload(local.appendingPathComponent(file), to: "\(rel)/\(file)")
         }
     }
@@ -391,9 +392,19 @@ final class Nextcloud: @unchecked Sendable {
         try upload(local, to: rel)
     }
 
+    /// Deletes a file or folder on the server. A take still waiting for its upload was
+    /// never there: nothing to delete. One being uploaded right now is stopped, and what
+    /// made it up is removed afterwards.
     func deleteRemote(_ local: URL) throws {
         guard let rel = relative(local) else { return }
-        dequeueUpload(rel)
+        queueLock.lock()
+        let waiting = readQueue().contains(rel)
+        let busy = currentUpload == rel
+        if busy { cancelled.insert(rel) }
+        writeQueue(readQueue().filter { $0 != rel })
+        queueLock.unlock()
+        if busy { Log.write("delete \(rel): stops its upload"); return }
+        if waiting { Log.write("delete \(rel): not uploaded yet, nothing on the server"); return }
         try delete(rel)
     }
 
@@ -404,6 +415,13 @@ final class Nextcloud: @unchecked Sendable {
     private var queueURL: URL { mirror.appendingPathComponent(".uploads.json") }
     private let queueLock = NSLock()
     private var uploading = false
+    private var currentUpload: String?
+    private var cancelled: Set<String> = []
+
+    private func isCancelled(_ rel: String) -> Bool {
+        queueLock.lock(); defer { queueLock.unlock() }
+        return cancelled.contains(rel)
+    }
 
     private func readQueue() -> [String] {
         (try? JSONSerialization.jsonObject(with: Data(contentsOf: queueURL))) as? [String] ?? []
@@ -443,13 +461,26 @@ final class Nextcloud: @unchecked Sendable {
         for rel in pendingUploads {
             let folder = local(rel)
             guard FileManager.default.fileExists(atPath: folder.path) else { dequeueUpload(rel); continue }
+            queueLock.lock(); currentUpload = rel; queueLock.unlock()
             do {
-                try uploadFolder(folder)
+                try uploadFolder(folder) { self.isCancelled(rel) }
                 dequeueUpload(rel)
                 done += 1
+                Log.write("upload \(rel): done")
             } catch {
-                failed += 1
-                lastError = error.localizedDescription
+                if !isCancelled(rel) {
+                    failed += 1
+                    lastError = Explain.isNetwork(error) ? Explain.network(error) : error.localizedDescription
+                    Log.write("upload \(rel): failed: \(error)")
+                }
+            }
+            queueLock.lock()
+            currentUpload = nil
+            let wasCancelled = cancelled.remove(rel) != nil
+            queueLock.unlock()
+            if wasCancelled { // deleted while uploading: remove what made it up
+                try? delete(rel)
+                Log.write("upload \(rel): deleted meanwhile, removed from the server")
             }
         }
         return (done, failed, lastError)

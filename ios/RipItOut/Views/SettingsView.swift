@@ -7,6 +7,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var picking = false
     @State private var signingIn = false
+    @State private var sharedLog: SharedFile?
 
     var body: some View {
         @Bindable var recorder = recorder
@@ -55,6 +56,17 @@ struct SettingsView: View {
                 } footer: {
                     Text("Calibrate: 20 clicks play. Listen to the first 4, then play a short note or hit with each of the others. Use headphones (wired, or your interface's output): Bluetooth adds a lot of delay, and the speaker ends up in the recording. The timing correction is how far the app moves your takes; iOS times the microphone and the output at different points, so on the built-in speaker and microphone it can be a little below zero.")
                 }
+                Section {
+                    Button("Share the diagnostics log") {
+                        Log.write("log shared (app \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"), iOS \(UIDevice.current.systemVersion), \(UIDevice.current.model))")
+                        sharedLog = SharedFile(url: Log.fileURL)
+                    }
+                    Button("Clear the log", role: .destructive) { Log.clear() }
+                } header: {
+                    Text("Diagnostics")
+                } footer: {
+                    Text("What the app did with the audio (timing of each take and calibration, audio changes, uploads). Send it along when something goes wrong.")
+                }
             }
             .themedList()
             .themedNavigation()
@@ -63,6 +75,7 @@ struct SettingsView: View {
             .toolbar { if !inTab { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } } }
             .folderPicker(isPresented: $picking)
             .sheet(isPresented: $signingIn) { NextcloudLoginView() }
+            .sheet(item: $sharedLog) { file in ShareSheet(url: file.url).presentationDetents([.medium, .large]) }
             .onAppear { recorder.refreshInputs() }
         }
     }

@@ -114,6 +114,7 @@ final class PlayerEngine {
             startError = nil
         } catch {
             startError = error
+            Log.write("engine didn't start: \(error)")
         }
     }
 
@@ -189,6 +190,7 @@ final class PlayerEngine {
     }
 
     private func rebuildEngine(withInput: Bool = true) {
+        Log.write("engine rebuilt \(withInput ? "with" : "without") the input")
         let old = engine
         old.stop()
         for p in players.values { old.detach(p) }
@@ -232,6 +234,7 @@ final class PlayerEngine {
 
     private func configurationChanged() {
         lastConfigChange = Self.hostNow
+        Log.write("audio configuration changed (engine \(engine.isRunning ? "running" : "stopped"), playing \(isPlaying))")
         guard !configPending else { return }
         configPending = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
@@ -243,6 +246,7 @@ final class PlayerEngine {
         configPending = false
         if engine.isRunning { return }
         let was = isPlaying
+        Log.write("engine stopped by iOS\(was ? " while playing" : ""): restarting")
         if isPlaying { offset = position; stopAll() }
         startEngine()
         guard was else { return }
@@ -261,8 +265,12 @@ final class PlayerEngine {
             if !engine.isRunning { startEngine() }
             let quiet = Self.hostNow - max(lastConfigChange, settleUntil - 1) > 0.7
             if Self.hostNow - begin > 0.4, quiet, engine.isRunning,
-               engine.outputNode.lastRenderTime?.isHostTimeValid == true { return }
+               engine.outputNode.lastRenderTime?.isHostTimeValid == true {
+                Log.write("audio settled after \(Log.ms(Self.hostNow - begin))")
+                return
+            }
         }
+        Log.write("audio still changing after 3 s, going ahead")
     }
 
     nonisolated static var hostNow: Double { AVAudioTime.seconds(forHostTime: mach_absolute_time()) }
@@ -550,6 +558,8 @@ final class PlayerEngine {
         let warming = engine.outputNode.lastRenderTime?.isHostTimeValid != true
         let start = Self.hostNow + (plan.clicks.isEmpty ? 0.12 : 0.3) + (warming ? 0.3 : 0) + lead
         measuredStartHost = nil
+        let session = AVAudioSession.sharedInstance()
+        Log.write("play from \(String(format: "%.3f", plan.pos)) s, count-in \(plan.clicks.count) clicks, starts in \(Log.ms(start - Self.hostNow))\(warming ? " (engine warming up)" : ""); input \(inputEnabled ? "on" : "off"), \(Int(session.sampleRate)) Hz, buffer \(Log.ms(session.ioBufferDuration)), latency in \(Log.ms(session.inputLatency)) out \(Log.ms(session.outputLatency))")
 
         generation += 1
         let gen = generation
@@ -705,6 +715,7 @@ final class PlayerEngine {
         if isPlaying, measuredStartHost == nil, Self.hostNow > startHost + 0.3,
            let p = players.first(where: { $0.key != "take" })?.value, let t = Self.actualStart(p) {
             measuredStartHost = t
+            Log.write("song really started \(Log.ms(t - startHost)) from the planned time")
         }
         guard isPlaying, activeLoop == nil, pos0 + Self.hostNow - startHost >= duration else { return }
         stopAll()

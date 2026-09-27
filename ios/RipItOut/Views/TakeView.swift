@@ -202,7 +202,10 @@ struct TakeView: View {
             try await Background.run { try TakeStore.delete(take) }
             dismiss()
         } catch {
-            self.error = "Couldn't delete the take: \(error.localizedDescription)"
+            Log.write("delete failed: \(error)")
+            self.error = Explain.isNetwork(error)
+                ? "Couldn't delete the take on Nextcloud: \(Explain.network(error)) Try again when you're online."
+                : "Couldn't delete the take: \(error.localizedDescription)"
         }
     }
 }

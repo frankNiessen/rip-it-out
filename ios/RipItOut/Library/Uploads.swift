@@ -24,6 +24,8 @@ final class Uploads {
             if result.failed > 0 {
                 failed = true
                 text = "Not uploaded yet (\(result.error ?? "no connection")). The take is safe on this iPhone; it's uploaded later."
+            } else if result.done == 0 {
+                text = nil // nothing went up (a take deleted before its upload)
             } else {
                 text = result.done == 1 ? "On Nextcloud ✓" : "\(result.done) takes on Nextcloud ✓"
                 try? await Task.sleep(for: .seconds(4))
