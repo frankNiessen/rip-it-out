@@ -30,7 +30,10 @@ final class PlayerEngine {
 
     private(set) var levels: [String: Float] = [:]
 
-    @ObservationIgnored let engine = AVAudioEngine()
+    @ObservationIgnored private(set) var engine = AVAudioEngine()
+    @ObservationIgnored private var configObserver: NSObjectProtocol?
+    @ObservationIgnored private(set) var inputEnabled = false
+    @ObservationIgnored private var settleUntil: Double = 0 // our own engine rebuild, not a device change
     @ObservationIgnored private var players: [String: AVAudioPlayerNode] = [:]
     @ObservationIgnored private var files: [String: AVAudioFile] = [:]
     @ObservationIgnored private let countPlayer = AVAudioPlayerNode()
@@ -48,9 +51,7 @@ final class PlayerEngine {
         configureSession()
         engine.attach(countPlayer)
         engine.connect(countPlayer, to: engine.mainMixerNode, format: AudioIO.stereo(44100))
-        NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.configurationChanged() }
-        }
+        observe(engine)
         NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.pause() }
         }
@@ -82,18 +83,70 @@ final class PlayerEngine {
 
     /// Turns on the input (after the microphone permission was granted). The engine
     /// restarts once so the input and output run together.
-    func enableInput() {
-        guard !isPlaying else { return }
-        engine.stop()
-        _ = engine.inputNode
+    /// Turns on the input (after the microphone permission was granted). An engine that
+    /// already ran for playback alone often reports an input without channels, so the
+    /// engine is built again with the input, and the tracks are attached to the new one.
+    /// Returns what went wrong, or nil.
+    func enableInput() -> String? {
+        pause()
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP])
+            try session.setActive(true)
+        } catch {
+            return "The audio session couldn't be set up for recording (\(error.localizedDescription))."
+        }
+        guard session.isInputAvailable else { return "iOS reports no audio input on this device right now." }
+        if inputEnabled && engine.inputNode.outputFormat(forBus: 0).sampleRate > 0 {
+            startEngine()
+            return nil
+        }
+        rebuildEngine()
+        inputEnabled = true
+        let format = engine.inputNode.outputFormat(forBus: 0)
+        if format.sampleRate == 0 || format.channelCount == 0 {
+            let hw = engine.inputNode.inputFormat(forBus: 0)
+            return "The input \(session.currentRoute.inputs.first?.portName ?? "?") reports \(Int(hw.sampleRate)) Hz with \(hw.channelCount) channels."
+        }
+        return nil
+    }
+
+    private func rebuildEngine() {
+        let old = engine
+        old.stop()
+        for p in players.values { old.detach(p) }
+        old.detach(countPlayer)
+        if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
+
+        let fresh = AVAudioEngine()
+        _ = fresh.inputNode // before anything runs, so the engine starts with the input
+        fresh.attach(countPlayer)
+        fresh.connect(countPlayer, to: fresh.mainMixerNode, format: AudioIO.stereo(44100))
+        for (key, p) in players {
+            guard let file = files[key] else { continue }
+            fresh.attach(p)
+            fresh.connect(p, to: fresh.mainMixerNode, format: file.processingFormat)
+            p.volume = level(key)
+        }
+        engine = fresh
+        settleUntil = Self.hostNow + 1
+        observe(fresh)
         startEngine()
+    }
+
+    private func observe(_ engine: AVAudioEngine) {
+        configObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.configurationChanged() }
+        }
     }
 
     private func configurationChanged() {
         // A device came or went (headphones, an audio interface): the engine stopped.
+        if Self.hostNow < settleUntil && !isPlaying { startEngine(); return }
         let was = isPlaying
         if was { offset = position; stopAll() }
         startEngine()
+        if was { onEnded?() } // a take being recorded is saved up to here
     }
 
     nonisolated static var hostNow: Double { AVAudioTime.seconds(forHostTime: mach_absolute_time()) }

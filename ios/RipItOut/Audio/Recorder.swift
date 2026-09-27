@@ -108,7 +108,11 @@ final class Recorder {
             note = "Allow microphone access in Settings > Privacy & Security > Microphone to record."
             return false
         }
-        player.enableInput()
+        if let problem = player.enableInput() {
+            note = problem
+            calibrationNote = problem
+            return false
+        }
         return true
     }
 
@@ -116,7 +120,7 @@ final class Recorder {
         let input = player.engine.inputNode
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else {
-            throw AudioIO.Failure.message("No audio input. Plug in your interface or allow the microphone.")
+            throw AudioIO.Failure.message("No audio input: \(inputName) delivers \(Int(format.sampleRate)) Hz, \(format.channelCount) channels. Close other apps that use the microphone and try again.")
         }
         let cap = try Capture(format: format)
         input.installTap(onBus: 0, bufferSize: 2048, format: format) { buffer, when in
@@ -146,8 +150,9 @@ final class Recorder {
 
     func startRecording() async {
         guard state == .idle, player.song != nil else { return }
-        guard await prepareInput() else { return }
         player.pause()
+        guard await prepareInput() else { return }
+        try? await Task.sleep(for: .milliseconds(400)) // let the engine settle with the input on
         player.setLoop(nil) // a take is one pass through the song
         note = nil
         do {
@@ -213,6 +218,7 @@ final class Recorder {
     func calibrate() async {
         guard state == .idle else { return }
         guard await prepareInput() else { return }
+        try? await Task.sleep(for: .milliseconds(400)) // let the engine settle with the input on
         player.pause()
         state = .calibrating
         defer { state = .idle }
