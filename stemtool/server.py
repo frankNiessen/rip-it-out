@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from yt_dlp.utils import DownloadError
 
-from . import __version__, audio, config, library, localfiles, pipeline, takes, youtube
+from . import __version__, audio, config, library, localfiles, pipeline, sections, takes, youtube
 from .config import STYLES, load_settings
 from .jobs import JobManager
 
@@ -64,6 +64,15 @@ class GridRequest(BaseModel):
     steps: int = 1
 
 
+class SectionPart(BaseModel):
+    start: float
+    kind: str
+
+
+class SectionsRequest(BaseModel):
+    sections: list[SectionPart] | None = None  # None: back to the detected sections
+
+
 class ReseparateRequest(BaseModel):
     folders: list[str]
     style: str
@@ -73,6 +82,7 @@ class TakeUpdate(BaseModel):
     latency_ms: float | None = None
     video_nudge_ms: float | None = None
     name: str | None = None
+    normalize: bool | None = None
 
 
 class TakeRef(BaseModel):
@@ -291,6 +301,25 @@ def regrid(req: GridRequest) -> dict:
         song = _song(folder)
         changed.append(pipeline.regrid(song, req.action, req.steps))
     return {"changed": len(changed), "manifest": changed[0] if len(changed) == 1 else None}
+
+
+@app.put("/api/library/{folder}/sections")
+def set_sections(folder: str, req: SectionsRequest) -> dict:
+    """Redefine a song's sections. The detected ones are kept, so they can come back."""
+    song = _song(folder)
+
+    def change(m: dict) -> None:
+        if req.sections is None:
+            if "sections_detected" in m:
+                m["sections"] = sections.snap(m.pop("sections_detected"), m["downbeats"], m["duration_s"])
+            return
+        m.setdefault("sections_detected", m.get("sections") or [])
+        m["sections"] = sections.edited([p.model_dump() for p in req.sections], m["downbeats"], m["duration_s"])
+
+    try:
+        return library.update_manifest(song, change)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @app.post("/api/library/convert")

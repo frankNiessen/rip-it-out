@@ -64,16 +64,16 @@ the default compressed format (140 MB with 24-bit FLAC), takes with video more.
 **1. Choose your library folder.** Open **Settings** and pick a folder. The default is
 `~/Music/Rip It Out`. Everything the app makes lives there, one folder per song.
 
-**2. Add songs.** In **Library**, choose the group (optional) and the music style, then
-add from either source:
+**2. Add songs.** In **Library**, line up what you want to add, choose the group
+(optional) and the music style, then press **Process**. Nothing starts before that.
 
-- **From YouTube:** paste a video or playlist link and press **Add**. With a playlist,
-  its name becomes the group if you leave the group empty. Songs already in your library
-  are skipped, so you can add the same playlist again later to pick up new songs.
-- **From your files:** press **Choose files** or drop audio or video files (MP3, WAV,
-  FLAC, M4A, AIFF, OGG, MP4, MOV, ...) anywhere on the Library tab. Title and artist come
-  from the file's tags, or from a name like `Artist - Title.mp3`. A file you add twice is
-  recognized by its content.
+- **Your files:** press **Choose files** or drop audio or video files (MP3, WAV, FLAC,
+  M4A, AIFF, OGG, MP4, MOV, ...) anywhere on the Library tab. They are listed above the
+  button; **×** takes one off again. Title and artist come from the file's tags, or from
+  a name like `Artist - Title.mp3`. A file you add twice is recognized by its content.
+- **From YouTube:** paste a video or playlist link. With a playlist, its name becomes the
+  group if you leave the group empty. Songs already in your library are skipped, so you
+  can add the same playlist again later to pick up new songs.
 
 Each song takes one to two minutes on an M-series Mac. **Stop** ends the song being
 processed, **Stop all** also empties the queue.
@@ -87,10 +87,22 @@ minute and keeps beats, click and takes.
 own instrument down, the click to taste) and press Play or the space bar. Click on the
 tempo view to jump; with a count-in, playback starts at the beginning of that bar.
 
+Each track has **M** (mute) and **S** (solo) next to its fader, like on a mixing desk.
+Solo one or more tracks to hear only those, for example the bass line you are learning;
+the click keeps playing unless you mute it. Mute and solo are reset when you restart the
+app, the fader levels are kept.
+
 The coloured band above the tempo view shows the song's sections. Click a section to loop
 it, Shift-click another one to extend the loop, or drag across the view to loop any bars
 (the loop snaps to bar lines). **Loop** or the **L** key loops the section you are in.
-Zoom with **+** and **−**, pinch or Cmd-scroll; the scale on the left is in bpm.
+Once a loop is set, **‹ Start ›** and **‹ End ›** move either end by one bar. Zoom with
+**+** and **−**, pinch or Cmd-scroll; the scale on the left is in bpm.
+
+The sections are found automatically, and not always the way you would name them.
+**Sections** opens the list: change what a part is (Verse, Chorus, Solo, ...), move where
+it starts by a bar with **‹ ›**, **×** joins it with the part before, and **Split at
+playhead** starts a new part at the bar you are on. Every change is saved right away;
+**Reset** goes back to the sections Rip It Out found.
 
 The beat grid (click, bar numbers, count-in) is cleaned up automatically: the beat tracker
 sometimes jumps between double and half tempo or loses a beat, and the app evens that out
@@ -121,8 +133,11 @@ you press Stop or the song ends.
 
 **6. Review and export.** Pick a take on the right. It plays with its own fader
 (**My take**) next to the song's tracks and the click. If your playing sits a little early
-or late, move **Timing** until it lines up and save; the video follows. **Export audio**
-writes a WAV, **Export video** an MP4, both with the levels of the faders. To export only
+or late, move **Timing** until it lines up and save; the video follows. If the take is
+quiet, **Normalize** brings its loudest hit to just below full scale; the recording itself
+is kept, so **Original** undoes it. **Export audio**
+writes a WAV, **Export video** an MP4, both mixed the way you hear it (faders, mute
+and solo). To export only
 part of a take, choose **Trimmed** and set the start and end (type them, or play to the
 spot and press **Set**); the trimmed part is marked on the timeline. **Current loop**
 exports the loop, for example one section.

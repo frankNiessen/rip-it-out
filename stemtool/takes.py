@@ -10,6 +10,9 @@ then renamed into place, like songs. Files:
   video.*        the camera recording as the browser made it (webm or mp4)
   export.*       the last mix you exported (wav, mp4)
 
+Level: gain_db (0 unless the take was normalized) is applied when my_drums.flac is
+rendered; raw.flac stays as captured, so going back to the original is lossless.
+
 Timing: the browser reports the song time at which capture started. Everything
 you play reaches the capture late by the round trip latency (output to your ears,
 input back from the module), so a sample captured at song time t was played at
@@ -37,6 +40,7 @@ from . import audio, library
 SCHEMA_VERSION = 1
 TAKE_ID = re.compile(r"^[0-9A-Za-z_-]{1,64}$")
 VIDEO_EXTS = {"webm", "mp4", "mov", "mkv"}
+NORMALIZE_DBFS = -1.0  # where Normalize puts a take's loudest peak
 SYNC_RATE = 8000  # sample rate used to line the video's sound up with the capture
 # The system's own H.264 encoder (Apple VideoToolbox, Windows Media Foundation):
 # fast, and the packaged ffmpeg needs no GPL x264.
@@ -192,6 +196,11 @@ def update(song: Path, take_id: str, changes: dict) -> dict:
         take["video"]["nudge_ms"] = round(float(changes["video_nudge_ms"]), 1)
     if changes.get("name") is not None:
         take["name"] = str(changes["name"]).strip()[:120]
+    if changes.get("normalize") is not None:  # True: peak to NORMALIZE_DBFS, False: as recorded
+        gain = round(NORMALIZE_DBFS - take["peak_dbfs"], 1) if changes["normalize"] else 0.0
+        if gain != take.get("gain_db", 0.0):
+            take["gain_db"] = gain
+            rerender = True
     _derive(take)
     if rerender:
         manifest = json.loads((song / library.MANIFEST).read_text(encoding="utf-8"))
@@ -306,6 +315,9 @@ def _render_aligned(folder: Path, take: dict, manifest: dict, raw: np.ndarray) -
     if raw_sr != sr:
         g = gcd(sr, raw_sr)
         raw = resample_poly(raw, sr // g, raw_sr // g, axis=0).astype(np.float32)
+    gain = 10 ** (take.get("gain_db", 0.0) / 20)
+    if gain != 1.0:
+        raw = np.clip(raw * gain, -1.0, 1.0)
     out = np.zeros((total, 2), dtype=np.float32)
     start = int(round(take["start_s"] * sr))
     src_from = max(0, -start)
