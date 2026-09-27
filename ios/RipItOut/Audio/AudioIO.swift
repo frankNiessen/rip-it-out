@@ -153,7 +153,9 @@ enum AudioIO {
         while true {
             var convError: NSError?
             let status = converter.convert(to: outBuf, error: &convError) { _, inputStatus in
-                if finished {
+                // AVAudioFile throws (without an error) when asked to read past the end
+                if finished || src.framePosition >= src.length {
+                    finished = true
                     inputStatus.pointee = .endOfStream
                     return nil
                 }
