@@ -40,8 +40,10 @@ struct TakeDetailView: View {
                 Section {
                     Button("Delete take", role: .destructive) { confirmDelete = true }
                 }
-                if let error { Text(error).foregroundStyle(.red) }
+                if let error { Text(error).foregroundStyle(Theme.fail) }
             }
+            .themedList()
+            .themedNavigation()
             .navigationTitle("Take")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

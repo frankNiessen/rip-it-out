@@ -21,7 +21,7 @@ struct SettingsView: View {
                             Button("Disconnect from Nextcloud", role: .destructive) { library.disconnect(); dismiss() }
                         }
                     }
-                    if let error = library.error { Text(error).font(.footnote).foregroundStyle(.red) }
+                    if let error = library.error { Text(error).font(.footnote).foregroundStyle(Theme.fail) }
                 } header: {
                     Text("Library")
                 } footer: {
@@ -48,6 +48,8 @@ struct SettingsView: View {
                     Text("Calibrate: 20 clicks play. Listen to the first 4, then play a short note or hit with each of the others. Use headphones (wired, or your interface's output): Bluetooth adds a lot of delay, and the speaker ends up in the recording.")
                 }
             }
+            .themedList()
+            .themedNavigation()
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }

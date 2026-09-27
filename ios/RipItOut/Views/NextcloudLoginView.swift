@@ -35,8 +35,10 @@ struct NextcloudLoginView: View {
                 } header: { Text("Library folder") } footer: {
                     Text("The folder with your songs, as it is in Nextcloud, for example StemLibrary or Music/StemLibrary. Songs are downloaded when you open them; takes you record are uploaded to it.")
                 }
-                if let error { Text(error).foregroundStyle(.red) }
+                if let error { Text(error).foregroundStyle(Theme.fail) }
             }
+            .themedList()
+            .themedNavigation()
             .navigationTitle("Nextcloud")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
