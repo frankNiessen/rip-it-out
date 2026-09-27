@@ -99,6 +99,15 @@ private struct FolderPicker: ViewModifier {
 struct LibraryView: View {
     @Environment(LibraryStore.self) private var library
     @State private var search = ""
+    /// Collapsed groups, remembered (like the desktop's folded groups).
+    @AppStorage("library.collapsed") private var collapsedRaw = ""
+    private var collapsed: Set<String> { Set(collapsedRaw.split(separator: "\n").map(String.init)) }
+
+    private func toggle(_ group: String) {
+        var c = collapsed
+        if c.contains(group) { c.remove(group) } else { c.insert(group) }
+        collapsedRaw = c.sorted().joined(separator: "\n")
+    }
     @State private var settings = false
 
     private func matches(_ s: Song) -> Bool {
@@ -119,20 +128,30 @@ struct LibraryView: View {
             }
             ForEach(library.groups) { group in
                 let songs = group.songs.filter(matches)
+                let open = !search.isEmpty || !collapsed.contains(group.name)
                 if !songs.isEmpty {
                     Section {
-                        ForEach(songs) { song in
+                        ForEach(open ? songs : []) { song in
                             NavigationLink(value: song.id) { SongRow(song: song) }
                                 .listRowBackground(Theme.bg)
                                 .listRowSeparatorTint(Theme.line)
                         }
                     } header: {
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text(group.name.isEmpty ? "No group" : group.name)
-                                .font(.system(size: 17, weight: .bold)).foregroundStyle(Theme.ink)
-                            Text("\(songs.count) \(songs.count == 1 ? "song" : "songs")")
-                                .font(Theme.mono(12)).foregroundStyle(Theme.muted)
+                        Button { withAnimation(.easeOut(duration: 0.15)) { toggle(group.name) } } label: {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(Theme.muted)
+                                    .rotationEffect(.degrees(open ? 90 : 0))
+                                Text(group.name.isEmpty ? "No group" : group.name)
+                                    .font(.system(size: 17, weight: .bold)).foregroundStyle(Theme.ink)
+                                Text("\(songs.count) \(songs.count == 1 ? "song" : "songs")")
+                                    .font(Theme.mono(12)).foregroundStyle(Theme.muted)
+                                Spacer()
+                            }
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                         .textCase(nil)
                         .padding(.vertical, 4)
                     }
