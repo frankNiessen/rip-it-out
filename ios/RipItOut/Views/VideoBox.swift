@@ -11,6 +11,9 @@ final class TakeVideo {
     private(set) var takeID: String?
     private(set) var loading = false
     private(set) var problem: String?
+    /// Width over height as it's shown (portrait or landscape), so the page fits the
+    /// picture without bars around it.
+    private(set) var aspect: CGFloat?
     @ObservationIgnored private var startS: Double = 0
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private weak var engine: PlayerEngine?
@@ -20,6 +23,7 @@ final class TakeVideo {
         stop()
         player = nil
         problem = nil
+        aspect = nil
         takeID = take?.id
         self.engine = engine
         guard let take, let url = take.videoURL, let start = take.videoStartS else { return }
@@ -34,6 +38,12 @@ final class TakeVideo {
         } catch {
             problem = "Couldn't load the video: \(error.localizedDescription)"
             return
+        }
+        guard takeID == take.id else { return }
+        if let track = try? await AVURLAsset(url: url).loadTracks(withMediaType: .video).first,
+           let size = try? await track.load(.naturalSize), let t = try? await track.load(.preferredTransform) {
+            let r = CGRect(origin: .zero, size: size).applying(t)
+            if r.height > 0 { aspect = abs(r.width / r.height) }
         }
         guard takeID == take.id else { return }
         let p = AVPlayer(url: url)
@@ -90,30 +100,32 @@ final class TakeVideo {
 struct CameraBox: View {
     var height: CGFloat? = 240 // nil: as tall as there is room
     @Environment(Recorder.self) private var recorder
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     var body: some View {
         @Bindable var recorder = recorder
         if recorder.cameraRunning {
+            // the picture's own shape (720p, upright): no bars around it
+            let aspect: CGFloat = verticalSizeClass == .compact ? 16 / 9 : 9 / 16
             CameraPreview(session: recorder.camera.session, deviceID: recorder.cameraDeviceID)
-                .frame(maxWidth: .infinity, maxHeight: height == nil ? .infinity : nil)
+                .aspectRatio(aspect, contentMode: .fit)
                 .frame(height: height)
-                .background(Theme.hex(0x0b0c0d))
                 .clipShape(.rect(cornerRadius: 3))
-                .overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.line, lineWidth: 1))
                 .overlay(alignment: .topTrailing) {
                     // front or back camera, like the Camera app's switch
                     Button { recorder.frontCamera.toggle() } label: {
                         Image(systemName: "arrow.triangle.2.circlepath.camera")
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(Theme.ink)
-                            .frame(width: 40, height: 40)
+                            .frame(width: 34, height: 34)
                             .background(.black.opacity(0.55), in: Circle())
                     }
                     .buttonStyle(.plain)
-                    .padding(8)
+                    .padding(6)
                     .disabled(recorder.state == .recording)
                     .accessibilityLabel(recorder.frontCamera ? "Switch to the back camera" : "Switch to the front camera")
                 }
+                .frame(maxWidth: .infinity, maxHeight: height == nil ? .infinity : nil)
         }
     }
 }
@@ -130,7 +142,7 @@ struct VideoPlayerLayer: UIViewRepresentable {
     func makeUIView(context: Context) -> PlayerView {
         let v = PlayerView()
         v.playerLayer.player = player
-        v.playerLayer.videoGravity = .resizeAspect
+        v.playerLayer.videoGravity = .resizeAspectFill // the box has the video's shape
         return v
     }
 

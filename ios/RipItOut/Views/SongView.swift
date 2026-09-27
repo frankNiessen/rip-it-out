@@ -31,30 +31,29 @@ struct SongView: View {
     }
 
     /// Practice | Record, like a segmented control in the desktop's colours.
+    /// Two tabs (not buttons: nothing plays or records from here), underlined like a
+    /// tab bar, lime for Practice and red for Record.
     private var modeSwitch: some View {
         HStack(spacing: 0) {
             ForEach([Mode.practice, .record], id: \.self) { m in
                 let on = m == mode
+                let color = m == .practice ? Theme.accent : Theme.record
                 Button {
                     modeRaw = m.rawValue
                 } label: {
-                    HStack(spacing: 6) {
-                        if m == .record { Circle().fill(on ? Color.white : Theme.record).frame(width: 8, height: 8) }
+                    VStack(spacing: 7) {
                         Text(m == .practice ? "Practice" : "Record")
+                            .font(.system(size: 15, weight: on ? .semibold : .regular))
+                            .foregroundStyle(on ? Theme.ink : Theme.muted)
+                        Rectangle().fill(on ? color : Theme.line).frame(height: on ? 2 : 1)
                     }
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(on ? (m == .practice ? Theme.onAccent : Color.white) : Theme.muted)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 9)
-                    .background(on ? (m == .practice ? Theme.accent : Theme.record) : Color.clear, in: .rect(cornerRadius: 3))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityAddTraits(on ? [.isSelected, .isHeader] : [])
             }
         }
-        .padding(3)
-        .background(Theme.panel, in: .rect(cornerRadius: 5))
-        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Theme.line, lineWidth: 1))
         .disabled(recorder.state != .idle)
     }
 
@@ -103,26 +102,22 @@ struct SongView: View {
 
     /// In Record with the camera on, the picture stays in view (above the page, or beside
     /// it with the phone on its side) while the rest scrolls.
-    @ViewBuilder
     private func content(_ song: Song) -> some View {
         let pinned = mode == .record && recorder.cameraRunning
-        if pinned && verticalSizeClass == .compact {
-            HStack(alignment: .top, spacing: 0) {
-                CameraBox(height: nil)
-                    .padding([.leading, .vertical], 12)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                scroll(song).frame(maxWidth: .infinity)
+        let side = pinned && verticalSizeClass == .compact
+        // One layout that changes direction, so the camera picture isn't built again
+        // when the phone turns.
+        let layout = side ? AnyLayout(HStackLayout(alignment: .top, spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
+        return layout {
+            if pinned {
+                CameraBox(height: side ? nil : 220)
+                    .padding(side ? EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 0)
+                                  : EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .frame(maxWidth: side ? .infinity : nil, maxHeight: side ? .infinity : nil)
             }
-            .background(Theme.bg)
-        } else {
-            VStack(spacing: 0) {
-                if pinned {
-                    CameraBox(height: 200).padding(.horizontal, 16).padding(.vertical, 8)
-                }
-                scroll(song)
-            }
-            .background(Theme.bg)
+            scroll(song).frame(maxWidth: .infinity)
         }
+        .background(Theme.bg)
     }
 
     private func scroll(_ song: Song) -> some View {
@@ -389,13 +384,11 @@ struct TransportView: View {
             // one main action per mode: Play in Practice, Record in Record
             HStack(spacing: 6) {
                 if mode == .practice {
-                    Button { player.toggle() } label: {
-                        Label(player.isPlaying ? "Pause" : "Play", systemImage: player.isPlaying ? "pause.fill" : "play.fill")
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
+                    PlayButton(playing: player.isPlaying) { player.toggle() }
                 } else {
                     Button(recording ? "Stop" : "Record") { Task { await recorder.toggleRecording() } }
                         .buttonStyle(RecordButtonStyle(recording: recording))
+                        .accessibilityLabel(recording ? "Stop" : "Record")
                         .disabled(busy)
                 }
                 Button { player.seek(player.loop?.a ?? 0) } label: { Image(systemName: "backward.end.fill") }
@@ -463,38 +456,47 @@ struct LevelMeter: View {
 }
 
 /// One channel strip per track, like the desktop's console: name, fader, M and S.
+/// The balance: one fader for the whole band, the click on or off, and every track
+/// (your take too, on the take page) muted or soloed.
 struct MixerView: View {
     @Environment(PlayerEngine.self) private var player
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if player.trackKeys.contains("take") {
-                // your take against the whole band with one fader
-                row("band", label: "Band", strong: true, buttons: false)
-                Rectangle().fill(Theme.line).frame(height: 1)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Text("Band").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.ink)
+                Fader(value: Binding(get: { Double(player.level("band")) }, set: { player.setLevel("band", Float($0)) }))
+                if player.trackKeys.contains("click") {
+                    Button { player.toggleClick() } label: { Image(systemName: "metronome") }
+                        .buttonStyle(QuietButtonStyle(on: player.clickOn))
+                        .accessibilityLabel(player.clickOn ? "Click on" : "Click off")
+                }
             }
-            ForEach(player.trackKeys, id: \.self) { key in
-                row(key, label: TrackNames.label(key), strong: key == "take", buttons: key != "count")
+            HStack(spacing: 6) {
+                ForEach(player.trackKeys.filter { $0 != "click" && $0 != "count" }, id: \.self) { key in
+                    strip(key)
+                }
             }
         }
     }
 
-    private func row(_ key: String, label: String, strong: Bool, buttons: Bool) -> some View {
-        let silent = key != "band" && player.effectiveLevel(key) == 0 && player.level(key) > 0
-        return HStack(spacing: 8) {
-            Text(label)
-                .font(.system(size: 14, weight: strong ? .semibold : .regular))
-                .foregroundStyle(strong ? Theme.ink : Theme.muted)
-                .frame(width: 70, alignment: .leading)
-            Fader(value: Binding(get: { Double(player.level(key)) }, set: { player.setLevel(key, Float($0)) }),
-                  dimmed: silent)
-            if buttons {
-                ChannelButton(letter: "M", on: player.muted.contains(key), color: Theme.mute) { player.toggleMute(key) }
-                ChannelButton(letter: "S", on: player.soloed.contains(key), color: Theme.accent) { player.toggleSolo(key) }
-            } else {
-                Color.clear.frame(width: 80, height: 30)
+    private func strip(_ key: String) -> some View {
+        let silent = player.effectiveLevel(key) == 0
+        return VStack(spacing: 5) {
+            Text(key == "take" ? "Me" : TrackNames.label(key))
+                .font(.system(size: 12, weight: key == "take" ? .bold : .medium))
+                .foregroundStyle(silent ? Theme.muted : Theme.ink)
+                .lineLimit(1).minimumScaleFactor(0.8)
+            HStack(spacing: 3) {
+                ChannelButton(symbol: "speaker.slash.fill", on: player.muted.contains(key), color: Theme.mute) { player.toggleMute(key) }
+                    .accessibilityLabel("Mute \(TrackNames.label(key))")
+                ChannelButton(symbol: "headphones", on: player.soloed.contains(key), color: Theme.accent) { player.toggleSolo(key) }
+                    .accessibilityLabel("Solo \(TrackNames.label(key))")
             }
         }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        .background(key == "take" ? Theme.accent.opacity(0.08) : Color.clear, in: .rect(cornerRadius: 3))
     }
 }
 
@@ -666,5 +668,19 @@ struct TakesView: View {
                 Rectangle().fill(Theme.line).frame(height: 1)
             }
         }
+    }
+}
+
+/// Play or pause: the symbol on lime, like the desktop's main button.
+struct PlayButton: View {
+    let playing: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: playing ? "pause.fill" : "play.fill").frame(width: 30, height: 22)
+        }
+        .buttonStyle(PrimaryButtonStyle())
+        .accessibilityLabel(playing ? "Pause" : "Play")
     }
 }

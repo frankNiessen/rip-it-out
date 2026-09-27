@@ -120,12 +120,10 @@ struct RecordButtonStyle: ButtonStyle {
     var recording: Bool
     @Environment(\.isEnabled) private var enabled
     func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 7) {
-            RoundedRectangle(cornerRadius: recording ? 1 : 6).frame(width: 11, height: 11)
-            configuration.label.lineLimit(1).fixedSize()
-        }
-        .font(.system(size: 16, weight: .bold))
-        .padding(.horizontal, 18).padding(.vertical, 10)
+        RoundedRectangle(cornerRadius: recording ? 2 : 8)
+            .frame(width: 16, height: 16)
+            .frame(width: 30, height: 22)
+            .padding(.horizontal, 12).padding(.vertical, 10)
         .foregroundStyle(.white)
         .background(Theme.record.opacity(configuration.isPressed ? 0.85 : 1), in: .rect(cornerRadius: 3))
         .opacity(enabled ? 1 : 0.4)
@@ -134,17 +132,17 @@ struct RecordButtonStyle: ButtonStyle {
 
 /// The M and S buttons of a channel strip: outlined, lit when on (mute amber, solo lime).
 struct ChannelButton: View {
-    let letter: String
+    let symbol: String
     let on: Bool
     let color: Color
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Text(letter)
-                .font(Theme.mono(11, .semibold))
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(on ? Theme.onAccent : Theme.muted)
-                .frame(width: 36, height: 30)
+                .frame(width: 30, height: 28)
                 .background(on ? color : .clear, in: .rect(cornerRadius: 2))
                 .overlay(RoundedRectangle(cornerRadius: 2).stroke(on ? color : Theme.lineStrong, lineWidth: 1))
                 .contentShape(Rectangle())

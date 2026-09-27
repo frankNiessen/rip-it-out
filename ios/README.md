@@ -19,13 +19,13 @@ to the last song.
 
 - **Library:** your songs by group, with search. Songs that are only in the cloud are
   downloaded when you open them.
-- **Play along:** a channel strip per track (drums, bass, vocals, other, click) with its
-  fader, **M** (mute) and **S** (solo: hear only the soloed tracks, the click keeps
-  playing unless muted; a track is muted or soloed, not both), the bar and beat counter, the tempo view with the song's
+- **Play along:** one **Band** fader for the whole song, the click on or off, and mute
+  (speaker) or solo (headphones) for drums, bass, vocals and other (solo: hear only the
+  soloed tracks; a track is muted or soloed, not both), the bar and beat counter, the tempo view with the song's
   sections, a count-in of one or two bars, and section loops: **Loop** loops the section
   you are in, a section button moves the loop there. Zoom with **−** / **+** or a pinch,
   drag or tap in the tempo view (or **‹ Bar ›**) to start anywhere. Mute and solo reset
-  when the app restarts, the faders are kept.
+  when the app restarts, the Band fader and the click are kept.
 - **Record:** from the built-in microphone, a headset or a USB audio interface. Latency
   is measured once with **Settings > Calibrate** (the same 20 clicks as on the desktop).
 - **Takes:** saved into the song's `takes/` folder in the desktop's format

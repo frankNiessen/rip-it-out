@@ -138,8 +138,8 @@ struct CameraPreview: UIViewRepresentable {
         private var deviceID: String?
 
         /// Follows the camera in use (it changes when you flip it).
-        func follow(_ id: String?) {
-            guard id != deviceID || rotation == nil else { return }
+        func follow(_ id: String?, force: Bool = false) {
+            guard force || id != deviceID || rotation == nil else { return }
             deviceID = id
             observation = nil
             rotation = nil
@@ -153,6 +153,14 @@ struct CameraPreview: UIViewRepresentable {
             }
         }
 
+        // Turning the phone lays the view out again: take the new angle right then
+        // (waiting for the coordinator's change notice took seconds).
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            if rotation == nil || previewLayer.connection == nil { follow(deviceID, force: true) }
+            if let r = rotation { apply(r.videoRotationAngleForHorizonLevelPreview) }
+        }
+
         private func apply(_ angle: CGFloat) {
             if let c = previewLayer.connection, c.isVideoRotationAngleSupported(angle) { c.videoRotationAngle = angle }
         }
@@ -161,7 +169,7 @@ struct CameraPreview: UIViewRepresentable {
     func makeUIView(context: Context) -> PreviewView {
         let v = PreviewView()
         v.previewLayer.session = session
-        v.previewLayer.videoGravity = .resizeAspect
+        v.previewLayer.videoGravity = .resizeAspectFill // the box has the picture's shape
         v.follow(deviceID)
         return v
     }

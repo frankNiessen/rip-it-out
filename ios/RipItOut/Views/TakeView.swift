@@ -30,23 +30,25 @@ struct TakeView: View {
                     }
                     videoArea(take)
                     VStack(alignment: .leading, spacing: 12) {
-                        SongTimeline(song: song).frame(height: 90)
+                        // the same deck as the song page
+                        HStack(spacing: 8) {
+                            CounterView().frame(width: 104)
+                            SongTimeline(song: song)
+                        }
+                        .frame(height: 140)
                         Caption()
                         HStack(spacing: 8) {
-                            Button(player.isPlaying ? "Pause" : "Play") {
+                            PlayButton(playing: player.isPlaying) {
                                 if player.isPlaying { player.pause() } else { player.play(countInBars: 0) }
                             }
-                            .buttonStyle(PrimaryButtonStyle())
                             .disabled(player.loading || player.take?.id != take.id)
                             Button { player.seek(player.takeStart(take)) } label: { Image(systemName: "backward.end.fill") }
                                 .buttonStyle(QuietButtonStyle())
                                 .accessibilityLabel("From the start of the take")
                             Spacer(minLength: 0)
-                            Button("Take only") { player.setTakeOnly(!player.takeOnly) }
-                                .buttonStyle(QuietButtonStyle(on: player.takeOnly))
                         }
                         Rectangle().fill(Theme.line).frame(height: 1)
-                        balance
+                        MixerView()
                     }
                     .panel()
                     HStack(spacing: 8) {
@@ -129,39 +131,19 @@ struct TakeView: View {
     @ViewBuilder
     private func videoArea(_ take: Take) -> some View {
         if take.hasVideo {
-            ZStack {
-                Theme.hex(0x0b0c0d)
+            Group {
                 if let p = video.player {
                     VideoPlayerLayer(player: p)
+                        .aspectRatio(video.aspect ?? 9 / 16, contentMode: .fit)
+                        .frame(maxHeight: 420)
+                        .clipShape(.rect(cornerRadius: 3))
                 } else if let problem = video.problem {
                     Text(problem).font(.system(size: 13)).foregroundStyle(Theme.muted).padding()
                 } else {
-                    Text("Loading video…").font(Theme.mono(12)).foregroundStyle(Theme.muted)
+                    Text("Loading video…").font(Theme.mono(12)).foregroundStyle(Theme.muted).padding(.vertical, 40)
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 380)
-            .clipShape(.rect(cornerRadius: 3))
-            .overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.line, lineWidth: 1))
-        }
-    }
-
-    /// The whole mixer, with My take, and one tap to put your take in place of one
-    /// of the band's tracks (it mutes that track).
-    private var balance: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if let stems = player.song?.manifest.stemOrder, !stems.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("My take instead of").font(Theme.mono(11)).foregroundStyle(Theme.muted)
-                    HStack(spacing: 6) {
-                        ForEach(stems, id: \.self) { key in
-                            Button(TrackNames.label(key)) { player.toggleMute(key) }
-                                .buttonStyle(QuietButtonStyle(on: player.muted.contains(key)))
-                        }
-                    }
-                }
-            }
-            MixerView()
         }
     }
 

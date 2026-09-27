@@ -369,6 +369,8 @@ final class PlayerEngine {
             add("take", file)
             self.take = take
             trackKeys.append("take")
+            // your drums instead of the band's (unmute them to hear both)
+            if trackKeys.contains("drums") && muted.isEmpty && soloed.isEmpty { muted = ["drums"]; applyVolumes() }
             startEngine()
             // Listening back starts where the take starts (at its bar), not where the
             // recording stopped, where the take is silent.
@@ -400,8 +402,11 @@ final class PlayerEngine {
     /// them against your take without moving every fader).
     static func isBand(_ key: String) -> Bool { key != "take" && key != "click" && key != "count" && key != "band" }
 
+    /// Faders only for the band as a whole and the click (on or off); the tracks
+    /// themselves are muted or soloed, the count-in is always clearly audible.
     func level(_ key: String) -> Float {
-        if key == "count" { return 0.8 } // the count-in has no fader: always clearly audible
+        if key == "count" { return 0.8 }
+        if key != "band" && key != "click" { return 1 }
         if let v = levels[key] { return v }
         let stored = UserDefaults.standard.object(forKey: "level.\(key)") as? Float
         return stored ?? (key == "click" ? 0 : key == "count" ? 0.8 : 1)
@@ -412,6 +417,10 @@ final class PlayerEngine {
         UserDefaults.standard.set(value, forKey: "level.\(key)")
         applyVolumes()
     }
+
+    var clickOn: Bool { level("click") > 0 }
+
+    func toggleClick() { setLevel("click", clickOn ? 0 : 0.8) }
 
     // MARK: - mute and solo (for this session only, like the desktop: a forgotten solo
     // would be confusing next time)
