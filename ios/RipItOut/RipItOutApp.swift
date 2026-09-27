@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 @main
 struct RipItOutApp: App {
@@ -24,6 +25,11 @@ struct RipItOutApp: App {
                 .onChange(of: phase) {
                     if phase == .background { Task { await recorder.appInBackground() } }
                     if phase == .active { Task { await recorder.appActive() } }
+                }
+                // The screen stays on while the song plays or a take records: locking it
+                // would send the app to the background, which ends both.
+                .onChange(of: player.isPlaying || recorder.state != .idle, initial: true) { _, busy in
+                    UIApplication.shared.isIdleTimerDisabled = busy
                 }
         }
     }
