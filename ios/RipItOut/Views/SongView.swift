@@ -120,6 +120,7 @@ struct SongView: View {
             .navigationTitle(song.title)
             .navigationBarTitleDisplayMode(.inline)
             .themedNavigation()
+            .toolbar(.hidden, for: .tabBar)
             .task(id: song.id) { await open(song) }
             .onAppear {
                 if openInRecord { modeRaw = Mode.record.rawValue }
@@ -228,8 +229,8 @@ struct SongTimeline: View {
                         .padding(.leading, 3)
                         .frame(width: max(1, (s.end - s.start) / duration * w - 1), height: band, alignment: .leading)
                         .background(Theme.sectionColor(s).opacity(looped ? 0.9 : 0.45))
-                        .offset(x: s.start / duration * w)
                         .clipped()
+                        .offset(x: s.start / duration * w)
                 }
                 if let L = player.loop {
                     Rectangle().fill(Theme.accent.opacity(0.10))
@@ -310,26 +311,30 @@ struct TransportView: View {
         let recording = recorder.state == .recording
         let busy = recorder.state == .saving || recorder.state == .calibrating
         VStack(alignment: .leading, spacing: 10) {
-            // the two main actions
+            // one main action per mode: Play in Practice, Record in Record
             HStack(spacing: 8) {
-                Button(player.isPlaying ? "Pause" : "Play") { player.toggle() }
+                if mode == .practice {
+                    Button { player.toggle() } label: {
+                        Label(player.isPlaying ? "Pause" : "Play", systemImage: player.isPlaying ? "pause.fill" : "play.fill")
+                    }
                     .buttonStyle(PrimaryButtonStyle())
-                    .disabled(recording || busy)
-                if mode == .record {
+                } else {
                     Button(recording ? "Stop" : "Record") { Task { await recorder.toggleRecording() } }
                         .buttonStyle(RecordButtonStyle(recording: recording))
                         .disabled(busy)
                 }
+                Button { player.seek(player.loop?.a ?? 0) } label: {
+                    Label(player.loop == nil ? "Start" : "Loop start", systemImage: "backward.end.fill")
+                }
+                .buttonStyle(QuietButtonStyle())
+                .disabled(recording)
+                Button { player.toggleSectionLoop() } label: { Label("Loop", systemImage: "repeat") }
+                    .buttonStyle(QuietButtonStyle(on: player.loop != nil))
+                    .disabled(recording || mode == .record)
                 Spacer(minLength: 0)
             }
+            SectionStrip(locked: recording)
             HStack(spacing: 6) {
-                Button { player.seek(player.loop?.a ?? 0) } label: { Image(systemName: "backward.end.fill") }
-                    .buttonStyle(QuietButtonStyle())
-                    .disabled(recording)
-                    .accessibilityLabel("To start")
-                Button("Loop") { player.toggleSectionLoop() }
-                    .buttonStyle(QuietButtonStyle(on: player.loop != nil))
-                    .disabled(recording)
                 Menu {
                     Picker("Count-in", selection: $player.countInBars) {
                         Text("No count-in").tag(0)
@@ -338,7 +343,7 @@ struct TransportView: View {
                     }
                 } label: {
                     HStack(spacing: 5) {
-                        Text(player.countInBars == 0 ? "No count-in" : player.countInBars == 1 ? "Count-in 1" : "Count-in 2")
+                        Text(player.countInBars == 0 ? "No count-in" : player.countInBars == 1 ? "Count-in: 1 bar" : "Count-in: 2 bars")
                         Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
                     }
                 }
@@ -347,11 +352,10 @@ struct TransportView: View {
                 Spacer(minLength: 0)
                 if mode == .record {
                     Button { recorder.cameraOn.toggle() } label: {
-                        Image(systemName: recorder.cameraOn ? "video.fill" : "video.slash")
+                        Label(recorder.cameraOn ? "Video on" : "Video off", systemImage: recorder.cameraOn ? "video.fill" : "video.slash")
                     }
                     .buttonStyle(QuietButtonStyle(on: recorder.cameraOn))
                     .disabled(recording)
-                    .accessibilityLabel(recorder.cameraOn ? "Camera on" : "Camera off")
                 }
             }
             if recording {
@@ -439,6 +443,46 @@ struct Fader: View {
     }
 }
 
+/// The song's parts as buttons: the one playing is lit, a tap goes there (or moves the
+/// loop there when a loop is on).
+struct SectionStrip: View {
+    var locked = false
+    @Environment(PlayerEngine.self) private var player
+
+    var body: some View {
+        if let sections = player.song?.manifest.sections, !sections.isEmpty {
+            TimelineView(.animation(minimumInterval: 1 / 4, paused: !player.isPlaying)) { _ in
+                let current = player.section(at: player.position)
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(sections) { s in
+                                let isCurrent = current?.start == s.start
+                                let looped = player.loop == PlayerEngine.Loop(a: s.start, b: s.end)
+                                Button {
+                                    if player.loop != nil { player.setLoop(.init(a: s.start, b: s.end)) } else { player.seek(s.start) }
+                                } label: {
+                                    HStack(spacing: 5) {
+                                        Rectangle().fill(Theme.sectionColor(s)).frame(width: 3, height: 14)
+                                        Text(s.label)
+                                    }
+                                }
+                                .buttonStyle(QuietButtonStyle(on: looped || (player.loop == nil && isCurrent)))
+                                .id(s.start)
+                            }
+                        }
+                        .padding(.vertical, 1)
+                    }
+                    .onChange(of: current?.start) { _, start in
+                        if let start { withAnimation { proxy.scrollTo(start, anchor: .center) } }
+                    }
+                }
+            }
+            .disabled(locked)
+        }
+    }
+}
+
 /// Time on the left, the loop in lime on the right, like the desktop's caption row.
 struct Caption: View {
     @Environment(PlayerEngine.self) private var player
@@ -462,6 +506,8 @@ struct Caption: View {
                         Stepper2(label: "End", back: { player.nudgeLoop(end: true, by: -1) },
                                  forward: { player.nudgeLoop(end: true, by: 1) })
                         Spacer(minLength: 0)
+                        Button("End loop") { player.setLoop(nil) }
+                            .buttonStyle(QuietButtonStyle())
                     }
                 }
             }

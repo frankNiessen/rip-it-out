@@ -109,6 +109,7 @@ struct TakeView: View {
         .navigationTitle("Take")
         .navigationBarTitleDisplayMode(.inline)
         .themedNavigation()
+        .toolbar(.hidden, for: .tabBar)
         .task { await open() }
         .onDisappear {
             player.pause()
