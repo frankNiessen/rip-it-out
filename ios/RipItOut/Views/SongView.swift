@@ -328,9 +328,10 @@ struct TransportView: View {
                 }
                 .buttonStyle(QuietButtonStyle())
                 .disabled(recording)
-                Button { player.toggleSectionLoop() } label: { Label("Loop", systemImage: "repeat") }
-                    .buttonStyle(QuietButtonStyle(on: player.loop != nil))
-                    .disabled(recording || mode == .record)
+                if mode == .practice {
+                    Button { player.toggleSectionLoop() } label: { Label("Loop", systemImage: "repeat") }
+                        .buttonStyle(QuietButtonStyle(on: player.loop != nil))
+                }
                 Spacer(minLength: 0)
             }
             SectionStrip(locked: recording)
