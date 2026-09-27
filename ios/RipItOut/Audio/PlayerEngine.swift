@@ -192,6 +192,7 @@ final class PlayerEngine {
         let old = engine
         old.stop()
         for p in players.values { old.detach(p) }
+        if let b = takeBoost { old.detach(b); takeBoost = nil }
         old.detach(countPlayer)
         if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
 
@@ -206,9 +207,7 @@ final class PlayerEngine {
             guard let file = files[key] else { continue }
             let p = AVAudioPlayerNode()
             players[key] = p
-            fresh.attach(p)
-            fresh.connect(p, to: fresh.mainMixerNode, format: file.processingFormat)
-            p.volume = effectiveLevel(key)
+            connect(key, p, file, in: fresh)
         }
         wireOutput(fresh)
         engine = fresh
@@ -229,7 +228,10 @@ final class PlayerEngine {
     /// on. iOS often sends several of these in a row, and restarting the engine can send
     /// another, so they are handled once, a moment later, and only if the engine really
     /// stopped.
+    @ObservationIgnored private var lastConfigChange: Double = 0
+
     private func configurationChanged() {
+        lastConfigChange = Self.hostNow
         guard !configPending else { return }
         configPending = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
@@ -240,10 +242,27 @@ final class PlayerEngine {
     private func handleConfigurationChange() {
         configPending = false
         if engine.isRunning { return }
-        let was = isPlaying && Self.hostNow >= settleUntil
+        let was = isPlaying
         if isPlaying { offset = position; stopAll() }
         startEngine()
-        if was { onEnded?() } // a take being recorded is saved up to here
+        guard was else { return }
+        // A take being recorded is saved up to here (its timing after a restart is
+        // unknown); practice just goes on.
+        if let onEnded { onEnded() } else { play(countInBars: 0) }
+    }
+
+    /// Waits until the audio has stopped changing after the input was switched on
+    /// (iOS reconfigures the route for a moment, which stopped a song started too soon:
+    /// a count-in that died after two clicks). At most 3 seconds.
+    func settle() async {
+        let begin = Self.hostNow
+        while Self.hostNow - begin < 3 {
+            try? await Task.sleep(for: .milliseconds(100))
+            if !engine.isRunning { startEngine() }
+            let quiet = Self.hostNow - max(lastConfigChange, settleUntil - 1) > 0.7
+            if Self.hostNow - begin > 0.4, quiet, engine.isRunning,
+               engine.outputNode.lastRenderTime?.isHostTimeValid == true { return }
+        }
     }
 
     nonisolated static var hostNow: Double { AVAudioTime.seconds(forHostTime: mach_absolute_time()) }
@@ -340,18 +359,38 @@ final class PlayerEngine {
 
     private func add(_ key: String, _ file: AVAudioFile) {
         let player = AVAudioPlayerNode()
-        engine.attach(player)
-        engine.connect(player, to: engine.mainMixerNode, format: file.processingFormat)
-        player.volume = effectiveLevel(key)
+        connect(key, player, file, in: engine)
         players[key] = player
         files[key] = file
     }
+
+    /// A track into the mix; your take through a gain stage that brings a quiet
+    /// recording up to full level (a player's own volume only goes down).
+    private func connect(_ key: String, _ player: AVAudioPlayerNode, _ file: AVAudioFile, in e: AVAudioEngine) {
+        e.attach(player)
+        if key == "take" {
+            let boost = AVAudioUnitEQ(numberOfBands: 0)
+            boost.globalGain = takeBoostDb
+            e.attach(boost)
+            e.connect(player, to: boost, format: file.processingFormat)
+            e.connect(boost, to: e.mainMixerNode, format: file.processingFormat)
+            takeBoost = boost
+        } else {
+            e.connect(player, to: e.mainMixerNode, format: file.processingFormat)
+        }
+        player.volume = effectiveLevel(key)
+    }
+
+    @ObservationIgnored private var takeBoost: AVAudioUnitEQ?
+    /// How much your take is turned up so its loudest moment is just below full scale.
+    @ObservationIgnored private(set) var takeBoostDb: Float = 0
 
     private func remove(_ key: String) {
         if let p = players.removeValue(forKey: key) {
             p.stop()
             engine.detach(p)
         }
+        if key == "take", let b = takeBoost { engine.detach(b); takeBoost = nil }
         files[key] = nil
     }
 
@@ -377,6 +416,8 @@ final class PlayerEngine {
                 try Files.download(url)
                 return try AVAudioFile(forReading: url)
             }
+            // normalized: the take's peak (from take.json) to -1 dBFS, at most +24 dB
+            takeBoostDb = take.peakDbfs.map { Float(min(24, max(0, -1 - $0))) } ?? 0
             add("take", file)
             self.take = take
             trackKeys.append("take")
@@ -460,7 +501,11 @@ final class PlayerEngine {
 
     /// Every loaded track at the level you hear it (faders, mute, solo), for exporting.
     func mixSources() -> [TakeExport.Source] {
-        trackKeys.compactMap { key in files[key].map { TakeExport.Source(url: $0.url, gain: effectiveLevel(key)) } }
+        trackKeys.compactMap { key in
+            files[key].map {
+                TakeExport.Source(url: $0.url, gain: effectiveLevel(key) * (key == "take" ? pow(10, takeBoostDb / 20) : 1))
+            }
+        }
     }
 
     func clearMutes() {

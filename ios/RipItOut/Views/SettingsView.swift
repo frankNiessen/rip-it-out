@@ -38,8 +38,8 @@ struct SettingsView: View {
                     } else {
                         LabeledContent("Input", value: recorder.inputs.isEmpty ? "Chosen on the Record page" : recorder.inputName)
                     }
-                    Stepper(value: $recorder.latencyMs, in: 0...1000, step: 1) {
-                        LabeledContent("Latency", value: "\(Int(recorder.latencyMs)) ms")
+                    Stepper(value: $recorder.latencyMs, in: -300...1000, step: 1) {
+                        LabeledContent("Timing correction", value: "\(Int(recorder.latencyMs)) ms")
                     }
                     Button(recorder.state == .calibrating ? "Calibrating…" : "Calibrate") {
                         Task { await recorder.calibrate() }
@@ -53,7 +53,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Recording")
                 } footer: {
-                    Text("Calibrate: 20 clicks play. Listen to the first 4, then play a short note or hit with each of the others. Use headphones (wired, or your interface's output): Bluetooth adds a lot of delay, and the speaker ends up in the recording.")
+                    Text("Calibrate: 20 clicks play. Listen to the first 4, then play a short note or hit with each of the others. Use headphones (wired, or your interface's output): Bluetooth adds a lot of delay, and the speaker ends up in the recording. The timing correction is how far the app moves your takes; iOS times the microphone and the output at different points, so on the built-in speaker and microphone it can be a little below zero.")
                 }
             }
             .themedList()

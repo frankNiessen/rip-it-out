@@ -275,7 +275,7 @@ final class Recorder {
         guard state == .idle, player.song != nil else { return }
         player.pause()
         guard await prepareInput() else { return }
-        try? await Task.sleep(for: .milliseconds(400)) // let the engine settle with the input on
+        await player.settle() // until the audio route has stopped changing
         player.setLoop(nil) // a take is one pass through the song
         note = nil
         lastSaved = nil
@@ -354,7 +354,7 @@ final class Recorder {
     func calibrate() async {
         guard state == .idle else { return }
         guard await prepareInput() else { return }
-        try? await Task.sleep(for: .milliseconds(400)) // let the engine settle with the input on
+        await player.settle() // until the audio route has stopped changing
         player.pause()
         state = .calibrating
         defer {
