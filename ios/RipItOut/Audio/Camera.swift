@@ -61,7 +61,10 @@ final class Camera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unc
             self.device = device
             rotation = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: nil)
         }
-        if !session.isRunning { session.startRunning() }
+        if !session.isRunning {
+            session.startRunning()
+            Log.write("camera on (\(front ? "front" : "back"))")
+        }
     }
 
     func stop() {

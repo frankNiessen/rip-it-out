@@ -301,7 +301,11 @@ final class Recorder {
             return
         }
         let withVideo = cameraOn && cameraRunning
-        if withVideo { camera.startRecording() }
+        if withVideo {
+            let t = PlayerEngine.hostNow
+            camera.startRecording()
+            Log.write("video recording started (took \(Log.ms(PlayerEngine.hostNow - t)))")
+        }
         guard let started = player.play() else {
             stopCapture()
             capture?.discard()

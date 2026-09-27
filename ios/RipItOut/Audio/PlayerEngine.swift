@@ -55,8 +55,19 @@ final class PlayerEngine {
         engine.attach(countPlayer)
         engine.connect(countPlayer, to: engine.mainMixerNode, format: AudioIO.stereo(44100))
         observe(engine)
-        NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] _ in
+        NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
+            let type = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt).flatMap(AVAudioSession.InterruptionType.init)
+            let reason = note.userInfo?[AVAudioSessionInterruptionReasonKey] as? UInt
+            Log.write("audio interrupted: \(type == .began ? "began" : type == .ended ? "ended" : "?"), reason \(reason.map(String.init) ?? "-")")
             MainActor.assumeIsolated { self?.pause() }
+        }
+        NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: nil) { note in
+            let reason = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+            let route = AVAudioSession.sharedInstance().currentRoute
+            Log.write("audio route changed (reason \(reason.map(String.init) ?? "-")): in \(route.inputs.map(\.portName)), out \(route.outputs.map(\.portName)), \(Int(AVAudioSession.sharedInstance().sampleRate)) Hz")
+        }
+        NotificationCenter.default.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: nil) { _ in
+            Log.write("iOS reset its audio services")
         }
     }
 
