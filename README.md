@@ -14,7 +14,8 @@ camera too, if you like) that you can mix with the band afterwards.
 > **Made for macOS on Apple Silicon** (M1 or newer, macOS 13 Ventura or newer). The
 > separation runs on the Mac's GPU. A [Windows](#windows-preview) build is in preview, and
 > the engine also runs on Linux as a headless server with the UI in the browser, see
-> [Linux](#linux-headless-server).
+> [Linux](#linux-headless-server). To play along and record on an iPhone or iPad, see
+> [iPhone and iPad](#iphone-and-ipad-preview).
 
 ## Features
 
@@ -288,6 +289,7 @@ Browsers allow the microphone and camera only on `localhost` or HTTPS, so open
 | `stemtool/static/index.html` | The whole UI (vanilla JS, Web Audio) |
 | `desktop/` | Electron shell: starts the engine, window, permissions, menu, app updates (`updates.js`) |
 | `macos/` | Build scripts for the app and DMG |
+| `ios/` | The iPhone and iPad app (SwiftUI, AVAudioEngine), see [ios/README.md](ios/README.md) |
 
 ### Tests
 
@@ -334,6 +336,15 @@ is macOS only for now: on Windows, install the new version over the old one.
 Building it: `windows/build.sh` in Git Bash, with uv, Node.js, the GitHub CLI, 7-Zip and
 Inno Setup 6. The GitHub workflow (`.github/workflows/windows.yml`) does this on every push
 to `main` and attaches the installer to releases for tags.
+
+## iPhone and iPad (preview)
+
+An iOS app in [`ios/`](ios/README.md) plays the songs of your library and records takes,
+with the mixer, count-in, sections, loops and latency calibration. Put the library in a
+synced folder (iCloud Drive, Nextcloud, Dropbox) and choose the same folder in the app.
+Takes recorded on the phone are saved in the desktop's format and show up in the
+desktop app, and the other way round. Adding and separating songs stays on the desktop.
+There is no App Store build yet: build it with Xcode, see [ios/README.md](ios/README.md).
 
 ## Linux (headless server)
 

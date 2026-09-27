@@ -1,0 +1,125 @@
+import Foundation
+import Observation
+
+/// The library folder the user picked (in iCloud Drive, Nextcloud, Dropbox or On My
+/// iPhone) and the songs in it. The folder is remembered as a bookmark.
+@MainActor
+@Observable
+final class LibraryStore {
+    private static let bookmarkKey = "library.bookmark"
+
+    private(set) var folder: URL?
+    private(set) var songs: [Song] = []
+    private(set) var loading = false
+    private(set) var pending = 0   // song folders whose manifest is still downloading
+    var error: String?
+
+    init() {
+        restore()
+    }
+
+    var folderName: String { folder?.lastPathComponent ?? "" }
+
+    struct SongGroup: Identifiable {
+        var name: String
+        var songs: [Song]
+        var id: String { name }
+    }
+
+    var groups: [SongGroup] {
+        let byGroup = Dictionary(grouping: songs, by: \.group)
+        return byGroup.keys.sorted { a, b in
+            if a.isEmpty != b.isEmpty { return !a.isEmpty } // songs without a group last
+            return a.localizedCaseInsensitiveCompare(b) == .orderedAscending
+        }.map { SongGroup(name: $0, songs: byGroup[$0]!) }
+    }
+
+    func choose(_ url: URL) {
+        stopAccess()
+        guard url.startAccessingSecurityScopedResource() else {
+            error = "No access to \(url.lastPathComponent)"
+            return
+        }
+        do {
+            let data = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+            UserDefaults.standard.set(data, forKey: Self.bookmarkKey)
+        } catch {
+            self.error = "Couldn't remember the folder: \(error.localizedDescription)"
+        }
+        folder = url
+        songs = []
+        Task { await reload() }
+    }
+
+    private func restore() {
+        guard let data = UserDefaults.standard.data(forKey: Self.bookmarkKey) else { return }
+        var stale = false
+        guard let url = try? URL(resolvingBookmarkData: data, options: [], relativeTo: nil, bookmarkDataIsStale: &stale),
+              url.startAccessingSecurityScopedResource() else {
+            error = "The library folder isn't available any more. Choose it again."
+            return
+        }
+        if stale, let fresh = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) {
+            UserDefaults.standard.set(fresh, forKey: Self.bookmarkKey)
+        }
+        folder = url
+        Task { await reload() }
+    }
+
+    private func stopAccess() {
+        folder?.stopAccessingSecurityScopedResource()
+    }
+
+    func reload() async {
+        guard let folder, !loading else { return }
+        loading = true
+        defer { loading = false }
+        let (found, waiting) = await Task.detached(priority: .userInitiated) { Self.scan(folder) }.value
+        songs = found
+        pending = waiting
+        if waiting > 0 { // manifests still coming down from the cloud: look again shortly
+            Task {
+                try? await Task.sleep(for: .seconds(3))
+                await reload()
+            }
+        }
+    }
+
+    nonisolated static func scan(_ library: URL) -> ([Song], Int) {
+        var songs: [Song] = []
+        var waiting = 0
+        for name in Files.list(library) {
+            let dir = library.appendingPathComponent(name)
+            guard Files.isDirectory(dir) else { continue }
+            let manifestURL = dir.appendingPathComponent("manifest.json")
+            guard Files.exists(manifestURL) else { continue } // not a song (yet)
+            if !Files.isDownloaded(manifestURL) {
+                Files.startDownload(manifestURL)
+                waiting += 1
+                continue
+            }
+            guard let data = try? Files.read(manifestURL), let manifest = try? Manifest.decode(data) else { continue }
+            let takes = Files.list(dir.appendingPathComponent("takes"))
+                .filter { Files.exists(dir.appendingPathComponent("takes/\($0)/take.json")) }.count
+            songs.append(Song(folder: dir, manifest: manifest, takeCount: takes))
+        }
+        songs.sort { ($0.manifest.createdAt ?? "") > ($1.manifest.createdAt ?? "") }
+        return (songs, waiting)
+    }
+
+    func song(_ id: String) -> Song? { songs.first { $0.id == id } }
+
+    /// Takes of a song, newest first. Blocks while take.json files download.
+    nonisolated static func takes(of song: URL) -> [Take] {
+        let root = song.appendingPathComponent("takes")
+        var out: [Take] = []
+        for name in Files.list(root) {
+            let dir = root.appendingPathComponent(name)
+            guard let data = try? Files.read(dir.appendingPathComponent("take.json")),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let take = Take(json: json, folder: dir) else { continue }
+            out.append(take)
+        }
+        return out.sorted { $0.createdAt > $1.createdAt }
+    }
+}

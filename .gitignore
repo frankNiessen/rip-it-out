@@ -12,3 +12,7 @@ desktop/node_modules/
 CLAUDE.md
 .claude/
 .DS_Store
+
+# Xcode
+xcuserdata/
+*.xcuserstate
