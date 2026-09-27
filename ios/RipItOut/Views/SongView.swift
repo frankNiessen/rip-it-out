@@ -1,12 +1,19 @@
 import SwiftUI
 
+/// A song, to practise (mixer, loops, count-in) or to record (the same, plus Record, the
+/// camera and the song's takes to listen back to).
 struct SongView: View {
     let songID: String
+    let mode: Mode
+    var initialTake: String? = nil
     @Environment(LibraryStore.self) private var library
     @Environment(PlayerEngine.self) private var player
     @Environment(Recorder.self) private var recorder
     @State private var takes: [Take] = []
     @State private var video = TakeVideo()
+    @State private var appliedInitialTake = false
+    @AppStorage("last.song") private var lastSong = ""
+    @AppStorage("last.mode") private var lastMode = Mode.practice.rawValue
 
     private var song: Song? { library.song(songID) }
 
@@ -15,7 +22,14 @@ struct SongView: View {
             if let song {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text(meta(song)).font(Theme.mono(12)).foregroundStyle(Theme.muted)
+                        HStack(spacing: 8) {
+                            Text(mode == .practice ? "PRACTICE" : "RECORD")
+                                .font(Theme.mono(10, .semibold))
+                                .foregroundStyle(mode == .practice ? Theme.onAccent : .white)
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(mode == .practice ? Theme.accent : Theme.record, in: .rect(cornerRadius: 2))
+                            Text(meta(song)).font(Theme.mono(12)).foregroundStyle(Theme.muted).lineLimit(1)
+                        }
                         VStack(alignment: .leading, spacing: 12) {
                             HStack(spacing: 8) {
                                 CounterView().frame(width: 104)
@@ -23,16 +37,19 @@ struct SongView: View {
                             }
                             .frame(height: 140)
                             Caption()
-                            TransportView()
+                            TransportView(mode: mode)
                             Rectangle().fill(Theme.line).frame(height: 1)
                             MixerView()
                         }
                         .panel()
-                        VideoBox(video: video)
-                        if let note = recorder.note {
-                            Text(note).font(.system(size: 13)).foregroundStyle(Theme.muted)
+                        if mode == .record {
+                            if let note = recorder.note {
+                                Text(note).font(.system(size: 13)).foregroundStyle(Theme.muted)
+                            }
+                            if player.take != nil { TakeReview() }
+                            VideoBox(video: video)
+                            TakesView(takes: $takes, reload: { await loadTakes(song) })
                         }
-                        TakesView(takes: $takes, reload: { await loadTakes(song) })
                     }
                     .padding(16)
                 }
@@ -48,18 +65,31 @@ struct SongView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .themedNavigation()
                 .task(id: song.id) {
+                    lastSong = song.id
+                    lastMode = mode.rawValue
                     await player.load(song)
+                    if mode == .practice {
+                        if player.take != nil { await player.loadTake(nil) }
+                        return
+                    }
                     await loadTakes(song)
+                    if let initialTake, !appliedInitialTake {
+                        appliedInitialTake = true
+                        if let t = takes.first(where: { $0.id == initialTake }), player.take?.id != t.id {
+                            await player.loadTake(t)
+                        }
+                    }
                 }
                 .onChange(of: player.take) {
+                    guard mode == .record else { return }
                     Task {
                         await loadTakes(song)
                         await video.show(player.take, engine: player)
                     }
                 }
-                .task { await recorder.updateCamera(active: true) }
-                .onChange(of: recorder.cameraOn) { Task { await recorder.updateCamera(active: true) } }
-                .onChange(of: recorder.frontCamera) { Task { await recorder.updateCamera(active: true) } }
+                .task { await recorder.updateCamera(active: mode == .record) }
+                .onChange(of: recorder.cameraOn) { Task { await recorder.updateCamera(active: mode == .record) } }
+                .onChange(of: recorder.frontCamera) { Task { await recorder.updateCamera(active: mode == .record) } }
                 .alert("Rip It Out", isPresented: Binding(get: { player.error != nil }, set: { if !$0 { player.error = nil } })) {
                     Button("OK") { player.error = nil }
                 } message: { Text(player.error ?? "") }
@@ -222,6 +252,7 @@ struct SongTimeline: View {
 }
 
 struct TransportView: View {
+    let mode: Mode
     @Environment(PlayerEngine.self) private var player
     @Environment(Recorder.self) private var recorder
 
@@ -235,9 +266,11 @@ struct TransportView: View {
                 Button(player.isPlaying ? "Pause" : "Play") { player.toggle() }
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(recording || busy)
-                Button(recording ? "Stop" : "Record") { Task { await recorder.toggleRecording() } }
-                    .buttonStyle(RecordButtonStyle(recording: recording))
-                    .disabled(busy)
+                if mode == .record {
+                    Button(recording ? "Stop" : "Record") { Task { await recorder.toggleRecording() } }
+                        .buttonStyle(RecordButtonStyle(recording: recording))
+                        .disabled(busy)
+                }
                 Spacer(minLength: 0)
             }
             HStack(spacing: 6) {
@@ -263,12 +296,14 @@ struct TransportView: View {
                 .buttonStyle(QuietButtonStyle())
                 .disabled(recording)
                 Spacer(minLength: 0)
-                Button { recorder.cameraOn.toggle() } label: {
-                    Image(systemName: recorder.cameraOn ? "video.fill" : "video.slash")
+                if mode == .record {
+                    Button { recorder.cameraOn.toggle() } label: {
+                        Image(systemName: recorder.cameraOn ? "video.fill" : "video.slash")
+                    }
+                    .buttonStyle(QuietButtonStyle(on: recorder.cameraOn))
+                    .disabled(recording)
+                    .accessibilityLabel(recorder.cameraOn ? "Camera on" : "Camera off")
                 }
-                .buttonStyle(QuietButtonStyle(on: recorder.cameraOn))
-                .disabled(recording)
-                .accessibilityLabel(recorder.cameraOn ? "Camera on" : "Camera off")
             }
             if recording {
                 TimelineView(.animation(minimumInterval: 1 / 20)) { _ in
@@ -324,6 +359,38 @@ struct MixerView: View {
                     }
                 }
             }
+        }
+    }
+}
+
+/// Listening back to the selected take: what plays, and the quick switches.
+struct TakeReview: View {
+    @Environment(PlayerEngine.self) private var player
+
+    var body: some View {
+        if let take = player.take {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("Listening to").font(Theme.mono(11)).foregroundStyle(Theme.muted)
+                    Text(take.displayName).font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.ink).lineLimit(1)
+                    Spacer(minLength: 0)
+                    Button("Close") { Task { await player.loadTake(nil) } }
+                        .buttonStyle(QuietButtonStyle())
+                }
+                HStack(spacing: 6) {
+                    Button("Take only") { player.setTakeOnly(!player.takeOnly) }
+                        .buttonStyle(QuietButtonStyle(on: player.takeOnly))
+                    Button("With band") { player.setTakeOnly(false) }
+                        .buttonStyle(QuietButtonStyle(on: !player.takeOnly))
+                    Spacer(minLength: 0)
+                    Button("From take start") { player.seek(player.takeStart(take)) }
+                        .buttonStyle(QuietButtonStyle())
+                }
+                Text("Play plays your take (the My take fader) with the song, from \(Theme.time(take.startS)) to \(Theme.time(take.startS + take.capturedS)).")
+                    .font(.system(size: 12)).foregroundStyle(Theme.muted)
+            }
+            .panel()
+            .overlay(alignment: .leading) { Rectangle().fill(Theme.record).frame(width: 3) }
         }
     }
 }
@@ -410,7 +477,7 @@ struct TakesView: View {
             .padding(.bottom, 8)
             Rectangle().fill(Theme.line).frame(height: 1)
             if takes.isEmpty {
-                Text("No takes yet. Press Record to play along and record yourself.")
+                Text("No takes of this song yet. Press Record to play along and record yourself.")
                     .font(.system(size: 14)).foregroundStyle(Theme.muted)
                     .padding(.vertical, 12)
             }

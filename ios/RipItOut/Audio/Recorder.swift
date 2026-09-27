@@ -280,7 +280,7 @@ final class Recorder {
             let take = try await Task.detached(priority: .userInitiated) {
                 try TakeStore.save(song: song, capture: cap, captureStartS: captureStartS, latencyMs: latency, input: input, video: clip)
             }.value
-            note = (take.peakDbfs ?? 0) < -45 ? "Saved, but the take is almost silent. Check the input." : "Take saved."
+            note = (take.peakDbfs ?? 0) < -45 ? "Saved, but the take is almost silent. Check the input." : "Take saved. Press Play to listen to it with the song."
             state = .idle
             await player.loadTake(take)
         } catch {

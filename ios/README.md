@@ -7,6 +7,10 @@ fills, synced through iCloud Drive, Nextcloud, Dropbox or any other Files provid
 
 ## What it does
 
+The home screen has three pages: **Practice** (choose a song and play along), **Record**
+(choose a song, record yourself, listen back) and **Takes** (all your recordings, newest
+first; tap one to listen to it with its song). **Continue** goes back to the last song.
+
 - **Library:** your songs by group, with search. Songs that are only in the cloud are
   downloaded when you open them.
 - **Play along:** a channel strip per track (drums, bass, vocals, other, click) with its
@@ -19,8 +23,9 @@ fills, synced through iCloud Drive, Nextcloud, Dropbox or any other Files provid
   is measured once with **Settings > Calibrate** (the same 20 clicks as on the desktop).
 - **Takes:** saved into the song's `takes/` folder in the desktop's format
   (`take.json`, `raw.flac`, `my_drums.flac`), so the desktop app lists, plays and
-  exports them too. Tap a take to play it against the song with its own fader
-  (**My take**), or delete one you don't want. Takes recorded on the desktop show up
+  exports them too. Tap a take to listen back: it plays with the song on its own fader
+  (**My take**) from where it starts; **Take only** hears just you. Delete one you don't
+  want. Takes recorded on the desktop show up
   here as well.
 
 The app is for practice: everything that edits (the beat grid, sections, a take's

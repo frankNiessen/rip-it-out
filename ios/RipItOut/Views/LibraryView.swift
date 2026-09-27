@@ -1,15 +1,33 @@
 import SwiftUI
 
+/// What the app does, as pages: practise a song, record yourself, find your takes.
+enum Mode: String, Hashable {
+    case practice, record
+}
+
+enum Route: Hashable {
+    case library(Mode)
+    case song(id: String, mode: Mode, take: String?)
+    case takes
+}
+
 struct RootView: View {
     @Environment(LibraryStore.self) private var library
+    @State private var path: [Route] = []
 
     var body: some View {
         if library.folder == nil {
             WelcomeView()
         } else {
-            NavigationStack {
-                LibraryView()
-                    .navigationDestination(for: String.self) { id in SongView(songID: id) }
+            NavigationStack(path: $path) {
+                HomeView()
+                    .navigationDestination(for: Route.self) { route in
+                        switch route {
+                        case .library(let mode): LibraryView(mode: mode)
+                        case .song(let id, let mode, let take): SongView(songID: id, mode: mode, initialTake: take)
+                        case .takes: TakesOverview()
+                        }
+                    }
             }
         }
     }
@@ -96,7 +114,9 @@ private struct FolderPicker: ViewModifier {
     }
 }
 
+/// Choosing a song, to practise or to record.
 struct LibraryView: View {
+    let mode: Mode
     @Environment(LibraryStore.self) private var library
     @State private var search = ""
     /// Collapsed groups, remembered (like the desktop's folded groups).
@@ -108,8 +128,6 @@ struct LibraryView: View {
         if c.contains(group) { c.remove(group) } else { c.insert(group) }
         collapsedRaw = c.sorted().joined(separator: "\n")
     }
-    @State private var settings = false
-
     private func matches(_ s: Song) -> Bool {
         search.isEmpty || s.title.localizedCaseInsensitiveContains(search) || s.artist.localizedCaseInsensitiveContains(search)
             || s.group.localizedCaseInsensitiveContains(search)
@@ -132,7 +150,7 @@ struct LibraryView: View {
                 if !songs.isEmpty {
                     Section {
                         ForEach(open ? songs : []) { song in
-                            NavigationLink(value: song.id) { SongRow(song: song) }
+                            NavigationLink(value: Route.song(id: song.id, mode: mode, take: nil)) { SongRow(song: song) }
                                 .listRowBackground(Theme.bg)
                                 .listRowSeparatorTint(Theme.line)
                         }
@@ -170,16 +188,9 @@ struct LibraryView: View {
         }
         .searchable(text: $search)
         .refreshable { await library.reload() }
-        .navigationTitle("Library")
+        .navigationTitle(mode == .practice ? "Practice: choose a song" : "Record: choose a song")
         .navigationBarTitleDisplayMode(.inline)
         .themedNavigation()
-        .toolbar {
-            ToolbarItem(placement: .principal) { Logo().fixedSize() }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { settings = true } label: { Image(systemName: "gearshape").foregroundStyle(Theme.muted) }
-            }
-        }
-        .sheet(isPresented: $settings) { SettingsView() }
     }
 }
 

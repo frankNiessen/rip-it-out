@@ -235,7 +235,10 @@ final class PlayerEngine {
         pause()
         remove("take")
         trackKeys.removeAll { $0 == "take" }
+        soloed.remove("take")
+        muted.remove("take")
         self.take = nil
+        applyVolumes()
         guard let take else { return }
         do {
             let url = take.myTakeURL
@@ -247,11 +250,28 @@ final class PlayerEngine {
             self.take = take
             trackKeys.append("take")
             startEngine()
+            // Listening back starts where the take starts (at its bar), not where the
+            // recording stopped, where the take is silent.
+            if !was { offset = takeStart(take) }
             if was { play(countInBars: 0) }
         } catch {
             self.error = "Couldn't open the take: \(error.localizedDescription)"
         }
     }
+
+    /// The bar line at or before the start of a take.
+    func takeStart(_ take: Take) -> Double {
+        let i = Grid.lastLE(grid.downbeats, take.startS + 0.05)
+        return i >= 0 ? grid.downbeats[i] : max(0, take.startS)
+    }
+
+    /// Hear only the take (and the click, unless muted), or everything again.
+    func setTakeOnly(_ on: Bool) {
+        soloed = on ? ["take"] : []
+        applyVolumes()
+    }
+
+    var takeOnly: Bool { soloed == ["take"] }
 
     // MARK: - levels
 
