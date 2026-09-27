@@ -54,6 +54,7 @@ final class PlayerEngine {
         configureSession()
         engine.attach(countPlayer)
         engine.connect(countPlayer, to: engine.mainMixerNode, format: AudioIO.stereo(44100))
+        wireOutput(engine)
         observe(engine)
         NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.pause() }
@@ -68,7 +69,7 @@ final class PlayerEngine {
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(.playback, mode: .default, options: [])
-            try session.setPreferredIOBufferDuration(0.005)
+            try session.setPreferredIOBufferDuration(Self.playbackBuffer)
             try session.setActive(true)
         } catch {
             // Tried again when the engine starts; play() says so if it still fails.
@@ -78,6 +79,25 @@ final class PlayerEngine {
     /// Why the engine didn't start last time (said only when Play doesn't work: coming
     /// back from the background, iOS often refuses once and is fine a moment later).
     @ObservationIgnored private var startError: Error?
+
+    // Audio buffers: 5 ms was too little for five tracks plus the input (short crackles).
+    // Recording keeps them short (the take's delay is calibrated); playback alone can
+    // take longer ones.
+    nonisolated static let playbackBuffer = 0.02
+    nonisolated static let recordBuffer = 0.01
+
+    /// The tracks together can go over full scale (separated stems don't add up exactly):
+    /// a peak limiter before the output keeps that from crackling.
+    private func wireOutput(_ e: AVAudioEngine) {
+        let limiter = AVAudioUnitEffect(audioComponentDescription: AudioComponentDescription(
+            componentType: kAudioUnitType_Effect, componentSubType: kAudioUnitSubType_PeakLimiter,
+            componentManufacturer: kAudioUnitManufacturer_Apple, componentFlags: 0, componentFlagsMask: 0))
+        e.attach(limiter)
+        let format = e.outputNode.outputFormat(forBus: 0)
+        let f = format.sampleRate > 0 && format.channelCount > 0 ? format : nil
+        e.connect(e.mainMixerNode, to: limiter, format: f)
+        e.connect(limiter, to: e.outputNode, format: f)
+    }
 
     func startEngine() {
         guard !engine.isRunning else { return }
@@ -103,6 +123,7 @@ final class PlayerEngine {
             if session.category != .playAndRecord || !session.categoryOptions.contains(.defaultToSpeaker) {
                 try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP])
             }
+            try? session.setPreferredIOBufferDuration(Self.recordBuffer)
             try session.setActive(true)
         } catch {
             return "The audio session couldn't be set up for recording (\(error.localizedDescription))."
@@ -134,6 +155,7 @@ final class PlayerEngine {
             } else {
                 try session.setCategory(.playback, mode: .default, options: [])
             }
+            try? session.setPreferredIOBufferDuration(on ? Self.recordBuffer : Self.playbackBuffer)
             try session.setActive(true)
         } catch {
             // Recording sets it up again (and says what's wrong), playback works either way.
@@ -177,6 +199,7 @@ final class PlayerEngine {
             fresh.connect(p, to: fresh.mainMixerNode, format: file.processingFormat)
             p.volume = effectiveLevel(key)
         }
+        wireOutput(fresh)
         engine = fresh
         settleUntil = Self.hostNow + 1
         observe(fresh)
@@ -365,12 +388,17 @@ final class PlayerEngine {
     /// Hear only the take (and the click, unless muted), or everything again.
     func setTakeOnly(_ on: Bool) {
         soloed = on ? ["take"] : []
+        if on { muted.remove("take") }
         applyVolumes()
     }
 
     var takeOnly: Bool { soloed == ["take"] }
 
     // MARK: - levels
+
+    /// The song's own tracks, which the Band fader turns up or down together (to balance
+    /// them against your take without moving every fader).
+    static func isBand(_ key: String) -> Bool { key != "take" && key != "click" && key != "count" && key != "band" }
 
     func level(_ key: String) -> Float {
         if key == "count" { return 0.8 } // the count-in has no fader: always clearly audible
@@ -391,13 +419,14 @@ final class PlayerEngine {
     private(set) var muted: Set<String> = []
     private(set) var soloed: Set<String> = []
 
+    // A track is muted or soloed, never both: each one switches the other off.
     func toggleMute(_ key: String) {
-        if muted.contains(key) { muted.remove(key) } else { muted.insert(key) }
+        if muted.contains(key) { muted.remove(key) } else { muted.insert(key); soloed.remove(key) }
         applyVolumes()
     }
 
     func toggleSolo(_ key: String) {
-        if soloed.contains(key) { soloed.remove(key) } else { soloed.insert(key) }
+        if soloed.contains(key) { soloed.remove(key) } else { soloed.insert(key); muted.remove(key) }
         applyVolumes()
     }
 
@@ -406,7 +435,7 @@ final class PlayerEngine {
     func effectiveLevel(_ key: String) -> Float {
         if muted.contains(key) { return 0 }
         if !soloed.isEmpty && !soloed.contains(key) && key != "click" && key != "count" { return 0 }
-        return level(key)
+        return level(key) * (Self.isBand(key) ? level("band") : 1)
     }
 
     /// Every loaded track at the level you hear it (faders, mute, solo), for exporting.

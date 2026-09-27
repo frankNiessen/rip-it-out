@@ -88,14 +88,15 @@ final class TakeVideo {
 
 /// The camera picture on the Record page, while Record video is on.
 struct CameraBox: View {
+    var height: CGFloat? = 240 // nil: as tall as there is room
     @Environment(Recorder.self) private var recorder
 
     var body: some View {
         @Bindable var recorder = recorder
         if recorder.cameraRunning {
-            CameraPreview(session: recorder.camera.session)
-                .frame(maxWidth: .infinity)
-                .frame(height: 240)
+            CameraPreview(session: recorder.camera.session, deviceID: recorder.cameraDeviceID)
+                .frame(maxWidth: .infinity, maxHeight: height == nil ? .infinity : nil)
+                .frame(height: height)
                 .background(Theme.hex(0x0b0c0d))
                 .clipShape(.rect(cornerRadius: 3))
                 .overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.line, lineWidth: 1))

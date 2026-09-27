@@ -8,6 +8,7 @@ struct SongView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(PlayerEngine.self) private var player
     @Environment(Recorder.self) private var recorder
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var takes: [Take] = []
     @AppStorage("song.mode") private var modeRaw = Mode.practice.rawValue
     @AppStorage("last.song") private var lastSong = ""
@@ -97,11 +98,34 @@ struct SongView: View {
             }
         }
         RecordSetup()
-        CameraBox()
         TakesView(song: song, takes: takes)
     }
 
+    /// In Record with the camera on, the picture stays in view (above the page, or beside
+    /// it with the phone on its side) while the rest scrolls.
+    @ViewBuilder
     private func content(_ song: Song) -> some View {
+        let pinned = mode == .record && recorder.cameraRunning
+        if pinned && verticalSizeClass == .compact {
+            HStack(alignment: .top, spacing: 0) {
+                CameraBox(height: nil)
+                    .padding([.leading, .vertical], 12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                scroll(song).frame(maxWidth: .infinity)
+            }
+            .background(Theme.bg)
+        } else {
+            VStack(spacing: 0) {
+                if pinned {
+                    CameraBox(height: 200).padding(.horizontal, 16).padding(.vertical, 8)
+                }
+                scroll(song)
+            }
+            .background(Theme.bg)
+        }
+    }
+
+    private func scroll(_ song: Song) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 modeSwitch
@@ -444,23 +468,31 @@ struct MixerView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            if player.trackKeys.contains("take") {
+                // your take against the whole band with one fader
+                row("band", label: "Band", strong: true, buttons: false)
+                Rectangle().fill(Theme.line).frame(height: 1)
+            }
             ForEach(player.trackKeys, id: \.self) { key in
-                let mine = key == "take"
-                let silent = player.effectiveLevel(key) == 0 && player.level(key) > 0
-                HStack(spacing: 8) {
-                    Text(TrackNames.label(key))
-                        .font(.system(size: 14, weight: mine ? .semibold : .regular))
-                        .foregroundStyle(mine ? Theme.ink : Theme.muted)
-                        .frame(width: 70, alignment: .leading)
-                    Fader(value: Binding(get: { Double(player.level(key)) }, set: { player.setLevel(key, Float($0)) }),
-                          dimmed: silent)
-                    if key != "count" {
-                        ChannelButton(letter: "M", on: player.muted.contains(key), color: Theme.mute) { player.toggleMute(key) }
-                        ChannelButton(letter: "S", on: player.soloed.contains(key), color: Theme.accent) { player.toggleSolo(key) }
-                    } else {
-                        Color.clear.frame(width: 60, height: 26)
-                    }
-                }
+                row(key, label: TrackNames.label(key), strong: key == "take", buttons: key != "count")
+            }
+        }
+    }
+
+    private func row(_ key: String, label: String, strong: Bool, buttons: Bool) -> some View {
+        let silent = key != "band" && player.effectiveLevel(key) == 0 && player.level(key) > 0
+        return HStack(spacing: 8) {
+            Text(label)
+                .font(.system(size: 14, weight: strong ? .semibold : .regular))
+                .foregroundStyle(strong ? Theme.ink : Theme.muted)
+                .frame(width: 70, alignment: .leading)
+            Fader(value: Binding(get: { Double(player.level(key)) }, set: { player.setLevel(key, Float($0)) }),
+                  dimmed: silent)
+            if buttons {
+                ChannelButton(letter: "M", on: player.muted.contains(key), color: Theme.mute) { player.toggleMute(key) }
+                ChannelButton(letter: "S", on: player.soloed.contains(key), color: Theme.accent) { player.toggleSolo(key) }
+            } else {
+                Color.clear.frame(width: 80, height: 30)
             }
         }
     }

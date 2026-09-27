@@ -9,9 +9,9 @@ fills, synced through iCloud Drive, Nextcloud, Dropbox or any other Files provid
 
 Three tabs: **Songs**, **Takes** and **Settings**. Open a song and switch between
 **Practice** (play along) and **Record** (record yourself, on video too) at the top; the
-song stays where it is. Microphone and camera are only on in Record. After a take,
+song stays where it is. Microphone and camera are only on in Record; with video on, the camera picture stays in view while you scroll (beside the page with the phone on its side, and the video is then recorded in landscape). After a take,
 **Take saved: Listen** opens the take page: its video, your take with the band (faders
-and the full mixer, **My take instead of** drums, bass, vocals or other, **Take only**),
+and the full mixer with a **Band** fader that turns the whole song up or down against your take, **My take instead of** drums, bass, vocals or other, **Take only**),
 **Share** (audio, or video with that sound, mixed the way you hear it), **Record again**
 and **Delete**. The
 **Takes** tab lists every take in the library; **Continue** at the top of Songs goes back
@@ -21,7 +21,7 @@ to the last song.
   downloaded when you open them.
 - **Play along:** a channel strip per track (drums, bass, vocals, other, click) with its
   fader, **M** (mute) and **S** (solo: hear only the soloed tracks, the click keeps
-  playing unless muted), the bar and beat counter, the tempo view with the song's
+  playing unless muted; a track is muted or soloed, not both), the bar and beat counter, the tempo view with the song's
   sections, a count-in of one or two bars, and section loops: **Loop** loops the section
   you are in, a section button moves the loop there. Zoom with **−** / **+** or a pinch,
   drag or tap in the tempo view (or **‹ Bar ›**) to start anywhere. Mute and solo reset

@@ -63,6 +63,7 @@ final class Recorder {
     @ObservationIgnored private var tapInstalled = false
     @ObservationIgnored let camera = Camera()
     private(set) var cameraRunning = false
+    private(set) var cameraDeviceID: String?
     private(set) var inputs: [AVAudioSessionPortDescription] = []
 
     /// Record video too (remembered). Front or back camera.
@@ -188,6 +189,7 @@ final class Recorder {
         let cam = camera, front = frontCamera
         do {
             try await Background.run { try cam.start(front: front) }
+            cameraDeviceID = cam.device?.uniqueID
             cameraRunning = true
         } catch {
             note = Explain.camera(error)

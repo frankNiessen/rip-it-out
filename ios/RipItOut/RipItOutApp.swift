@@ -144,9 +144,10 @@ struct ChannelButton: View {
             Text(letter)
                 .font(Theme.mono(11, .semibold))
                 .foregroundStyle(on ? Theme.onAccent : Theme.muted)
-                .frame(width: 28, height: 26)
+                .frame(width: 36, height: 30)
                 .background(on ? color : .clear, in: .rect(cornerRadius: 2))
                 .overlay(RoundedRectangle(cornerRadius: 2).stroke(on ? color : Theme.lineStrong, lineWidth: 1))
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

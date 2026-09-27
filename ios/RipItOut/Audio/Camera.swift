@@ -10,6 +10,10 @@ final class Camera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unc
     private let queue = DispatchQueue(label: "camera")
     private let output = AVCaptureVideoDataOutput()
     private var configuredPosition: AVCaptureDevice.Position?
+    /// Knows which way up the phone is held, so a video recorded with the phone on its
+    /// side is a landscape video.
+    private var rotation: AVCaptureDevice.RotationCoordinator?
+    private(set) var device: AVCaptureDevice?
 
     // only touched on `queue`
     private var writer: AVAssetWriter?
@@ -47,12 +51,11 @@ final class Camera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unc
                 output.setSampleBufferDelegate(self, queue: queue)
                 session.addOutput(output)
             }
-            if let c = output.connection(with: .video) {
-                if c.isVideoRotationAngleSupported(90) { c.videoRotationAngle = 90 } // portrait
-                if c.isVideoMirroringSupported { c.isVideoMirrored = front }
-            }
+            if let c = output.connection(with: .video), c.isVideoMirroringSupported { c.isVideoMirrored = front }
             session.commitConfiguration()
             configuredPosition = position
+            self.device = device
+            rotation = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: nil)
         }
         if !session.isRunning { session.startRunning() }
     }
@@ -64,6 +67,11 @@ final class Camera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unc
     var isRunning: Bool { session.isRunning }
 
     func startRecording() {
+        // Which way up, fixed for the whole video.
+        if let c = output.connection(with: .video) {
+            let angle = rotation?.videoRotationAngleForHorizonLevelCapture ?? 90
+            if c.isVideoRotationAngleSupported(angle) { c.videoRotationAngle = angle }
+        }
         queue.sync {
             url = FileManager.default.temporaryDirectory.appendingPathComponent("video-\(UUID().uuidString.prefix(8)).mp4")
             writer = nil
@@ -117,22 +125,48 @@ final class Camera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unc
     }
 }
 
-/// The live camera picture.
+/// The live camera picture, upright however the phone is held.
 struct CameraPreview: UIViewRepresentable {
     let session: AVCaptureSession
+    var deviceID: String?
 
     final class PreviewView: UIView {
         override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
         var previewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
+        private var rotation: AVCaptureDevice.RotationCoordinator?
+        private var observation: NSKeyValueObservation?
+        private var deviceID: String?
+
+        /// Follows the camera in use (it changes when you flip it).
+        func follow(_ id: String?) {
+            guard id != deviceID || rotation == nil else { return }
+            deviceID = id
+            observation = nil
+            rotation = nil
+            guard let id, let device = AVCaptureDevice(uniqueID: id) else { return }
+            let r = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: previewLayer)
+            rotation = r
+            apply(r.videoRotationAngleForHorizonLevelPreview)
+            observation = r.observe(\.videoRotationAngleForHorizonLevelPreview, options: [.new]) { [weak self] r, _ in
+                let angle = r.videoRotationAngleForHorizonLevelPreview
+                DispatchQueue.main.async { self?.apply(angle) }
+            }
+        }
+
+        private func apply(_ angle: CGFloat) {
+            if let c = previewLayer.connection, c.isVideoRotationAngleSupported(angle) { c.videoRotationAngle = angle }
+        }
     }
 
     func makeUIView(context: Context) -> PreviewView {
         let v = PreviewView()
         v.previewLayer.session = session
         v.previewLayer.videoGravity = .resizeAspect
-        if let c = v.previewLayer.connection, c.isVideoRotationAngleSupported(90) { c.videoRotationAngle = 90 }
+        v.follow(deviceID)
         return v
     }
 
-    func updateUIView(_ uiView: PreviewView, context: Context) {}
+    func updateUIView(_ uiView: PreviewView, context: Context) {
+        uiView.follow(deviceID)
+    }
 }
