@@ -1,16 +1,52 @@
 import SwiftUI
 
+/// The song page has two modes, switched at the top without leaving the song.
+enum Mode: String, Hashable {
+    case practice, record
+}
+
+enum Route: Hashable {
+    case song(id: String, record: Bool = false)
+    case take(song: String, take: String)
+}
+
+/// Three tabs, always one tap away: Songs (practise and record), Takes (watch and
+/// listen back), Settings.
 struct RootView: View {
     @Environment(LibraryStore.self) private var library
+    @State private var songsPath: [Route] = []
+    @State private var takesPath: [Route] = []
 
     var body: some View {
         if library.folder == nil {
             WelcomeView()
         } else {
-            NavigationStack {
-                LibraryView()
-                    .navigationDestination(for: String.self) { id in SongView(songID: id) }
+            TabView {
+                NavigationStack(path: $songsPath) {
+                    LibraryView()
+                        .navigationDestination(for: Route.self) { destination($0) }
+                }
+                .tabItem { Label("Songs", systemImage: "music.note.list") }
+
+                NavigationStack(path: $takesPath) {
+                    TakesOverview()
+                        .navigationDestination(for: Route.self) { destination($0) }
+                }
+                .tabItem { Label("Takes", systemImage: "waveform") }
+
+                SettingsView(inTab: true)
+                    .tabItem { Label("Settings", systemImage: "gearshape") }
             }
+            .toolbarBackground(Theme.panel, for: .tabBar)
+            .toolbarBackground(.visible, for: .tabBar)
+        }
+    }
+
+    @ViewBuilder
+    private func destination(_ route: Route) -> some View {
+        switch route {
+        case .song(let id, let record): SongView(songID: id, openInRecord: record)
+        case .take(let song, let take): TakeView(songID: song, takeID: take)
         }
     }
 }
@@ -96,11 +132,20 @@ private struct FolderPicker: ViewModifier {
     }
 }
 
+/// The songs, by group. Tap one to practise or record it.
 struct LibraryView: View {
     @Environment(LibraryStore.self) private var library
+    @AppStorage("last.song") private var lastSong = ""
     @State private var search = ""
-    @State private var settings = false
+    /// Collapsed groups, remembered (like the desktop's folded groups).
+    @AppStorage("library.collapsed") private var collapsedRaw = ""
+    private var collapsed: Set<String> { Set(collapsedRaw.split(separator: "\n").map(String.init)) }
 
+    private func toggle(_ group: String) {
+        var c = collapsed
+        if c.contains(group) { c.remove(group) } else { c.insert(group) }
+        collapsedRaw = c.sorted().joined(separator: "\n")
+    }
     private func matches(_ s: Song) -> Bool {
         search.isEmpty || s.title.localizedCaseInsensitiveContains(search) || s.artist.localizedCaseInsensitiveContains(search)
             || s.group.localizedCaseInsensitiveContains(search)
@@ -108,6 +153,18 @@ struct LibraryView: View {
 
     var body: some View {
         List {
+            if search.isEmpty, let last = library.song(lastSong) {
+                NavigationLink(value: Route.song(id: last.id)) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "arrow.uturn.forward").foregroundStyle(Theme.accent)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Continue").font(Theme.mono(11)).foregroundStyle(Theme.muted)
+                            Text(last.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.ink).lineLimit(1)
+                        }
+                    }
+                }
+                .listRowBackground(Theme.panel)
+            }
             if let error = library.error, !library.songs.isEmpty {
                 Text(error).font(.system(size: 13)).foregroundStyle(Theme.muted)
                     .listRowBackground(Theme.bg)
@@ -119,20 +176,30 @@ struct LibraryView: View {
             }
             ForEach(library.groups) { group in
                 let songs = group.songs.filter(matches)
+                let open = !search.isEmpty || !collapsed.contains(group.name)
                 if !songs.isEmpty {
                     Section {
-                        ForEach(songs) { song in
-                            NavigationLink(value: song.id) { SongRow(song: song) }
+                        ForEach(open ? songs : []) { song in
+                            NavigationLink(value: Route.song(id: song.id)) { SongRow(song: song) }
                                 .listRowBackground(Theme.bg)
                                 .listRowSeparatorTint(Theme.line)
                         }
                     } header: {
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text(group.name.isEmpty ? "No group" : group.name)
-                                .font(.system(size: 17, weight: .bold)).foregroundStyle(Theme.ink)
-                            Text("\(songs.count) \(songs.count == 1 ? "song" : "songs")")
-                                .font(Theme.mono(12)).foregroundStyle(Theme.muted)
+                        Button { withAnimation(.easeOut(duration: 0.15)) { toggle(group.name) } } label: {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(Theme.muted)
+                                    .rotationEffect(.degrees(open ? 90 : 0))
+                                Text(group.name.isEmpty ? "No group" : group.name)
+                                    .font(.system(size: 17, weight: .bold)).foregroundStyle(Theme.ink)
+                                Text("\(songs.count) \(songs.count == 1 ? "song" : "songs")")
+                                    .font(Theme.mono(12)).foregroundStyle(Theme.muted)
+                                Spacer()
+                            }
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                         .textCase(nil)
                         .padding(.vertical, 4)
                     }
@@ -151,17 +218,10 @@ struct LibraryView: View {
         }
         .searchable(text: $search)
         .refreshable { await library.reload() }
-        .navigationTitle("Library")
+        .navigationTitle("Songs")
         .navigationBarTitleDisplayMode(.inline)
         .themedNavigation()
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) { Logo() }
-            ToolbarItem(placement: .principal) { Text("") }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { settings = true } label: { Image(systemName: "gearshape").foregroundStyle(Theme.muted) }
-            }
-        }
-        .sheet(isPresented: $settings) { SettingsView() }
+        .toolbar { ToolbarItem(placement: .principal) { Logo().fixedSize() } }
     }
 }
 

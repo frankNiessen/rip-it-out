@@ -7,24 +7,36 @@ fills, synced through iCloud Drive, Nextcloud, Dropbox or any other Files provid
 
 ## What it does
 
+Three tabs: **Songs**, **Takes** and **Settings**. Open a song and switch between
+**Practice** (play along) and **Record** (record yourself, on video too) at the top; the
+song stays where it is. Microphone and camera are only on in Record; with video on, the camera picture stays in view while you scroll (beside the page with the phone on its side, and the video is then recorded in landscape). After a take,
+**Take saved: Listen** opens the take page: its video, your take with the band (the song
+page's mixer, with **Me** for your take; the band's drums start muted),
+**Share** (audio, or video with that sound, mixed the way you hear it), **Record again**
+and **Delete**. The
+**Takes** tab lists every take in the library; **Continue** at the top of Songs goes back
+to the last song.
+
 - **Library:** your songs by group, with search. Songs that are only in the cloud are
   downloaded when you open them.
-- **Play along:** a channel strip per track (drums, bass, vocals, other, click) with its
-  fader, **M** (mute) and **S** (solo: hear only the soloed tracks, the click keeps
-  playing unless muted), the bar and beat counter, the tempo view with the song's
-  sections, a count-in of one or two bars, and loops: tap a section to loop it, or
-  **Loop** loops the section you are in; **‹ Start ›** and **‹ End ›** move either end
-  by a bar. Mute and solo reset when the app restarts, the faders are kept.
+- **Play along:** one **Band** fader for the whole song, the click on or off, and mute
+  (speaker) or solo (headphones) for drums, bass, vocals and other (solo: hear only the
+  soloed tracks; a track is muted or soloed, not both), the bar and beat counter, the tempo view with the song's
+  sections, a count-in of one or two bars, and section loops: **Loop** loops the section
+  you are in, a section button moves the loop there. Zoom with **−** / **+** or a pinch,
+  drag or tap in the tempo view (or **‹ Bar ›**) to start anywhere. Mute and solo reset
+  when the app restarts, the Band fader and the click are kept.
 - **Record:** from the built-in microphone, a headset or a USB audio interface. Latency
   is measured once with **Settings > Calibrate** (the same 20 clicks as on the desktop).
 - **Takes:** saved into the song's `takes/` folder in the desktop's format
   (`take.json`, `raw.flac`, `my_drums.flac`), so the desktop app lists, plays and
-  exports them too. Tap a take to play it against the song with its own fader
-  (**My take**), or delete one you don't want. Takes recorded on the desktop show up
+  exports them too. Tap a take to listen back: it plays with the song on its own fader
+  (**My take**) from where it starts; **Take only** hears just you. Delete one you don't
+  want. Takes recorded on the desktop show up
   here as well.
 
 The app is for practice: everything that edits (the beat grid, sections, a take's
-timing, level or name, exports, video) stays in the desktop app, and the phone picks up
+timing, level or name) stays in the desktop app, and the phone picks up
 the changes. The iOS app never changes a song's `manifest.json`, so two devices never
 write the same file.
 
@@ -48,7 +60,8 @@ Apple Developer account.
      sessions > Create new app password*) and the library folder, e.g. `StemLibrary`.
      The app talks to the server directly (WebDAV): the Files app can't hand whole
      Nextcloud folders to other apps. Songs are downloaded when you open them and kept
-     on the phone; takes are uploaded right after recording.
+     on the phone; takes are saved on the phone first and uploaded in the background (tried
+     again later when there's no connection).
    - **iCloud Drive or On My iPhone:** tap *Choose a folder in Files*, for example
      *iCloud Drive > Rip It Out*. On the Mac, put the library in that folder with
      *Settings > Library folder*.

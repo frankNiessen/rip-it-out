@@ -1,10 +1,12 @@
 import SwiftUI
+import UIKit
 
 @main
 struct RipItOutApp: App {
     @State private var library = LibraryStore()
     @State private var player: PlayerEngine
     @State private var recorder: Recorder
+    @Environment(\.scenePhase) private var phase
 
     init() {
         let player = PlayerEngine()
@@ -20,6 +22,15 @@ struct RipItOutApp: App {
                 .environment(recorder)
                 .tint(Theme.accent)
                 .preferredColorScheme(.dark)
+                .onChange(of: phase) {
+                    if phase == .background { Task { await recorder.appInBackground() } }
+                    if phase == .active { Task { await recorder.appActive() } }
+                }
+                // The screen stays on while the song plays or a take records: locking it
+                // would send the app to the background, which ends both.
+                .onChange(of: player.isPlaying || recorder.state != .idle, initial: true) { _, busy in
+                    UIApplication.shared.isIdleTimerDisabled = busy
+                }
         }
     }
 }
@@ -78,7 +89,8 @@ struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 16, weight: .bold))
-            .padding(.horizontal, 18).padding(.vertical, 11)
+            .lineLimit(1).fixedSize()
+            .padding(.horizontal, 20).padding(.vertical, 10)
             .foregroundStyle(Theme.onAccent)
             .background(Theme.accent.opacity(configuration.isPressed ? 0.85 : 1), in: .rect(cornerRadius: 3))
             .opacity(enabled ? 1 : 0.4)
@@ -88,12 +100,15 @@ struct PrimaryButtonStyle: ButtonStyle {
 /// Secondary buttons: outlined (.btn.quiet); lime outline and text when on (the Loop button).
 struct QuietButtonStyle: ButtonStyle {
     var on = false
+    var danger = false
     @Environment(\.isEnabled) private var enabled
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 15, weight: .medium))
-            .padding(.horizontal, 12).padding(.vertical, 9)
-            .foregroundStyle(on ? Theme.accent : Theme.ink)
+            .font(.system(size: 14, weight: .medium))
+            .lineLimit(1).fixedSize()
+            .frame(minHeight: 20)
+            .padding(.horizontal, 11).padding(.vertical, 8)
+            .foregroundStyle(danger ? Theme.fail : on ? Theme.accent : Theme.ink)
             .background(configuration.isPressed ? Theme.field : .clear, in: .rect(cornerRadius: 3))
             .overlay(RoundedRectangle(cornerRadius: 3).stroke(on ? Theme.accent : Theme.lineStrong, lineWidth: 1))
             .opacity(enabled ? 1 : 0.4)
@@ -105,12 +120,10 @@ struct RecordButtonStyle: ButtonStyle {
     var recording: Bool
     @Environment(\.isEnabled) private var enabled
     func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 7) {
-            RoundedRectangle(cornerRadius: recording ? 1 : 6).frame(width: 11, height: 11)
-            configuration.label
-        }
-        .font(.system(size: 16, weight: .bold))
-        .padding(.horizontal, 16).padding(.vertical, 11)
+        RoundedRectangle(cornerRadius: recording ? 2 : 8)
+            .frame(width: 16, height: 16)
+            .frame(width: 30, height: 22)
+            .padding(.horizontal, 12).padding(.vertical, 10)
         .foregroundStyle(.white)
         .background(Theme.record.opacity(configuration.isPressed ? 0.85 : 1), in: .rect(cornerRadius: 3))
         .opacity(enabled ? 1 : 0.4)
@@ -119,19 +132,20 @@ struct RecordButtonStyle: ButtonStyle {
 
 /// The M and S buttons of a channel strip: outlined, lit when on (mute amber, solo lime).
 struct ChannelButton: View {
-    let letter: String
+    let symbol: String
     let on: Bool
     let color: Color
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Text(letter)
-                .font(Theme.mono(11, .semibold))
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(on ? Theme.onAccent : Theme.muted)
-                .frame(width: 28, height: 26)
+                .frame(width: 30, height: 28)
                 .background(on ? color : .clear, in: .rect(cornerRadius: 2))
                 .overlay(RoundedRectangle(cornerRadius: 2).stroke(on ? color : Theme.lineStrong, lineWidth: 1))
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

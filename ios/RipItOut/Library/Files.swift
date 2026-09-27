@@ -36,6 +36,14 @@ enum Files {
         return status == .current || status == .downloaded
     }
 
+    /// Whether a file can be opened without waiting for the network.
+    static func isOnDevice(_ url: URL) -> Bool {
+        if remoteFor(url) != nil {
+            return ((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) > 0
+        }
+        return isDownloaded(url)
+    }
+
     /// Asks iCloud to fetch a file in the background (no-op elsewhere).
     static func startDownload(_ url: URL) {
         try? fm.startDownloadingUbiquitousItem(at: url)
@@ -132,7 +140,8 @@ enum Files {
 
     /// Moves a finished local folder into the library in one step, so sync clients and
     /// the desktop app never see half of it.
-    static func moveIn(_ src: URL, to dst: URL) throws {
+    /// `upload: false` leaves the upload to the caller (the take upload queue).
+    static func moveIn(_ src: URL, to dst: URL, upload: Bool = true) throws {
         var result: Result<Void, Error> = .success(())
         var coordError: NSError?
         NSFileCoordinator().coordinate(writingItemAt: dst.deletingLastPathComponent(), options: [], error: &coordError) { parent in
@@ -143,7 +152,7 @@ enum Files {
         }
         if let coordError { throw coordError }
         try result.get()
-        try remoteFor(dst)?.uploadFolder(dst)
+        if upload { try remoteFor(dst)?.uploadFolder(dst) }
     }
 
     static func delete(_ url: URL) throws {

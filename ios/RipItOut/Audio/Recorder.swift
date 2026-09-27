@@ -53,12 +53,26 @@ final class Recorder {
     private(set) var state: State = .idle
     private(set) var permission: Bool? = nil
     var note: String?
+    /// The take just recorded, for "Take saved: Listen".
+    private(set) var lastSaved: Take?
     var calibrationNote: String?
 
     @ObservationIgnored private let player: PlayerEngine
     @ObservationIgnored private var capture: Capture?
     @ObservationIgnored private var started: (host: Double, pos: Double)?
     @ObservationIgnored private var tapInstalled = false
+    @ObservationIgnored let camera = Camera()
+    private(set) var cameraRunning = false
+    private(set) var cameraDeviceID: String?
+    private(set) var inputs: [AVAudioSessionPortDescription] = []
+
+    /// Record video too (remembered). Front or back camera.
+    var cameraOn: Bool = UserDefaults.standard.bool(forKey: "camera.on") {
+        didSet { UserDefaults.standard.set(cameraOn, forKey: "camera.on") }
+    }
+    var frontCamera: Bool = UserDefaults.standard.object(forKey: "camera.front") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(frontCamera, forKey: "camera.front") }
+    }
 
     init(player: PlayerEngine) {
         self.player = player
@@ -67,12 +81,134 @@ final class Recorder {
         case .denied: permission = false
         default: permission = nil
         }
+        refreshInputs()
+        NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshInputs() }
+        }
     }
 
     var level: Float { capture?.level ?? 0 }
 
+    /// The input in use, or (outside Record, where the microphone is off and iOS lists
+    /// no input) the one used last. The latency is kept per input under this name, so
+    /// Settings shows the calibrated value, not the estimate for "no input".
     var inputName: String {
-        AVAudioSession.sharedInstance().currentRoute.inputs.first?.portName ?? "Input"
+        _ = inputs // changes when the route changes, so views update
+        if let name = AVAudioSession.sharedInstance().currentRoute.inputs.first?.portName { return name }
+        return UserDefaults.standard.string(forKey: Self.lastInputKey) ?? "iPhone Microphone"
+    }
+
+    private static let lastInputKey = "input.lastName"
+
+    private func rememberInput() {
+        if let name = AVAudioSession.sharedInstance().currentRoute.inputs.first?.portName {
+            UserDefaults.standard.set(name, forKey: Self.lastInputKey)
+        }
+    }
+
+    // MARK: - choosing the input
+
+    private static let inputKey = "input.preferred"
+
+    /// The inputs iOS offers right now (iPhone microphone, headset, USB interface).
+    func refreshInputs() {
+        rememberInput()
+        inputs = AVAudioSession.sharedInstance().availableInputs ?? []
+    }
+
+    var selectedInputUID: String? { AVAudioSession.sharedInstance().currentRoute.inputs.first?.uid }
+
+    func selectInput(_ uid: String) {
+        guard let port = (AVAudioSession.sharedInstance().availableInputs ?? []).first(where: { $0.uid == uid }) else { return }
+        UserDefaults.standard.set(uid, forKey: Self.inputKey)
+        UserDefaults.standard.set(port.portName, forKey: Self.lastInputKey)
+        do {
+            try AVAudioSession.sharedInstance().setPreferredInput(port)
+            calibrationNote = nil
+        } catch {
+            calibrationNote = "Couldn't switch to \(port.portName): \(error.localizedDescription)"
+        }
+        refreshInputs()
+    }
+
+    /// The input chosen earlier, when it's plugged in.
+    private func applyPreferredInput() {
+        let session = AVAudioSession.sharedInstance()
+        guard let uid = UserDefaults.standard.string(forKey: Self.inputKey),
+              session.currentRoute.inputs.first?.uid != uid,
+              let port = (session.availableInputs ?? []).first(where: { $0.uid == uid }) else { return }
+        try? session.setPreferredInput(port)
+    }
+
+    // MARK: - microphone on only while it's needed
+
+    /// Set while a Record page is open; the microphone and the camera are switched off
+    /// when it closes.
+    var recordPageOpen = false {
+        didSet {
+            guard recordPageOpen != oldValue else { return }
+            if recordPageOpen {
+                player.setRecordingSession(true)
+                refreshInputs()
+            } else {
+                releaseInput()
+                Task { await updateCamera(active: false) }
+            }
+        }
+    }
+
+    /// Switches the microphone off unless something is being recorded or calibrated, and
+    /// outside the Record page goes back to a playback-only session.
+    func releaseInput() {
+        guard state == .idle else { return }
+        if tapInstalled { stopCapture() }
+        player.disableInput()
+        if !recordPageOpen { player.setRecordingSession(false) }
+    }
+
+    /// The app goes to the background: save a take being recorded, then let go of the
+    /// microphone, the camera and the audio session.
+    func appInBackground() async {
+        if state == .recording { await stopRecording() }
+        releaseInput()
+        await updateCamera(active: false)
+        player.suspend()
+    }
+
+    /// Back in the foreground: the camera again if a Record page is open (the microphone
+    /// waits for Record or Calibrate).
+    func appActive() async {
+        player.startEngine()
+        if !player.engine.isRunning { // iOS often hands the audio back a moment later
+            try? await Task.sleep(for: .milliseconds(500))
+            player.startEngine()
+        }
+        if recordPageOpen { await updateCamera(active: true) }
+    }
+
+    // MARK: - camera
+
+    /// Starts or stops the camera preview to match the setting (while a song is open).
+    func updateCamera(active: Bool) async {
+        guard active, cameraOn, recordPageOpen else {
+            if cameraRunning { let cam = camera; await Background.get { cam.stop() } }
+            cameraRunning = false
+            return
+        }
+        guard await Camera.requestPermission() else {
+            note = "Allow camera access in Settings > Privacy & Security > Camera to record video."
+            cameraOn = false
+            return
+        }
+        let cam = camera, front = frontCamera
+        do {
+            try await Background.run { try cam.start(front: front) }
+            cameraDeviceID = cam.device?.uniqueID
+            cameraRunning = true
+        } catch {
+            note = Explain.camera(error)
+            cameraRunning = false
+        }
     }
 
     // MARK: - latency
@@ -108,11 +244,13 @@ final class Recorder {
             note = "Allow microphone access in Settings > Privacy & Security > Microphone to record."
             return false
         }
+        applyPreferredInput()
         if let problem = player.enableInput() {
             note = problem
             calibrationNote = problem
             return false
         }
+        rememberInput()
         return true
     }
 
@@ -152,19 +290,27 @@ final class Recorder {
         guard state == .idle, player.song != nil else { return }
         player.pause()
         guard await prepareInput() else { return }
-        try? await Task.sleep(for: .milliseconds(400)) // let the engine settle with the input on
+        await player.settle() // until the audio route has stopped changing
         player.setLoop(nil) // a take is one pass through the song
         note = nil
+        lastSaved = nil
         do {
             _ = try startCapture()
         } catch {
             note = error.localizedDescription
             return
         }
+        let withVideo = cameraOn && cameraRunning
+        if withVideo {
+            let t = PlayerEngine.hostNow
+            camera.startRecording()
+            Log.write("video recording started (took \(Log.ms(PlayerEngine.hostNow - t)))")
+        }
         guard let started = player.play() else {
             stopCapture()
             capture?.discard()
             capture = nil
+            if withVideo { _ = await camera.stopRecording() }
             note = "Couldn't start playback."
             return
         }
@@ -180,6 +326,8 @@ final class Recorder {
         stopCapture()
         capture = nil
         self.started = nil
+        var video: (url: URL, firstHost: Double)?
+        if cameraRunning { video = await camera.stopRecording() }
         guard let first = cap.firstHost else {
             cap.discard()
             state = .idle
@@ -187,6 +335,7 @@ final class Recorder {
             return
         }
         let captureStartS = started.pos + (first - started.host)
+        Log.write("take: input \(inputName), correction \(Int(latencyMs)) ms; first input buffer \(Log.ms(first - started.host)) after the song start; capture starts at \(String(format: "%.3f", captureStartS)) s, \(cap.frames) frames at \(Int(cap.sampleRate)) Hz")
         let captureEndS = captureStartS + Double(cap.frames) / cap.sampleRate
         if captureEndS <= started.pos + 0.5 {
             cap.discard()
@@ -197,18 +346,24 @@ final class Recorder {
         state = .saving
         note = "Saving take…"
         let latency = latencyMs, input = inputName
+        let clip = video.map { (url: $0.url, startInCaptureS: $0.firstHost - first) }
+        if let clip { Log.write("take video: first frame \(Log.ms(clip.startInCaptureS)) after the first input buffer, at \(String(format: "%.3f", captureStartS - latency / 1000 + clip.startInCaptureS)) s in the song") }
+        else if cameraOn { Log.write("take video: none recorded") }
         do {
-            let take = try await Task.detached(priority: .userInitiated) {
-                try TakeStore.save(song: song, capture: cap, captureStartS: captureStartS, latencyMs: latency, input: input)
-            }.value
-            note = (take.peakDbfs ?? 0) < -45 ? "Saved, but the take is almost silent. Check the input." : "Take saved."
+            let take = try await Background.run {
+                try TakeStore.save(song: song, capture: cap, captureStartS: captureStartS, latencyMs: latency, input: input, video: clip)
+            }
+            note = (take.peakDbfs ?? 0) < -45 ? "The take is almost silent. Check the input in Settings." : nil
             state = .idle
-            await player.loadTake(take)
+            lastSaved = take
+            Uploads.shared.run()
         } catch {
+            Log.write("saving the take failed: \(error)")
             note = "Saving failed: \(error.localizedDescription)"
             state = .idle
         }
         cap.discard()
+        if let video { try? FileManager.default.removeItem(at: video.url) }
     }
 
     // MARK: - calibration
@@ -218,10 +373,13 @@ final class Recorder {
     func calibrate() async {
         guard state == .idle else { return }
         guard await prepareInput() else { return }
-        try? await Task.sleep(for: .milliseconds(400)) // let the engine settle with the input on
+        await player.settle() // until the audio route has stopped changing
         player.pause()
         state = .calibrating
-        defer { state = .idle }
+        defer {
+            state = .idle
+            if !recordPageOpen { releaseInput() }
+        }
         let interval = 0.5, count = 20, listen = 4
         let cap: Capture
         do { cap = try startCapture() } catch { calibrationNote = error.localizedDescription; return }
@@ -242,11 +400,14 @@ final class Recorder {
             return
         }
         let clicks = (0..<count).map { t0 + Double($0) * interval }
+        Log.write("calibration: input \(inputName), first input buffer \(Log.ms(first - t0)) after the first click")
         switch Calibration.analyze(mono: got.samples, sampleRate: got.sampleRate, startTime: first, clicks: clicks, listen: listen) {
         case .success(let r):
             UserDefaults.standard.set(r.latencyMs, forKey: latencyKey)
+            Log.write("calibration: \(String(format: "%.1f", r.latencyMs)) ms from \(r.matched) notes, spread ±\(String(format: "%.1f", r.spreadMs)) ms")
             calibrationNote = "Measured \(Int(r.latencyMs)) ms from \(r.matched) notes (your timing varied by about ±\(Int(r.spreadMs)) ms)."
         case .failure(let e):
+            Log.write("calibration failed: \(e.message)")
             calibrationNote = e.message
         }
     }

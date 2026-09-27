@@ -4,7 +4,8 @@ import AVFoundation
 /// A take is built in a local temporary folder and moved into <song>/takes/<id> in
 /// one step, with take.json inside, so the desktop and sync clients never see half of it.
 enum TakeStore {
-    static func save(song: Song, capture: Capture, captureStartS: Double, latencyMs: Double, input: String) throws -> Take {
+    static func save(song: Song, capture: Capture, captureStartS: Double, latencyMs: Double, input: String,
+                     video: (url: URL, startInCaptureS: Double)? = nil) throws -> Take {
         if let e = capture.error { throw e }
         let m = song.manifest
         let now = Date()
@@ -32,10 +33,19 @@ enum TakeStore {
         let alignedName = try AudioIO.renderAligned(raw: work.appendingPathComponent(rawName), dir: work, name: "my_drums",
                                                     sampleRate: Double(m.sampleRate), total: m.numSamples, startS: startS)
         json["files"] = ["my_drums": alignedName, "raw": rawName]
+        if let video {
+            // Placed by the host clock, not by matching sound (the video has none).
+            try FileManager.default.copyItem(at: video.url, to: work.appendingPathComponent("video.mp4"))
+            json["video"] = ["file": "video.mp4", "start_in_capture_s": TakeJSON.round(video.startInCaptureS, 4),
+                             "sync": "clock", "nudge_ms": 0.0]
+            TakeJSON.derive(&json)
+        }
         try TakeJSON.encode(json).write(to: work.appendingPathComponent("take.json"))
 
         let final = takes.appendingPathComponent(id)
-        try Files.moveIn(work, to: final)
+        // Saved on the device now; the upload to the server runs in the background.
+        try Files.moveIn(work, to: final, upload: false)
+        Files.remote?.enqueueUpload(final)
         guard let take = Take(json: json, folder: final) else { throw AudioIO.Failure.message("Couldn't read the new take") }
         return take
     }
