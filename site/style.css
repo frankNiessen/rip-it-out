@@ -93,15 +93,43 @@ p { margin: .6rem 0 0; }
 .fine { margin-top: 1rem; font-size: .88rem; color: var(--muted); }
 .fine a { color: var(--muted); }
 
-/* home: three short stories, picture and words */
-.story .beat { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(2rem, 5vw, 5rem); align-items: center; }
-.story .beat + .beat { margin-top: clamp(4rem, 9vw, 7rem); }
-.story .beat.flip .copy { order: 2; }
-.story img { border-radius: 4px; border: 1px solid var(--line); }
-.story .copy p { color: var(--muted); font-size: 1.05rem; }
-.story .links { display: flex; gap: 1.75rem; margin-top: 1.5rem; font-weight: 600; }
-.story .links a { text-decoration-color: var(--accent); text-decoration-thickness: 2px; }
-@media (max-width: 860px) { .story .beat { grid-template-columns: 1fr; } .story .beat.flip .copy { order: 0; } }
+/* home: a story told in short lines, one idea per section */
+.say h2 { font-size: clamp(1.7rem, 3.6vw, 2.5rem); margin-bottom: 1.5rem; }
+.say p { color: var(--muted); font-size: 1.08rem; }
+.say p strong, .say .big { color: var(--ink); }
+.say .big { font: 700 clamp(1.15rem, 2vw, 1.35rem)/1.35 var(--sans); margin-top: 1.4rem; }
+.lines { margin: 1.25rem 0; }
+.lines p { margin: .15rem 0 0; color: var(--ink); font-size: clamp(1.1rem, 1.8vw, 1.25rem); }
+.lines.muted-lines p { color: var(--muted); }
+.kicker { margin-top: 2rem !important; font: 800 clamp(1.3rem, 2.6vw, 1.75rem)/1.2 var(--sans) !important;
+          font-stretch: 112% !important; color: var(--accent) !important; letter-spacing: -.01em; }
+.say .shot { margin: 2.5rem 0; border-radius: 4px; border: 1px solid var(--line); box-shadow: 0 30px 70px -35px rgba(0, 0, 0, .8); }
+.say .split { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: clamp(2rem, 5vw, 4.5rem); align-items: center; }
+.say .split .shot { margin: 0; }
+@media (max-width: 860px) { .say .split { grid-template-columns: 1fr; } }
+.say .links { margin-top: 2rem; font-weight: 600; }
+.say .links a { text-decoration-color: var(--accent); text-decoration-thickness: 2px; }
+
+/* the mute list, drawn like the app's channel strips */
+.strips { list-style: none; margin: 1.75rem 0; padding: 0; border: 1px solid var(--line); border-radius: 3px; background: var(--panel); }
+.strips li { display: flex; align-items: baseline; gap: .9rem; padding: .85rem 1rem; color: var(--muted); font-size: 1.05rem; }
+.strips li + li { border-top: 1px solid var(--line); }
+.strips b { color: var(--ink); font-weight: 700; }
+.strips .m { flex: none; display: inline-grid; place-items: center; width: 1.6rem; height: 1.6rem; align-self: center;
+             border-radius: 3px; background: var(--mute); color: #1a1206; font: 600 .72rem/1 var(--mono); }
+
+/* the three steps */
+.steps { list-style: none; margin: 1.75rem 0 0; padding: 0; counter-reset: step; }
+.steps li { counter-increment: step; display: flex; align-items: baseline; gap: 1rem; margin-top: .5rem;
+            font: 800 clamp(1.4rem, 3vw, 2rem)/1.2 var(--sans); font-stretch: 112%; }
+.steps li::before { content: counter(step); font: 500 .85rem/1 var(--mono); color: var(--accent); width: 1.4rem; }
+
+/* the closing call: the name, one line, the downloads */
+.closing { text-align: center; background: var(--panel); }
+.closing .downloads { justify-content: center; }
+.closing-name { margin: 0; font: 800 clamp(2.4rem, 6vw, 4rem)/1 var(--sans); font-stretch: 125%; letter-spacing: -.02em; }
+.closing-name::before { content: ""; display: inline-block; width: .3em; height: .3em; margin-right: .35em; vertical-align: .12em; background: var(--accent); }
+.closing-line { margin: 1rem auto 0; max-width: 36rem; color: var(--muted); font-size: clamp(1.05rem, 1.8vw, 1.2rem); }
 
 /* features: a plain list */
 .narrow { max-width: 46rem; }
@@ -142,3 +170,6 @@ footer a { color: var(--muted); }
 
 main { flex: 1; }
 .hero { border-bottom: 1px solid var(--line); }
+/* text-only home sections line up with the others: full width, a narrow text column */
+.say .wrap.narrow { max-width: 72rem; }
+.say .wrap.narrow > * { max-width: 46rem; }

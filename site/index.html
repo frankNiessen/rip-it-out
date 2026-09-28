@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Rip It Out: take a song apart, practice your part</title>
-<meta name="description" content="Rip It Out splits a song into drums, bass, vocals and everything else, finds its beats and sections, and lets you play along, record yourself and share your take. For Mac and Windows, free.">
-<meta property="og:title" content="Rip It Out: take a song apart, practice your part">
-<meta property="og:description" content="Rip It Out splits a song into drums, bass, vocals and everything else, finds its beats and sections, and lets you play along, record yourself and share your take. For Mac and Windows, free.">
+<title>Rip It Out: you know the song, now play it</title>
+<meta name="description" content="Rip It Out takes your instrument out of the original recording, so you can practise your part with the actual band. Free and open source, for Mac and Windows.">
+<meta property="og:title" content="Rip It Out: you know the song, now play it">
+<meta property="og:description" content="Rip It Out takes your instrument out of the original recording, so you can practise your part with the actual band. Free and open source, for Mac and Windows.">
 <meta property="og:image" content="img/record.png">
 <link rel="icon" href="icon.png">
 <link rel="stylesheet" href="style.css">
@@ -27,45 +27,139 @@
 <main>
 <section class="hero">
   <div class="hero-text">
-    <h1>Mute your part.<br>Play it <em>yourself</em>.</h1>
-    <p class="lead">Add a song to your library and Rip It Out splits it into drums, bass, vocals and the rest, with a click that follows the band. Mute your instrument, play along, record yourself on audio and video, and share the take with your friends.</p>
+    <h1>You know the song.<br><em>Now play it.</em></h1>
+    <p class="lead">Rip It Out takes your instrument out of the original recording, so you can practise your part with the actual band.</p>
     <div class="downloads">
-      <a class="dl" id="dl-mac" href="https://github.com/frankNiessen/rip-it-out/releases/latest">Download for Mac</a>
-      <a class="dl second" id="dl-win" href="https://github.com/frankNiessen/rip-it-out/releases/latest">Download for Windows</a>
+      <a class="dl" data-dl="mac" href="https://github.com/frankNiessen/rip-it-out/releases/latest">Download for Mac</a>
+      <a class="dl second" data-dl="win" href="https://github.com/frankNiessen/rip-it-out/releases/latest">Download for Windows</a>
     </div>
-    <p class="fine">Free. For Macs with an Apple chip and for Windows. <a href="download.html">How to install</a></p>
+    <p class="fine">Free and open source · Mac and Windows · <a href="download.html">How to install</a></p>
   </div>
   <div class="hero-shot">
     <img src="img/record.png" width="1600" height="1000" alt="Rip It Out's Record page: the bar counter, the song's parts, the mixer, and a take on video of a drummer playing electronic drums at home.">
   </div>
 </section>
 
-<section class="story">
+<section class="say">
+  <div class="wrap narrow">
+    <h2>Take your part out of the song.</h2>
+    <div class="lines">
+      <p>You know the riff.</p>
+      <p>You know the chorus.</p>
+      <p>You can hear exactly what you're supposed to play.</p>
+    </div>
+    <p class="big">Now take that part out of the recording, and play it yourself.</p>
+    <p>Rip It Out splits a song into <strong>drums, bass, vocals and everything else</strong>, and gives each one its own fader.</p>
+    <ul class="strips" aria-label="What you can take out">
+      <li><span class="m" aria-hidden="true">M</span><span><b>Mute the drums.</b> Play the drums yourself.</span></li>
+      <li><span class="m" aria-hidden="true">M</span><span><b>Mute the bass.</b> Play the bass yourself.</span></li>
+      <li><span class="m" aria-hidden="true">M</span><span><b>Mute the vocals.</b> Sing it yourself.</span></li>
+      <li><span class="m" aria-hidden="true">M</span><span><b>Mute the guitars and keys.</b> Play them yourself.</span></li>
+    </ul>
+    <p>Or keep everything in and simply play along.</p>
+    <p class="kicker">It's the original song. Just with your part missing.</p>
+  </div>
+</section>
+
+<section class="say">
   <div class="wrap">
-    <div class="beat">
-      <div class="copy">
-        <h2>Any song, in four parts</h2>
-        <p>Drop in a song and a minute or two later it's drums, bass, vocals and everything else, each with its own fader. Rip It Out also finds the bars and the song's parts (verse, chorus, bridge) and builds a click that follows the band, even when they speed up.</p>
-      </div>
-      <img src="img/story-library.png" width="1600" height="700" loading="lazy" alt="The library: songs in groups, and new songs waiting to be added.">
+    <div class="narrow">
+      <h2>Practise the bit you're actually struggling with.</h2>
+      <p class="big">Found the hard part?</p>
+      <p>Rip It Out finds the song's verses, choruses, bridge and solo for you. Tap one to jump straight there. Loop it. Play it again.</p>
+      <p>It follows the song's bars and tempo, even when the band speeds up, so you spend less time finding your place and more time playing.</p>
     </div>
-    <div class="beat flip">
-      <div class="copy">
-        <h2>Play along until it sits</h2>
-        <p>Mute your instrument and the band plays without you. A count-in gets you in, a big counter tells you where you are, and a tap on the chorus loops it as often as you need.</p>
+    <img class="shot" src="img/story-sections.png" width="1493" height="250" loading="lazy" alt="A song's parts (verse, chorus, bridge) above its tempo, with the first chorus looped: bars 21 to 30.">
+    <div class="narrow">
+      <p class="kicker">Loop. Play. Again.</p>
+      <div class="lines">
+        <p>And again.</p>
+        <p>Until your hands know it.</p>
       </div>
-      <img src="img/story-play.png" width="1600" height="420" loading="lazy" alt="Playing a song: the counter, the song's parts, and a fader for each instrument.">
-    </div>
-    <div class="beat">
-      <div class="copy">
-        <h2>Record it. Share it.</h2>
-        <p>Plug in your guitar, bass, microphone or electronic drums and record yourself, on camera too. Listen back with the band, then send the take to your friends as audio or video. On your phone as well, with the <a href="mobile.html">mobile app</a>.</p>
-        <p class="links"><a href="features.html">Everything it does</a> <a href="download.html">Download</a></p>
-      </div>
-      <img src="img/story-record.png" width="1520" height="400" loading="lazy" alt="A take on video of a drummer at home, next to the list of takes and the buttons to share it as audio or video.">
     </div>
   </div>
 </section>
+
+<section class="say">
+  <div class="wrap">
+    <div class="narrow">
+      <h2>Build the practice track you need.</h2>
+      <p class="big">You don't have to mute everything.</p>
+      <p>Keep the drums loud. Turn the bass down. Leave the vocals in. Take the guitar out.</p>
+      <p>Every part has its own volume, and so does the click, so you make the mix that works for you.</p>
+    </div>
+    <img class="shot" src="img/story-mixer.png" width="1493" height="132" loading="lazy" alt="The play controls, the count-in setting, and a fader each for drums, bass, vocals, everything else and the click.">
+    <div class="narrow">
+      <p class="kicker">Your song. Your part. Your practice track.</p>
+    </div>
+  </div>
+</section>
+
+<section class="say">
+  <div class="wrap split">
+    <div>
+      <h2>Stay with the band.</h2>
+      <div class="lines">
+        <p>A count-in gets you started.</p>
+        <p>A big counter shows you which bar and beat you're on.</p>
+        <p>A click that follows the band keeps you in time.</p>
+      </div>
+      <p>You watch the counter, not the software.</p>
+      <div class="lines muted-lines">
+        <p>No restarting the whole song.</p>
+        <p>No hunting for the right timestamp.</p>
+        <p>No fiddling with a DAW.</p>
+      </div>
+      <p class="kicker">Just play.</p>
+    </div>
+    <img class="shot" src="img/story-counter.png" width="646" height="315" loading="lazy" alt="The counter saying Get ready during a one-bar count-in, next to the song's parts.">
+  </div>
+</section>
+
+<section class="say">
+  <div class="wrap">
+    <div class="narrow">
+      <h2>When you're ready, hit record.</h2>
+      <p class="big">Play your part with the band and record yourself.</p>
+      <p>Plug in your guitar, bass, microphone or electronic drums. Audio, video, or both.</p>
+      <p>Then listen back with the original recording still playing underneath.</p>
+      <div class="lines">
+        <p>Hear what you actually played.</p>
+        <p>Try again.</p>
+        <p>Keep the take you like.</p>
+      </div>
+      <p>Then send it to your friends as audio or video. On your phone too, with the <a href="mobile.html">mobile app</a>.</p>
+    </div>
+    <img class="shot" src="img/story-record.png" width="1520" height="400" loading="lazy" alt="A take on video of a drummer at home, next to the list of takes and the buttons to share it as audio or video.">
+  </div>
+</section>
+
+<section class="say">
+  <div class="wrap narrow">
+    <h2>Learn songs by playing them.</h2>
+    <p>Rip It Out is a practice tool for musicians who learn songs by playing them, not by building backing tracks or hunting for isolated stems.</p>
+    <ol class="steps">
+      <li>Find the song.</li>
+      <li>Take out your part.</li>
+      <li>Play.</li>
+    </ol>
+    <p class="big">That's it.</p>
+    <p class="links"><a href="features.html">Everything it does</a></p>
+  </div>
+</section>
+
+<section class="closing">
+  <div class="wrap">
+    <p class="closing-name">Rip It Out</p>
+    <p class="closing-line">Practise songs by taking your part out, and putting it back in yourself.</p>
+    <div class="downloads">
+      <a class="dl" data-dl="mac" href="https://github.com/frankNiessen/rip-it-out/releases/latest">Download for Mac</a>
+      <a class="dl second" data-dl="win" href="https://github.com/frankNiessen/rip-it-out/releases/latest">Download for Windows</a>
+    </div>
+    <p class="fine">Free and open source. Made for musicians.</p>
+  </div>
+</section>
+
 <section id="support" class="support" hidden>
   <div class="wrap">
     <p>I make Rip It Out in my spare time, and it's free. If it helps you practise, <a data-tip href="#">buy me a coffee</a>.</p>
