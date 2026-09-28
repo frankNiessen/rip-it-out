@@ -188,8 +188,10 @@ to `main` and attaches the installer to releases for tags.
 
 ## Website
 
-`site/index.html` is the whole page (the app's colors and fonts, no build step). The
-workflow `.github/workflows/pages.yml` assembles it with the screenshots from `docs/`,
+`site/` holds the pages (`index.html`, `features.html`, `download.html`, `mobile.html`,
+`help.html`, `privacy.html`), one stylesheet (`style.css`) and one script (`site.js`: the
+download buttons and the tip link, whose address is `TIP_URL` there), in the app's colors
+and fonts, with no build step. The workflow `.github/workflows/pages.yml` assembles them with the screenshots from `docs/`,
 the fonts from `stemtool/static/fonts` and the app icon, and publishes it with GitHub
 Pages on every push to `main` that touches them (or by hand: *Actions > Website > Run
 workflow*). One-time setup: *Settings > Pages > Build and deployment > Source: GitHub
@@ -199,7 +201,8 @@ loads and fall back to the releases page, so a new release needs no site rebuild
 To look at it locally:
 
 ```bash
-mkdir -p /tmp/site/img /tmp/site/fonts && cp site/index.html /tmp/site/ && cp docs/*.png /tmp/site/img/ \
+mkdir -p /tmp/site/img /tmp/site/fonts && cp site/*.html site/*.css site/*.js /tmp/site/ \
+  && cp site/img/* docs/library.png docs/play-countin.png /tmp/site/img/ \
   && cp stemtool/static/fonts/*.woff2 /tmp/site/fonts/ && python3 -m http.server -d /tmp/site 8000
 ```
 
