@@ -1,5 +1,5 @@
-"""A simple in-memory job queue with one worker thread (the GPU is the bottleneck,
-so songs are processed one at a time). Each song runs in a child process so it
+"""A simple in-memory job queue with one worker thread (the GPU, or all CPU cores,
+are the bottleneck, so songs are processed one at a time). Each song runs in a child process so it
 can be stopped.
 
 Job state is not persisted: the library on disk is the record of what's done.
@@ -12,6 +12,7 @@ import logging
 import multiprocessing as mp
 import queue
 import shutil
+import sys
 import threading
 import time
 from dataclasses import asdict, dataclass, field
@@ -286,9 +287,33 @@ def _drop_import(source_file: str) -> None:
         shutil.rmtree(Path(source_file).parent, ignore_errors=True)
 
 
+def _full_speed() -> bool:
+    """Windows may slow a process with no window of its own (EcoQoS: lower clock,
+    efficiency cores) while the app isn't in front. This opts the song's process out."""
+    if sys.platform != "win32":
+        return False
+    import ctypes
+    from ctypes import wintypes
+
+    class State(ctypes.Structure):  # PROCESS_POWER_THROTTLING_STATE
+        _fields_ = [("Version", wintypes.ULONG), ("ControlMask", wintypes.ULONG), ("StateMask", wintypes.ULONG)]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel32.SetProcessInformation.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+    kernel32.SetProcessInformation.restype = wintypes.BOOL
+    # ProcessPowerThrottling = 4; control EXECUTION_SPEED (1), state 0 = never throttle.
+    state = State(1, 1, 0)
+    return bool(kernel32.SetProcessInformation(kernel32.GetCurrentProcess(), 4, ctypes.byref(state), ctypes.sizeof(state)))
+
+
 def _child(messages, guard, settings: Settings, ref: youtube.VideoRef, style: str, group: str,
            reseparate: str) -> None:
     pipeline.stop_guard = guard
+    try:
+        _full_speed()
+    except (OSError, AttributeError):  # older Windows: nothing to opt out of
+        pass
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     on_stage = lambda s: messages.put(("stage", s))  # noqa: E731
     try:

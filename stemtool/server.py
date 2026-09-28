@@ -132,7 +132,9 @@ def status() -> dict:
         "library_dir": str(settings.library_dir),
         "library_locked": config.library_locked(),
         "config_file": str(config.config_file()),
-        "separation_model": settings.separation_model,
+        # Not settings.separation_model: resolving "auto" imports PyTorch, too slow here.
+        "separation_model": (settings.model_setting if settings.model_setting != "auto"
+                             else f"{config.GPU_MODEL} on a GPU, {config.CPU_MODEL} on the CPU"),
         "device": settings.device_setting,
         "styles": list(STYLES),
         "stem_format": settings.stem_format,
