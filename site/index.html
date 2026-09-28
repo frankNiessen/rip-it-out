@@ -4,194 +4,33 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rip It Out: take a song apart, practice your part</title>
-<meta name="description" content="Rip It Out splits a song into drums, bass, vocals and everything else, finds its beats and sections, and lets you play along and record yourself. For Mac and Windows.">
-<meta property="og:title" content="Rip It Out">
-<meta property="og:description" content="Take a song apart, practice your part, record yourself.">
+<meta name="description" content="Rip It Out splits a song into drums, bass, vocals and everything else, finds its beats and sections, and lets you play along, record yourself and share your take. For Mac and Windows, free.">
+<meta property="og:title" content="Rip It Out: take a song apart, practice your part">
+<meta property="og:description" content="Rip It Out splits a song into drums, bass, vocals and everything else, finds its beats and sections, and lets you play along, record yourself and share your take. For Mac and Windows, free.">
 <meta property="og:image" content="img/record.png">
 <link rel="icon" href="icon.png">
-<style>
-  /* The app's own look (stemtool/static/index.html): studio hardware, matte panels,
-     thin rules, lime only where something happens, numbers in a mono face. */
-  @font-face { font-family: "Archivo"; src: url("fonts/archivo.woff2") format("woff2");
-               font-weight: 400 800; font-stretch: 100% 125%; font-display: swap; }
-  @font-face { font-family: "Martian Mono"; src: url("fonts/martian-mono.woff2") format("woff2");
-               font-weight: 400 600; font-display: swap; }
-  :root {
-    color-scheme: dark;
-    --bg: #121416;
-    --panel: #181b1e;
-    --field: #1e2226;
-    --line: #2a2f34;
-    --line-strong: #3b4248;
-    --ink: #e6e9e4;
-    --muted: #8a928e;
-    --accent: #c6f432;
-    --on-accent: #10160a;
-    --lcd: #0c140a;
-    --lcd-ink: #bfe83a;
-    --lcd-dim: #5d7431;
-    --rec: #ff4d5e;
-    --mute: #e8a33d;
-    --sans: "Archivo", system-ui, sans-serif;
-    --mono: "Martian Mono", ui-monospace, Menlo, monospace;
-    --gutter: clamp(1rem, 4vw, 3rem);
-  }
-  * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; scroll-padding-top: 4rem; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 var(--sans); }
-  a { color: var(--ink); text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
-  a:hover { text-decoration-color: var(--accent); }
-  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  img { max-width: 100%; height: auto; display: block; }
-  code { font: .85em var(--mono); background: var(--field); border: 1px solid var(--line); border-radius: 3px; padding: .05em .35em; }
-  pre { margin: .6rem 0 0; padding: .75rem .9rem; background: var(--lcd); border: 1px solid var(--line); border-radius: 3px;
-        overflow-x: auto; font: .8rem/1.5 var(--mono); color: var(--lcd-ink); }
-
-  header {
-    position: sticky; top: 0; z-index: 20;
-    display: flex; align-items: stretch; gap: 2.5rem;
-    padding: 0 var(--gutter); border-bottom: 1px solid var(--line); background: var(--panel);
-  }
-  .brand { display: flex; align-items: center; gap: .6rem; text-decoration: none; white-space: nowrap;
-           font: 800 1.15rem/1 var(--sans); font-stretch: 125%; letter-spacing: -.01em; }
-  .brand::before { content: ""; width: .55rem; height: .55rem; background: var(--accent); } /* the "power LED" */
-  nav { display: flex; gap: 1.75rem; overflow-x: auto; }
-  nav a { padding: 1.05rem 0 .95rem; font: 600 .92rem/1 var(--sans); color: var(--muted); text-decoration: none;
-          border-bottom: 2px solid transparent; white-space: nowrap; }
-  nav a:hover { color: var(--ink); border-bottom-color: var(--accent); }
-  header .gh { margin-left: auto; align-self: center; font: 500 .85rem var(--mono); color: var(--muted); text-decoration: none; white-space: nowrap; }
-  header .gh:hover { color: var(--ink); }
-  @media (max-width: 720px) {
-    header { flex-wrap: wrap; row-gap: 0; }
-    .brand { padding-top: .9rem; }
-    nav { flex-basis: 100%; order: 3; gap: 1.25rem; }
-    header .gh { padding-top: .9rem; align-self: auto; }
-  }
-
-  main > section { padding: 4.5rem var(--gutter); border-bottom: 1px solid var(--line); }
-  .wrap { max-width: 72rem; margin: 0 auto; }
-  h1, h2, h3 { margin: 0; letter-spacing: -.01em; }
-  h1 { font: 800 clamp(2.1rem, 3.9vw, 3.1rem)/1.05 var(--sans); font-stretch: 108%; }
-  h1 em { font-style: normal; color: var(--accent); }
-  h2 { font: 800 clamp(1.5rem, 3vw, 2rem)/1.15 var(--sans); font-stretch: 112%; margin-bottom: 1rem; }
-  h3 { font: 700 1.02rem/1.3 var(--sans); margin-bottom: .35rem; }
-  .kicker { font: 500 .75rem var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin: 0 0 .9rem; }
-  .lead { font-size: clamp(1.02rem, 1.4vw, 1.12rem); color: var(--muted); max-width: 40rem; margin: 1.25rem 0 0; }
-  p { margin: .6rem 0 0; }
-  .muted { color: var(--muted); }
-
-  /* hero */
-  .hero { padding-top: 3rem; padding-bottom: 3.5rem; }
-  .hero-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 3rem; align-items: center; }
-  @media (max-width: 960px) { .hero-grid { grid-template-columns: 1fr; } }
-  .downloads { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; margin-top: 1.75rem; max-width: 36rem; }
-  @media (max-width: 520px) { .downloads { grid-template-columns: 1fr; } }
-  .dl {
-    display: flex; flex-direction: column; gap: .2rem; padding: .95rem 1.1rem; border-radius: 3px; text-decoration: none;
-    background: var(--accent); color: var(--on-accent); border: 1px solid var(--accent);
-  }
-  .dl:hover { filter: brightness(1.08); }
-  .dl.second { background: transparent; color: var(--ink); border-color: var(--line-strong); }
-  .dl.second:hover { border-color: var(--ink); filter: none; }
-  .dl .os { font: 800 1.1rem/1.2 var(--sans); font-stretch: 110%; display: flex; align-items: center; gap: .5rem; }
-  .dl .os::after { content: "↓"; font-weight: 700; margin-left: auto; }
-  .dl .meta { font: 500 .72rem/1.4 var(--mono); opacity: .8; }
-  .release-line { margin-top: .9rem; font: 400 .75rem var(--mono); color: var(--muted); }
-  .release-line a { color: var(--muted); }
-
-  .device { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: .6rem; box-shadow: 0 30px 80px -40px #000; }
-  .device img { border-radius: 2px; border: 1px solid var(--line); }
-  .shots .device img { aspect-ratio: 1600 / 700; object-fit: cover; object-position: top; } /* the app's lower part is empty */
-  .device figcaption { display: flex; justify-content: space-between; gap: 1rem; padding: .5rem .2rem 0; font: .7rem var(--mono); color: var(--muted); }
-  .device figcaption b { color: var(--lcd-ink); font-weight: 500; }
-  figure { margin: 0; }
-
-  /* the LCD counter, as in the app */
-  .lcd { display: inline-flex; align-items: center; gap: 1.1rem; margin-top: 1.75rem; padding: .7rem 1.1rem;
-         background: var(--lcd); border: 1px solid var(--line); border-radius: 3px; font-family: var(--mono); }
-  .lcd .num { font: 600 2.2rem/1 var(--mono); color: var(--lcd-ink); min-width: 1.2ch; text-align: center; }
-  .lcd .bar { font-size: .72rem; color: var(--lcd-dim); }
-  .lcd .beats { display: flex; gap: .3rem; margin-top: .35rem; }
-  .lcd .beats i { width: .9rem; height: .3rem; background: #1d2a14; }
-  .lcd .beats i.on { background: var(--lcd-ink); }
-  @media (prefers-reduced-motion: no-preference) { .lcd .num { transition: color .1s; } }
-
-  /* features */
-  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 3px; overflow: hidden; margin-top: 2rem; }
-  @media (max-width: 960px) { .features { grid-template-columns: 1fr 1fr; } }
-  @media (max-width: 620px) { .features { grid-template-columns: 1fr; } }
-  .feature { background: var(--panel); padding: 1.4rem 1.3rem 1.5rem; }
-  .feature .tag { display: inline-block; margin-bottom: .8rem; font: 500 .68rem var(--mono); color: var(--muted); }
-  .feature .tag::before { content: ""; display: inline-block; width: .45rem; height: .45rem; margin-right: .45rem; background: var(--accent); vertical-align: .05em; }
-  .feature.rec .tag::before { background: var(--rec); border-radius: 50%; }
-  .feature p { color: var(--muted); font-size: .94rem; }
-
-  .stems { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .9rem; }
-  .stems span { font: 500 .7rem var(--mono); padding: .2rem .5rem; border: 1px solid var(--line-strong); border-radius: 2px; color: var(--ink); }
-
-  /* screenshots */
-  .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-top: 2rem; }
-  @media (max-width: 860px) { .shots { grid-template-columns: 1fr; } }
-
-  /* steps */
-  .steps { list-style: none; margin: 2rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem; counter-reset: step; }
-  @media (max-width: 1100px) { .steps { grid-template-columns: repeat(3, 1fr); } }
-  @media (max-width: 720px) { .steps { grid-template-columns: 1fr; } }
-  .steps li { counter-increment: step; padding: 1.1rem 1.1rem 1.2rem; background: var(--panel); border: 1px solid var(--line); border-radius: 3px; }
-  .steps li::before { content: counter(step); display: block; font: 600 1.6rem/1 var(--mono); color: var(--lcd-ink); margin-bottom: .6rem; }
-  .steps p { color: var(--muted); font-size: .92rem; }
-
-  /* install */
-  .install { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-top: 2rem; }
-  @media (max-width: 860px) { .install { grid-template-columns: 1fr; } }
-  .card { padding: 1.3rem 1.3rem 1.4rem; background: var(--panel); border: 1px solid var(--line); border-radius: 3px; min-width: 0; }
-  .card ol { margin: .7rem 0 0; padding-left: 1.2rem; color: var(--muted); font-size: .94rem; }
-  .card ol li + li { margin-top: .45rem; }
-  .card ol b { color: var(--ink); font-weight: 600; }
-  .card .req { font: .72rem var(--mono); color: var(--muted); margin-top: .9rem; }
-  .pill { display: inline-block; margin-left: .4rem; padding: .05rem .4rem; font: 500 .62rem var(--mono); color: var(--mute);
-          border: 1px solid var(--mute); border-radius: 2px; vertical-align: .2em; }
-
-  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; }
-  @media (max-width: 860px) { .two { grid-template-columns: 1fr; gap: 2rem; } }
-  .faq dt { font-weight: 700; margin-top: 1.1rem; }
-  .faq dd { margin: .25rem 0 0; color: var(--muted); font-size: .94rem; }
-
-  .legal { font-size: .9rem; color: var(--muted); max-width: 52rem; }
-  .legal strong { color: var(--ink); }
-
-  .support .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1.25rem 2rem; }
-  .support h2 { margin: 0 0 .3rem; }
-  .support p { margin: 0; color: var(--muted); max-width: 38rem; }
-  .tip { display: inline-flex; align-items: center; gap: .55rem; padding: .8rem 1.2rem; border: 1px solid var(--accent); border-radius: 3px;
-         color: var(--accent); font: 700 1rem var(--sans); text-decoration: none; white-space: nowrap; }
-  .tip:hover { background: var(--accent); color: var(--on-accent); }
-
-  footer { padding: 2rem var(--gutter) 3rem; font: .75rem var(--mono); color: var(--muted); }
-  footer .wrap { display: flex; flex-wrap: wrap; gap: .5rem 2rem; justify-content: space-between; }
-  footer a { color: var(--muted); }
-</style>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header>
-  <a class="brand" href="#top">Rip It Out</a>
-  <nav aria-label="Sections">
-    <a href="#features">Features</a>
-    <a href="#how">How it works</a>
-    <a href="#download">Download</a>
-    <a href="#iphone">iPhone</a>
-    <a href="#help">Help</a>
+  <a class="brand" href="index.html">Rip It Out</a>
+  <nav aria-label="Pages">
+    <a href="index.html" aria-current="page">Home</a>
+    <a href="features.html">Features</a>
+    <a href="download.html">Download</a>
+    <a href="mobile.html">Mobile app</a>
+    <a href="help.html">Help</a>
   </nav>
   <a class="gh" href="https://github.com/frankNiessen/rip-it-out">GitHub ↗</a>
 </header>
 
-<main id="top">
-  <section class="hero">
+<main>
+<section class="hero">
     <div class="wrap hero-grid">
       <div>
         <p class="kicker">Practice tool for musicians</p>
         <h1>Take a song apart.<br>Practice <em>your</em> part.<br>Record yourself.</h1>
-        <p class="lead">Drop in your own music, or add a song from a video link. Rip It Out splits every song into drums, bass, vocals and everything else, finds every beat, bar and section, and builds a click that follows the band. Then turn your instrument down and play along.</p>
+        <p class="lead">Add a track to your library. Rip It Out splits it into drums, bass, vocals and everything else, finds every beat, bar and section, and builds a click that follows the band. Then mute your instrument and play along, record yourself on audio and video, and share your take with your friends.</p>
         <div class="downloads" id="download-buttons">
           <a class="dl" id="dl-mac" href="https://github.com/frankNiessen/rip-it-out/releases/latest">
             <span class="os">Download for Mac</span>
@@ -214,151 +53,21 @@
       </figure>
     </div>
   </section>
-
-  <section id="features">
-    <div class="wrap">
-      <p class="kicker">Features</p>
-      <h2>Everything a band would give you, minus your part</h2>
-      <div class="features">
-        <div class="feature">
-          <span class="tag">Separate</span>
-          <h3>Four tracks per song</h3>
-          <p>Drums, bass, vocals and everything else, each on its own fader with mute and solo. Two styles: <em>Band</em> for rock, pop and funk, <em>Electronic</em> for drum &amp; bass, EDM and heavy synth bass.</p>
-          <div class="stems"><span>drums</span><span>bass</span><span>vocals</span><span>other</span><span>click</span></div>
-        </div>
-        <div class="feature">
-          <span class="tag">Listen</span>
-          <h3>Beats, bars and sections</h3>
-          <p>Beat and bar tracking, a click on the real beats (audio and MIDI) that follows the band even where the tempo drifts, and the song's intro, verses and choruses.</p>
-        </div>
-        <div class="feature">
-          <span class="tag">Practice</span>
-          <h3>Play along</h3>
-          <p>A big bar and beat counter, a tempo view, a count-in of one or two bars, and loops for a section or any bars, to work on the hard part until it sits.</p>
-        </div>
-        <div class="feature rec">
-          <span class="tag">Record</span>
-          <h3>Record yourself</h3>
-          <p>From any audio interface: a guitar or bass, a microphone, or an electronic drum kit over USB, on camera too. A short calibration lines your take up with the song to the millisecond.</p>
-        </div>
-        <div class="feature">
-          <span class="tag">Review</span>
-          <h3>Hear how you did</h3>
-          <p>Your take next to the band, with a timing nudge. Export the whole take, a trimmed part or a loop as WAV or MP4 video, mixed the way you like.</p>
-        </div>
-        <div class="feature">
-          <span class="tag">Library</span>
-          <h3>Plain folders, your cloud</h3>
-          <p>Songs live in a folder you choose, as ordinary audio files. Put it in iCloud Drive, Nextcloud or Dropbox and practise on your iPhone too. Everything is processed on your computer.</p>
-        </div>
-      </div>
-      <div class="shots">
-        <figure class="device">
-          <img src="img/library.png" width="1600" height="1000" loading="lazy" alt="The library, with songs grouped into playlists and the queue for adding new ones.">
-          <figcaption><span>Library · your songs, in groups you choose</span><b>grouped</b></figcaption>
-        </figure>
-        <figure class="device">
-          <img src="img/play-countin.png" width="1600" height="1000" loading="lazy" alt="Playing a song: the bar counter, the tempo view with the song's sections, and a fader for each track.">
-          <figcaption><span>Play · count-in before the song starts</span><b>151 bpm · 4/4</b></figcaption>
-        </figure>
-      </div>
-    </div>
-  </section>
-
-  <section id="how">
+<section id="how">
     <div class="wrap">
       <p class="kicker">How it works</p>
-      <h2>From a link to your first take in a few minutes</h2>
+      <h2>From a track to your first take in a few minutes</h2>
       <ol class="steps">
         <li><h3>Choose a library folder</h3><p>In Settings. Everything the app makes lives there, one folder per song.</p></li>
         <li><h3>Add songs</h3><p>Drop in your own MP3, WAV, FLAC, M4A and more, or paste a video link. Press Process: one to two minutes per song on an M-series Mac.</p></li>
-        <li><h3>Play along</h3><p>Turn your instrument down, set the count-in, press Play or the space bar. Click a section to loop it.</p></li>
+        <li><h3>Play along</h3><p>Mute your instrument, set the count-in, press Play or the space bar. Click a section to loop it.</p></li>
         <li><h3>Calibrate once</h3><p>In Record > Setup, choose your interface and play along with 20 clicks. That measures your setup's delay.</p></li>
         <li><h3>Record and review</h3><p>The count-in plays, the song starts, your take is saved. Listen back, nudge the timing, export audio or video.</p></li>
       </ol>
+      <p class="more"><a href="features.html">All features →</a> <a href="download.html">Download and install →</a> <a href="mobile.html">The mobile app →</a></p>
     </div>
   </section>
-
-  <section id="download">
-    <div class="wrap">
-      <p class="kicker">Download</p>
-      <h2>Install</h2>
-      <p class="muted">The builds aren't signed by Apple or Microsoft yet, so the first start needs one extra step.</p>
-      <div class="install">
-        <div class="card">
-          <h3>Mac</h3>
-          <ol>
-            <li>Download <b id="mac-file">RipItOut-&lt;version&gt;.dmg</b>, open it and drag <b>Rip It Out</b> to Applications.</li>
-            <li>macOS blocks the first start ("damaged" or "can't be opened"). Run this once in Terminal:
-              <pre>xattr -dr com.apple.quarantine "/Applications/Rip It Out.app"</pre></li>
-            <li>Start Rip It Out. The first song downloads the separation, beat and section models (about 410 MB, once).</li>
-          </ol>
-          <p class="req">Apple Silicon (M1 or newer) · macOS 13 Ventura or newer · about 1.1 GB, plus about 35 MB per song. Updates install from Settings > Updates.</p>
-        </div>
-        <div class="card">
-          <h3>Windows <span class="pill">preview</span></h3>
-          <ol>
-            <li>Download <b id="win-file">RipItOut-Setup-&lt;version&gt;.exe</b> and run it. It installs for your user, no administrator rights needed.</li>
-            <li>SmartScreen says "Windows protected your PC": click <b>More info</b>, then <b>Run anyway</b>.</li>
-            <li>With an NVIDIA graphics card, keep <b>GPU acceleration</b> ticked (about 2.6 GB): separation is much faster on the GPU. Without it, Rip It Out uses the CPU.</li>
-          </ol>
-          <p class="req">Installer about 400 MB · app about 1.5 GB · to update, install the new version over the old one.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section id="iphone">
-    <div class="wrap two">
-      <div>
-        <p class="kicker">iPhone and iPad · preview</p>
-        <h2>Practise anywhere</h2>
-        <p class="muted">The iOS app plays the songs of your library and records takes, with the same mixer, count-in, sections, loops and calibration, on video too. It reads the library from Nextcloud or any folder in the Files app, and takes recorded on the phone show up on the desktop and the other way round.</p>
-        <p class="muted">Adding and separating songs stays on the computer. There is no App Store build yet: you install it with Xcode on a Mac.</p>
-        <p><a href="https://github.com/frankNiessen/rip-it-out/blob/main/ios/README.md">Install the iPhone app with Xcode ↗</a></p>
-      </div>
-      <div class="card">
-        <h3>What the phone does</h3>
-        <ol>
-          <li><b>Practice:</b> play along with a Band fader, mute and solo per track, a count-in and section loops.</li>
-          <li><b>Record:</b> from the built-in microphone, a headset or a USB interface, with the camera if you like.</li>
-          <li><b>Takes:</b> watch and listen back, share as audio or video, or delete. Uploaded to your library in the background.</li>
-        </ol>
-      </div>
-    </div>
-  </section>
-
-  <section id="help">
-    <div class="wrap two">
-      <div>
-        <p class="kicker">Help</p>
-        <h2>Troubleshooting</h2>
-        <dl class="faq">
-          <dt>Adding a song from a link fails</dt>
-          <dd>The video site probably changed something. Check for a newer release first; if there is none, <i>Library > Update YouTube Downloader</i> fetches the newest downloader (<i>Reset YouTube Downloader</i> undoes it). Your own files always work.</dd>
-          <dt>The drums took the bass and synths along</dt>
-          <dd>Typical for electronic music added with the Band style. Tick the songs and choose <i>Redo separation as Electronic</i>.</dd>
-          <dt>My recording is silent</dt>
-          <dd>Check the input in Record > Setup (the level meter should move when you play) and allow microphone access in your system's privacy settings.</dd>
-          <dt>My playing sits early or late</dt>
-          <dd>Run Calibrate again, or adjust the take's Timing.</dd>
-          <dt>Something else</dt>
-          <dd><i>Library > Show Log</i>, and <a href="https://github.com/frankNiessen/rip-it-out/issues">open an issue</a> on GitHub.</dd>
-        </dl>
-      </div>
-      <div>
-        <p class="kicker">Privacy</p>
-        <h2>Stays on your computer</h2>
-        <p class="muted">There is no Rip It Out server. Your songs, tracks and recordings are processed and stored on your computer. The app only goes online when you add a song from a link, the first time it needs a model, and when you check for updates. <a href="privacy.html">Privacy policy</a></p>
-        <p class="kicker" style="margin-top:2.5rem">Please note</p>
-        <div class="legal">
-          <p><strong>Only download or process content you are authorized to use.</strong> You are responsible for complying with copyright law and the terms of the source service; YouTube's Terms of Service restrict downloading unless YouTube, the rights holders or applicable law permit it. <strong>Don't share separated tracks, downloads or exports of third-party music</strong> without the necessary rights.</p>
-          <p>Rip It Out does not circumvent DRM and grants no rights to any content. The MIT license covers the software only. Rip It Out is not affiliated with or endorsed by YouTube, Google, or any artist, label or rights holder.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-  <section id="support" class="support" hidden>
+<section id="support" class="support" hidden>
     <div class="wrap">
       <div>
         <h2>Free, and made by a musician</h2>
@@ -376,64 +85,6 @@
   </div>
 </footer>
 
-<script>
-  // The download buttons point at the newest release's files (their names carry the
-  // version), found through GitHub's API; without it they open the release page.
-  (function () {
-    const repo = "frankNiessen/rip-it-out";
-    // Where tips go (Ko-fi). Empty: the tip section and links stay hidden.
-    const TIP_URL = "https://ko-fi.com/frankniessen";
-    if (TIP_URL) {
-      document.querySelectorAll("[data-tip]").forEach((a) => { a.href = TIP_URL; });
-      document.querySelectorAll("#support, [data-tip-wrap]").forEach((el) => { el.hidden = false; });
-    }
-    const mb = (bytes) => Math.round(bytes / 1e6) + " MB";
-    fetch("https://api.github.com/repos/" + repo + "/releases/latest", { headers: { Accept: "application/vnd.github+json" } })
-      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((rel) => {
-        const version = (rel.tag_name || "").replace(/^v/, "");
-        const find = (re) => (rel.assets || []).find((a) => re.test(a.name));
-        const mac = find(/^RipItOut-[\d.]+\.dmg$/);
-        const win = find(/^RipItOut-Setup-[\d.]+\.exe$/);
-        const set = (id, asset, base) => {
-          const a = document.getElementById(id);
-          if (!asset) return;
-          a.href = asset.browser_download_url;
-          a.querySelector("[data-meta]").textContent = base + " · " + mb(asset.size);
-        };
-        set("dl-mac", mac, "Apple Silicon · macOS 13+");
-        set("dl-win", win, "Windows 10 and 11 · preview");
-        if (mac) document.getElementById("mac-file").textContent = mac.name;
-        if (win) document.getElementById("win-file").textContent = win.name;
-        const date = rel.published_at ? new Date(rel.published_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "";
-        document.getElementById("release-line").innerHTML =
-          "Version " + version + (date ? " · " + date : "") + " · free and open source (MIT) · " +
-          '<a href="' + rel.html_url + '">release notes</a>';
-      })
-      .catch(() => {});
-
-    // Windows visitors see the Windows button first.
-    if (/Windows/i.test(navigator.userAgent)) {
-      const mac = document.getElementById("dl-mac"), win = document.getElementById("dl-win");
-      mac.classList.add("second"); win.classList.remove("second");
-      win.parentNode.insertBefore(win, mac);
-    }
-
-    // The counter counts in, like the app before a take.
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduce) return;
-    const num = document.getElementById("lcd-num"), bar = document.getElementById("lcd-bar");
-    const beats = [...document.querySelectorAll("#lcd-beats i")];
-    let n = 0;
-    setInterval(() => {
-      const beat = n % 4, b = Math.floor(n / 4);
-      num.textContent = beat + 1;
-      num.style.color = beat === 0 ? "var(--lcd-ink)" : "#9fbf38";
-      bar.textContent = b === 0 ? "Count-in" : "Bar " + b;
-      beats.forEach((el, i) => el.classList.toggle("on", i === beat));
-      n = (n + 1) % 36;
-    }, 60000 / 120);
-  })();
-</script>
+<script src="site.js"></script>
 </body>
 </html>
