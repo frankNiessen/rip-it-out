@@ -22,11 +22,15 @@ WORK_DIR_NAME = ".stemtool-work"  # hidden, so Nextcloud (and the app) ignore it
 # adds a pass that pulls basses and synths back out of the drums stem (DnB, EDM).
 STYLES = ("standard", "electronic")
 
+# Demucs models. htdemucs_ft is a bag of four models, the best on a GPU. Without one it
+# takes over 15 minutes a song, so the CPU gets htdemucs: about 4x faster, a little worse.
+GPU_MODEL, CPU_MODEL = "htdemucs_ft", "htdemucs"
+
 
 @dataclass(frozen=True)
 class Settings:
     library_dir: Path
-    separation_model: str
+    model_setting: str  # "auto" or a Demucs model name
     beat_checkpoint: str
     device_setting: str  # "auto", "cuda", "cpu", ...
     shifts: int
@@ -40,6 +44,12 @@ class Settings:
     @property
     def device(self) -> str:
         return resolve_device(self.device_setting)
+
+    @property
+    def separation_model(self) -> str:
+        if self.model_setting != "auto":
+            return self.model_setting
+        return CPU_MODEL if self.device == "cpu" else GPU_MODEL
 
 
 @lru_cache(maxsize=None)
@@ -99,7 +109,7 @@ def load_settings() -> Settings:
     library = os.environ.get("STEMTOOL_LIBRARY") or read_config().get("library") or str(default_library())
     return Settings(
         library_dir=Path(library).expanduser().resolve(),
-        separation_model=os.environ.get("STEMTOOL_MODEL", "htdemucs_ft"),
+        model_setting=os.environ.get("STEMTOOL_MODEL", "auto"),
         beat_checkpoint=os.environ.get("STEMTOOL_BEAT_CHECKPOINT", "final0"),
         device_setting=os.environ.get("STEMTOOL_DEVICE", "auto"),
         shifts=int(os.environ.get("STEMTOOL_SHIFTS", "1")),

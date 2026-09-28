@@ -7,7 +7,10 @@ loaded between songs.
 
 from __future__ import annotations
 
+import os
 import threading
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 
 import numpy as np
 
@@ -31,6 +34,22 @@ def _get_model(name: str):
 STEMS = ("drums", "bass", "vocals", "other")
 
 
+def _cpu_pool() -> ThreadPoolExecutor:
+    """Threads that separate two chunks of the song at once, together on every logical
+    core. On its own PyTorch uses one thread per physical core, which on Windows leaves
+    half the CPU idle; measured there, this is about a quarter faster, and no slower on Linux."""
+    cores = os.cpu_count() or 1
+    workers = 2 if cores >= 4 else 1
+
+    def init() -> None:
+        import torch
+
+        torch.set_grad_enabled(False)  # per thread: the caller's no_grad doesn't reach here
+        torch.set_num_threads(max(1, cores // workers))
+
+    return ThreadPoolExecutor(workers, thread_name_prefix="demucs", initializer=init)
+
+
 def separate(mix: np.ndarray, sample_rate: int, model_name: str, device: str, shifts: int = 1) -> dict[str, np.ndarray]:
     """mix: samples x 2 float32. Returns {"drums", "bass", "vocals", "other"}, each
     shaped like mix; together they add up to Demucs' reconstruction of the mix."""
@@ -48,9 +67,9 @@ def separate(mix: np.ndarray, sample_rate: int, model_name: str, device: str, sh
         std = torch.tensor(1.0)
     wav = (wav - mean) / std
 
-    with torch.no_grad():
+    with torch.no_grad(), (_cpu_pool() if device == "cpu" else nullcontext()) as pool:
         sources = apply_model(
-            model, wav[None], device=device, shifts=shifts, split=True, overlap=0.25, progress=False
+            model, wav[None], device=device, shifts=shifts, split=True, overlap=0.25, progress=False, pool=pool
         )[0]
     sources = sources * std + mean
     out = {name: sources[model.sources.index(name)].cpu().numpy().T.copy() for name in STEMS}

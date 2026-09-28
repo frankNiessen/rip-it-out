@@ -65,7 +65,7 @@ has its own tests: `node --test desktop/updates.test.js`.
 |---|---|---|
 | `STEMTOOL_LIBRARY` | from Settings, else `~/Music/Rip It Out` | Library folder; when set, the Settings tab can't change it |
 | `STEMTOOL_CONFIG` | `~/Library/Application Support/Rip It Out/settings.json` | Settings file |
-| `STEMTOOL_MODEL` | `htdemucs_ft` | Demucs model (`htdemucs` is about 4x faster, a little worse) |
+| `STEMTOOL_MODEL` | `auto` | Demucs model; `auto` is `htdemucs_ft` on a GPU and `htdemucs` (about 4x faster, a little worse) on the CPU |
 | `STEMTOOL_DEVICE` | `auto` | `auto`, `mps`, `cuda` or `cpu` |
 | `STEMTOOL_SHIFTS` | `1` | Demucs shifts: higher is slightly better and slower |
 | `STEMTOOL_BEAT_CHECKPOINT` | `final0` | beat_this checkpoint |
@@ -211,8 +211,8 @@ mkdir -p /tmp/site/img /tmp/site/fonts && cp site/*.html site/*.css site/*.js /t
 The engine runs on Linux with an NVIDIA GPU (CUDA) or on the CPU; you use the UI in a
 browser on the same machine. Install Python 3.12, FFmpeg and [Deno](https://deno.com),
 set up the virtual environment as in [Development](#development), and see
-`deploy/stemtool.service` to run it as a systemd user service. On the CPU, set
-`STEMTOOL_MODEL=htdemucs` to keep a song to a few minutes.
+`deploy/stemtool.service` to run it as a systemd user service. On the CPU it uses the
+faster `htdemucs` model, to keep a song to a few minutes.
 
 ## Legal
 
