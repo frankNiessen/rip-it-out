@@ -27,46 +27,38 @@
 <main>
   <section class="page-head">
     <div class="wrap">
-      <p class="kicker">Download</p>
       <h1>Get Rip It Out</h1>
       <p class="lead">Free for Mac and Windows. Your songs and recordings stay on your computer.</p>
-      <div class="downloads" id="download-buttons">
-          <a class="dl" id="dl-mac" href="https://github.com/frankNiessen/rip-it-out/releases/latest">
-            <span class="os">Download for Mac</span>
-            <span class="meta" data-meta>Apple Silicon · macOS 13+</span>
-          </a>
-          <a class="dl second" id="dl-win" href="https://github.com/frankNiessen/rip-it-out/releases/latest">
-            <span class="os">Download for Windows</span>
-            <span class="meta" data-meta>Windows 10 and 11 · preview</span>
-          </a>
-        </div>
-        <p class="release-line" id="release-line">Free and open source (MIT) · <a href="https://github.com/frankNiessen/rip-it-out/releases">all releases</a></p>
+      <div class="downloads">
+        <a class="dl" id="dl-mac" href="https://github.com/frankNiessen/rip-it-out/releases/latest">Download for Mac</a>
+        <a class="dl second" id="dl-win" href="https://github.com/frankNiessen/rip-it-out/releases/latest">Download for Windows</a>
+      </div>
+      <p class="fine" id="release-line">Free. <a href="https://github.com/frankNiessen/rip-it-out/releases">All versions</a></p>
     </div>
   </section>
 <section id="download">
     <div class="wrap">
-      <p class="kicker">Install</p>
-      <h2>First start</h2>
+      <h2>The first start</h2>
       <p class="muted">The builds aren't signed by Apple or Microsoft yet, so the first start needs one extra step.</p>
       <div class="install">
         <div class="card">
           <h3>Mac</h3>
           <ol>
-            <li>Download <b id="mac-file">RipItOut-&lt;version&gt;.dmg</b>, open it and drag <b>Rip It Out</b> to Applications.</li>
+            <li>Download the Mac download, open it and drag <b>Rip It Out</b> to Applications.</li>
             <li>macOS blocks the first start ("damaged" or "can't be opened"). Run this once in Terminal:
               <pre>xattr -dr com.apple.quarantine "/Applications/Rip It Out.app"</pre></li>
-            <li>Start Rip It Out. The first song downloads the separation, beat and section models (about 410 MB, once).</li>
+            <li>Start Rip It Out. The first song takes a little longer while the app fetches what it needs (once).</li>
           </ol>
-          <p class="req">Apple Silicon (M1 or newer) · macOS 13 Ventura or newer · about 1.1 GB, plus about 35 MB per song. Updates install from Settings > Updates.</p>
+          <p class="req">For Macs with an Apple chip (M1 or newer). Updates install from Settings.</p>
         </div>
         <div class="card">
-          <h3>Windows <span class="pill">preview</span></h3>
+          <h3>Windows</h3>
           <ol>
-            <li>Download <b id="win-file">RipItOut-Setup-&lt;version&gt;.exe</b> and run it. It installs for your user, no administrator rights needed.</li>
+            <li>Download the Windows download and run it. It installs for your user, no administrator rights needed.</li>
             <li>SmartScreen says "Windows protected your PC": click <b>More info</b>, then <b>Run anyway</b>.</li>
-            <li>With an NVIDIA graphics card, keep <b>GPU acceleration</b> ticked (about 2.6 GB): separation is much faster on the GPU. Without it, Rip It Out uses the CPU.</li>
+            <li>With an NVIDIA graphics card, keep <b>GPU acceleration</b> ticked: new songs are ready much faster.</li>
           </ol>
-          <p class="req">Installer about 400 MB · app about 1.5 GB · to update, install the new version over the old one.</p>
+          <p class="req">For Windows 10 and 11. To update, install the new version over the old one.</p>
         </div>
       </div>
     </div>
