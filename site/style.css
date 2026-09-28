@@ -124,8 +124,19 @@ p { margin: .6rem 0 0; }
             font: 800 clamp(1.4rem, 3vw, 2rem)/1.2 var(--sans); font-stretch: 112%; }
 .steps li::before { content: counter(step); font: 500 .85rem/1 var(--mono); color: var(--accent); width: 1.4rem; }
 
-/* the closing call: the name, one line, the downloads */
-.closing { text-align: center; background: var(--panel); }
+/* photos of players: a band row, and single photos beside the text */
+.band { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-top: 3rem; }
+.band img, .say .photo { width: 100%; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); }
+.band img { aspect-ratio: 4 / 5; }
+.say .photo { aspect-ratio: 3 / 2; }
+@media (max-width: 640px) {
+  .band { grid-template-columns: 1fr 1fr; gap: .6rem; }
+  .band img:first-child { grid-column: 1 / -1; aspect-ratio: 3 / 2; }
+}
+
+/* the closing call: the name, one line, the downloads, over a dimmed photo */
+.closing { text-align: center; padding-top: clamp(5rem, 12vw, 9rem) !important; padding-bottom: clamp(5rem, 12vw, 9rem) !important;
+           background: linear-gradient(rgba(18, 20, 22, .84), rgba(18, 20, 22, .93)), url("img/photo-acoustic.jpg") center / cover; }
 .closing .downloads { justify-content: center; }
 .closing-name { margin: 0; font: 800 clamp(2.4rem, 6vw, 4rem)/1 var(--sans); font-stretch: 125%; letter-spacing: -.02em; }
 .closing-name::before { content: ""; display: inline-block; width: .3em; height: .3em; margin-right: .35em; vertical-align: .12em; background: var(--accent); }
