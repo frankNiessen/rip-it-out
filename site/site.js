@@ -9,13 +9,17 @@
     document.querySelectorAll("#support, [data-tip-wrap]").forEach((el) => { el.hidden = false; });
   }
 
-  const mac = document.getElementById("dl-mac"), win = document.getElementById("dl-win");
-  if (!mac && !win) return;
+  const macs = document.querySelectorAll('[data-dl="mac"]'), wins = document.querySelectorAll('[data-dl="win"]');
+  if (!macs.length && !wins.length) return;
 
   // Windows visitors see the Windows button first.
-  if (mac && win && /Windows/i.test(navigator.userAgent)) {
-    mac.classList.add("second"); win.classList.remove("second");
-    win.parentNode.insertBefore(win, mac);
+  if (/Windows/i.test(navigator.userAgent)) {
+    document.querySelectorAll(".downloads").forEach((row) => {
+      const mac = row.querySelector('[data-dl="mac"]'), win = row.querySelector('[data-dl="win"]');
+      if (!mac || !win) return;
+      mac.classList.add("second"); win.classList.remove("second");
+      row.insertBefore(win, mac);
+    });
   }
 
   fetch("https://api.github.com/repos/" + repo + "/releases/latest", { headers: { Accept: "application/vnd.github+json" } })
@@ -23,8 +27,8 @@
     .then((rel) => {
       const find = (re) => (rel.assets || []).find((a) => re.test(a.name));
       const dmg = find(/^RipItOut-[\d.]+\.dmg$/), exe = find(/^RipItOut-Setup-[\d.]+\.exe$/);
-      if (mac && dmg) mac.href = dmg.browser_download_url;
-      if (win && exe) win.href = exe.browser_download_url;
+      if (dmg) macs.forEach((a) => { a.href = dmg.browser_download_url; });
+      if (exe) wins.forEach((a) => { a.href = exe.browser_download_url; });
       const line = document.getElementById("release-line");
       if (line && rel.tag_name) {
         line.innerHTML = "Free. Version " + rel.tag_name.replace(/^v/, "") +
