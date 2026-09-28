@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Download · Rip It Out</title>
+<meta name="description" content="Download Rip It Out for Mac (Apple Silicon) and Windows, free.">
+<meta property="og:title" content="Download · Rip It Out">
+<meta property="og:description" content="Download Rip It Out for Mac (Apple Silicon) and Windows, free.">
+<meta property="og:image" content="img/record.png">
+<link rel="icon" href="icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <a class="brand" href="index.html">Rip It Out</a>
+  <nav aria-label="Pages">
+    <a href="index.html">Home</a>
+    <a href="features.html">Features</a>
+    <a href="download.html" aria-current="page">Download</a>
+    <a href="mobile.html">Mobile app</a>
+    <a href="help.html">Help</a>
+  </nav>
+  <a class="gh" href="https://github.com/frankNiessen/rip-it-out">GitHub ↗</a>
+</header>
+
+<main>
+  <section class="page-head">
+    <div class="wrap">
+      <p class="kicker">Download</p>
+      <h1>Get Rip It Out</h1>
+      <p class="lead">Free for Mac and Windows. Your songs and recordings stay on your computer.</p>
+      <div class="downloads" id="download-buttons">
+          <a class="dl" id="dl-mac" href="https://github.com/frankNiessen/rip-it-out/releases/latest">
+            <span class="os">Download for Mac</span>
+            <span class="meta" data-meta>Apple Silicon · macOS 13+</span>
+          </a>
+          <a class="dl second" id="dl-win" href="https://github.com/frankNiessen/rip-it-out/releases/latest">
+            <span class="os">Download for Windows</span>
+            <span class="meta" data-meta>Windows 10 and 11 · preview</span>
+          </a>
+        </div>
+        <p class="release-line" id="release-line">Free and open source (MIT) · <a href="https://github.com/frankNiessen/rip-it-out/releases">all releases</a></p>
+    </div>
+  </section>
+<section id="download">
+    <div class="wrap">
+      <p class="kicker">Install</p>
+      <h2>First start</h2>
+      <p class="muted">The builds aren't signed by Apple or Microsoft yet, so the first start needs one extra step.</p>
+      <div class="install">
+        <div class="card">
+          <h3>Mac</h3>
+          <ol>
+            <li>Download <b id="mac-file">RipItOut-&lt;version&gt;.dmg</b>, open it and drag <b>Rip It Out</b> to Applications.</li>
+            <li>macOS blocks the first start ("damaged" or "can't be opened"). Run this once in Terminal:
+              <pre>xattr -dr com.apple.quarantine "/Applications/Rip It Out.app"</pre></li>
+            <li>Start Rip It Out. The first song downloads the separation, beat and section models (about 410 MB, once).</li>
+          </ol>
+          <p class="req">Apple Silicon (M1 or newer) · macOS 13 Ventura or newer · about 1.1 GB, plus about 35 MB per song. Updates install from Settings > Updates.</p>
+        </div>
+        <div class="card">
+          <h3>Windows <span class="pill">preview</span></h3>
+          <ol>
+            <li>Download <b id="win-file">RipItOut-Setup-&lt;version&gt;.exe</b> and run it. It installs for your user, no administrator rights needed.</li>
+            <li>SmartScreen says "Windows protected your PC": click <b>More info</b>, then <b>Run anyway</b>.</li>
+            <li>With an NVIDIA graphics card, keep <b>GPU acceleration</b> ticked (about 2.6 GB): separation is much faster on the GPU. Without it, Rip It Out uses the CPU.</li>
+          </ol>
+          <p class="req">Installer about 400 MB · app about 1.5 GB · to update, install the new version over the old one.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Rip It Out · free and open source · photo by <a href="https://www.pexels.com/photo/a-man-playing-electronic-drums-7715296/">Boris Pavlikovsky</a> on Pexels</span>
+    <span><a href="privacy.html">Privacy</a> · <a href="https://github.com/frankNiessen/rip-it-out">Source on GitHub</a> · <a href="https://github.com/frankNiessen/rip-it-out/releases">Releases</a><span data-tip-wrap hidden> · <a data-tip href="#">Buy me a coffee</a></span></span>
+  </div>
+</footer>
+
+<script src="site.js"></script>
+</body>
+</html>
