@@ -25,6 +25,7 @@ is GPL or AGPL licensed, or if the bundled ffmpeg is not a plain LGPL 2.1 build.
 | FastAPI, Starlette, Uvicorn, python-multipart | MIT, BSD, Apache-2.0 | PyPI |
 | Archivo and Martian Mono fonts (in `stemtool/static/fonts`) | SIL Open Font License 1.1 | https://github.com/Omnibus-Type/Archivo, https://github.com/evilmartians/mono |
 | NumPy, SciPy, soundfile, mido | BSD, MIT | PyPI |
+| Demo song "Big Rock" by Kevin MacLeod (in `stemtool/demo`: its four tracks, click, beats and sections) | Creative Commons Attribution 4.0, https://creativecommons.org/licenses/by/4.0/ | https://incompetech.com |
 
 The LGPL components are separate, replaceable files (the ffmpeg programs and
 Python extension modules). Their source code is available at the links above.
