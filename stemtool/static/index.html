@@ -952,7 +952,9 @@ function showSongMeta() {
   const m = current.m;
   updateGridTools();
   const source = m.source_url ? ` · <a href="${esc(m.source_url)}" target="_blank" rel="noopener">Source</a>` : "";
-  const meta = `${m.bpm ? Math.round(m.bpm) + " bpm · " : ""}${current.bpb}/4 · ${fmtTime(m.duration_s)}${source}`;
+  // Songs that ship with the app (the demo) carry their license, which asks for credit.
+  const license = m.license ? ` · ${esc(m.artist || "")} · <a href="${esc(m.license.url)}" target="_blank" rel="noopener">${esc(m.license.name)}</a>` : "";
+  const meta = `${m.bpm ? Math.round(m.bpm) + " bpm · " : ""}${current.bpb}/4 · ${fmtTime(m.duration_s)}${source}${license}`;
   $$(".songbar .meta").forEach((el) => { el.innerHTML = meta; });
 }
 

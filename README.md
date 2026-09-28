@@ -138,6 +138,17 @@ A folder only counts as a song once `manifest.json` exists; songs are built
 in the hidden work folder and moved into place in one step, so sync clients never pick up
 half-written songs.
 
+### The demo song
+
+The app ships one song, ready-made in `stemtool/demo`: "Big Rock" by Kevin MacLeod
+([incompetech.com](https://incompetech.com)), licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), which asks for credit (the
+song bar shows it, from `license` in its manifest). The engine copies it into the library
+the first time it starts with an empty library, then sets `demo_added` in the settings
+file, so existing libraries don't get it and a deleted demo stays deleted. It was made
+with the normal pipeline (`htdemucs_ft`, ffmpeg 9 for the AAC files); the sections were
+then set by hand, with the detected ones kept for **Reset**.
+
 ## Building the desktop app
 
 ### macOS

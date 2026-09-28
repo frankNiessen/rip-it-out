@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from yt_dlp.utils import DownloadError
 
-from . import __version__, audio, config, library, localfiles, pipeline, sections, takes, youtube
+from . import __version__, audio, config, demo, library, localfiles, pipeline, sections, takes, youtube
 from .config import STYLES, load_settings
 from .jobs import JobManager
 
@@ -27,6 +27,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 settings = load_settings()
 settings.library_dir.mkdir(parents=True, exist_ok=True)
+try:
+    demo.add_to(settings.library_dir)
+except OSError as exc:  # a read-only or full disk must not keep the app from starting
+    logging.getLogger("stemtool").warning("Demo song not added: %s", exc)
 manager = JobManager(settings)
 STATIC = Path(__file__).parent / "static"
 
