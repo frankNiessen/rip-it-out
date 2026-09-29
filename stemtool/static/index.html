@@ -445,6 +445,8 @@
       <div id="setup-enable">
         <p class="hint" style="margin-top:0">The browser needs permission to use your audio interface (and camera).</p>
         <button class="btn" id="enable-input">Allow input</button>
+        <p class="note error" id="input-denied" hidden></p>
+        <button class="btn quiet" id="open-privacy" hidden style="margin-top:.6rem">Open System Settings</button>
       </div>
       <p class="note error" id="insecure" hidden style="grid-column: 1 / -1; margin: 0">
         Browsers only allow audio input and camera on localhost or HTTPS, not on this address.
@@ -1873,7 +1875,31 @@ function setupSummary() {
   $("#setup-summary").textContent = `${inName} · ${cam} · latency ${$("#latency").value} ms`;
 }
 
+/** Why input was refused, and how to undo it. Once someone says no, macOS and Windows
+ * never ask again, so pressing Allow input can't help until the setting is changed. */
+async function micBlocked() {
+  const access = await window.ripitout?.media?.access().catch(() => null);
+  return access?.microphone === "denied" || access?.microphone === "restricted";
+}
+async function explainDenied(err) {
+  const box = $("#input-denied"), open = $("#open-privacy");
+  if (await micBlocked()) {
+    const mac = /Mac/.test(navigator.platform);
+    box.textContent = mac
+      ? "Your Mac doesn't let Rip It Out use the microphone. Turn Rip It Out on in System Settings > Privacy & Security > Microphone, then press Allow input again (if it still says no, quit and reopen Rip It Out)."
+      : "Windows doesn't let apps use the microphone. Turn on microphone access in Settings > Privacy & security > Microphone, then press Allow input again.";
+    open.textContent = mac ? "Open System Settings" : "Open Windows Settings";
+    open.hidden = false;
+  } else {
+    box.textContent = `No access to audio input: ${err.message}. Check that an input is connected, and allow access when asked.`;
+    open.hidden = true;
+  }
+  box.hidden = false;
+}
+$("#open-privacy").addEventListener("click", () => window.ripitout?.media?.openSettings("microphone"));
+
 $("#enable-input").addEventListener("click", async () => {
+  $("#input-denied").hidden = true; $("#open-privacy").hidden = true;
   try {
     audioCtx();
     const tmp = await navigator.mediaDevices.getUserMedia({ audio: true, video: true }).catch(() => navigator.mediaDevices.getUserMedia({ audio: true }));
@@ -1881,7 +1907,7 @@ $("#enable-input").addEventListener("click", async () => {
     await listDevices();
     store.set("inputAllowed", true);
     await openInput(); loadLatency(); setupSummary();
-  } catch (err) { alert(`No access to audio input: ${err.message}`); }
+  } catch (err) { await explainDenied(err); }
 });
 for (const [id, key] of [["#in-dev", "dev.in"], ["#cam-dev", "dev.cam"]]) {
   $(id).addEventListener("change", async () => {
@@ -1957,6 +1983,7 @@ async function onRecordTab() {
     } catch { /* fall through to asking again */ }
   }
   $("#setup").open = true;
+  if (await micBlocked()) explainDenied(new Error("Permission denied")); // say why before a click
 }
 
 // ---- calibration ----------------------------------------------------------------
