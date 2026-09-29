@@ -34,13 +34,20 @@ async function fakeGitHub(files) {
 function release(base, version, manifestDoc) {
   const assets = [{ name: `RipItOut-${version}.dmg`, browser_download_url: `${base}/dmg` }];
   if (manifestDoc) assets.push({ name: `RipItOut-${version}.update.json`, browser_download_url: `${base}/manifest` });
-  return { tag_name: `v${version}`, html_url: `${base}/notes`, assets };
+  return { tag_name: `v${version}`, html_url: `${base}/notes`, body: "- New things.\n\n## What's Changed\n* x", assets };
 }
 
 test("versions compare numerically", () => {
   assert.equal(updates.compareVersions("0.10.0", "0.9.9"), 1);
   assert.equal(updates.compareVersions("v0.4.0", "0.4.0"), 0);
   assert.equal(updates.compareVersions("0.4.0", "0.4.1"), -1);
+});
+
+test("release notes leave out GitHub's generated list", () => {
+  const body = "## Desktop app\r\n\r\n- Delete songs.\r\n\n## What's Changed\n* Version 0.10.0 by @x\n\n**Full Changelog**: https://x";
+  assert.equal(updates.releaseNotes(body), "## Desktop app\n\n- Delete songs.");
+  assert.equal(updates.releaseNotes("**Full Changelog**: https://x"), "");
+  assert.equal(updates.releaseNotes(null), "");
 });
 
 test("the manifest signature is checked", () => {
@@ -64,6 +71,7 @@ test("check finds a newer signed release, and nothing when up to date", async ()
     assert.equal(r.newer, true);
     assert.equal(r.update.url, `${gh.base}/dmg`);
     assert.equal(r.update.sha256, m.sha256);
+    assert.equal(r.notes, "- New things.");
 
     const same = await updates.check({ currentVersion: "0.5.0", releasesUrl: `${gh.base}/latest`, publicKey: PUB });
     assert.equal(same.newer, false);

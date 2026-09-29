@@ -1,4 +1,5 @@
-// App updates from GitHub releases, only when the user asks.
+// App updates from GitHub releases. The app looks for one when it starts (unless that is
+// turned off in Settings) and when asked; it downloads and installs only when asked.
 //
 // Each release carries the DMG and RipItOut-<version>.update.json: version, DMG name,
 // size and SHA-256, signed with the project's ed25519 key (macos/sign_update.mjs; the
@@ -53,6 +54,14 @@ async function getJson(url, userAgent) {
   return res.json();
 }
 
+// The release notes as written for the release, without the list GitHub adds below them
+// ("What's Changed", "Full Changelog"), which is for developers.
+function releaseNotes(body) {
+  const text = String(body || "").replace(/\r\n/g, "\n");
+  const cut = text.search(/^(## What's Changed|\*\*Full Changelog\*\*)/m);
+  return (cut < 0 ? text : text.slice(0, cut)).trim();
+}
+
 // The latest release, and whether it can be installed from within the app.
 async function check({ currentVersion, releasesUrl = RELEASES, publicKey = PUBLIC_KEY }) {
   const userAgent = `RipItOut/${currentVersion}`;
@@ -62,7 +71,7 @@ async function check({ currentVersion, releasesUrl = RELEASES, publicKey = PUBLI
   }
   const version = String(release.tag_name || "").replace(/^v/, "");
   const result = { current: currentVersion, version, newer: compareVersions(version, currentVersion) > 0,
-    notesUrl: release.html_url, update: null };
+    notesUrl: release.html_url, notes: releaseNotes(release.body), update: null };
   if (!result.newer) return result;
   const assets = release.assets || [];
   const info = assets.find((a) => a.name === `RipItOut-${version}.update.json`);
@@ -178,6 +187,6 @@ function writeSwapScript(dir) {
 }
 
 module.exports = {
-  PUBLIC_KEY, compareVersions, signedMessage, verifyManifest, check, download, extractApp,
+  PUBLIC_KEY, compareVersions, signedMessage, verifyManifest, releaseNotes, check, download, extractApp,
   bundlePath, installProblem, writeSwapScript,
 };
