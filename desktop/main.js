@@ -481,6 +481,21 @@ if (!app.requestSingleInstanceLock()) {
     return result.canceled ? null : result.filePaths[0];
   });
 
+  // Microphone and camera access as the system has it. Once someone says no, macOS and
+  // Windows never ask again: the page then says so and opens the privacy settings.
+  ipcMain.handle("media-access", () => ({
+    microphone: systemPreferences.getMediaAccessStatus?.("microphone") ?? "unknown",
+    camera: systemPreferences.getMediaAccessStatus?.("camera") ?? "unknown",
+  }));
+  ipcMain.handle("open-privacy-settings", (_e, kind) => {
+    const camera = kind === "camera";
+    const url = process.platform === "darwin"
+      ? `x-apple.systempreferences:com.apple.preference.security?Privacy_${camera ? "Camera" : "Microphone"}`
+      : process.platform === "win32" ? `ms-settings:privacy-${camera ? "webcam" : "microphone"}` : null;
+    if (url) shell.openExternal(url);
+    return !!url;
+  });
+
   app.whenReady().then(() => {
     buildMenu();
     setupPermissions();

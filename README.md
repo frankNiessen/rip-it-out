@@ -79,7 +79,8 @@ your computer, and there is no Rip It Out server. The app connects to YouTube wh
 downloads source audio, to the model publishers (Meta's `dl.fbaipublicfiles.com` for
 Demucs, JKU Linz's `cloud.cp.jku.at` for beat_this, Hugging Face for the section model)
 the first time it needs a model, to PyPI only when you choose *Update YouTube
-Downloader*, and to GitHub only when you choose *Check for updates*.
+Downloader*, and to GitHub's releases when it starts (to show an update badge; *Settings >
+Updates* turns this off) and when you choose *Check for updates*.
 
 | Step | What does it |
 |---|---|
