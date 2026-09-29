@@ -82,6 +82,10 @@ class ReseparateRequest(BaseModel):
     style: str
 
 
+class DeleteSongsRequest(BaseModel):
+    folders: list[str]
+
+
 class TakeUpdate(BaseModel):
     latency_ms: float | None = None
     video_nudge_ms: float | None = None
@@ -343,6 +347,25 @@ def reseparate(req: ReseparateRequest) -> dict:
         raise HTTPException(400, f"Unknown style {req.style!r}")
     queued = sum(manager.reseparate(f, req.style) for f in req.folders)
     return {"queued": queued}
+
+
+@app.post("/api/library/delete")
+def delete_songs(req: DeleteSongsRequest) -> dict:
+    """Deletes songs from the library, with their takes. A song that is being
+    separated again is skipped, and so is one whose files can't be removed."""
+    busy = manager.busy_folders()
+    deleted, skipped = [], []
+    for folder in req.folders:
+        if folder in busy:
+            skipped.append(folder)
+            continue
+        try:
+            if library.delete_song(settings.library_dir, folder):
+                deleted.append(folder)
+        except OSError as exc:
+            logging.getLogger("stemtool").warning("Couldn't delete %s: %s", folder, exc)
+            skipped.append(folder)
+    return {"deleted": deleted, "skipped": skipped}
 
 
 # --- takes --------------------------------------------------------------------

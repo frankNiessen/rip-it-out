@@ -137,6 +137,7 @@ struct LibraryView: View {
     @Environment(LibraryStore.self) private var library
     @AppStorage("last.song") private var lastSong = ""
     @State private var search = ""
+    @State private var deleting: Song?
     /// Collapsed groups, remembered (like the desktop's folded groups).
     @AppStorage("library.collapsed") private var collapsedRaw = ""
     private var collapsed: Set<String> { Set(collapsedRaw.split(separator: "\n").map(String.init)) }
@@ -183,6 +184,9 @@ struct LibraryView: View {
                             NavigationLink(value: Route.song(id: song.id)) { SongRow(song: song) }
                                 .listRowBackground(Theme.bg)
                                 .listRowSeparatorTint(Theme.line)
+                                .swipeActions {
+                                    Button("Delete", role: .destructive) { deleting = song }
+                                }
                         }
                     } header: {
                         Button { withAnimation(.easeOut(duration: 0.15)) { toggle(group.name) } } label: {
@@ -218,6 +222,17 @@ struct LibraryView: View {
         }
         .searchable(text: $search)
         .refreshable { await library.reload() }
+        .confirmationDialog(deleting.map { "Delete \($0.title)?" } ?? "",
+                            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+                            titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { if let d = deleting { Task { await library.delete(d) } } }
+        } message: {
+            if let d = deleting {
+                Text(d.takeCount > 0
+                     ? "The song and its \(d.takeCount == 1 ? "take" : "\(d.takeCount) takes") are removed from the library, also on your other devices and in the desktop app."
+                     : "The song is removed from the library, also on your other devices and in the desktop app.")
+            }
+        }
         .navigationTitle("Songs")
         .navigationBarTitleDisplayMode(.inline)
         .themedNavigation()

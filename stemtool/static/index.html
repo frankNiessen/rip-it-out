@@ -414,6 +414,7 @@
           <button class="btn quiet" data-redo="electronic">Electronic</button>
           <button class="btn quiet" data-redo="standard">Band</button>
         </span>
+        <button class="btn quiet danger" id="sel-delete">Delete</button>
         <button class="btn quiet" id="sel-clear">Clear selection</button>
       </div>
       <div id="songs"></div>
@@ -596,7 +597,6 @@ function showTab(name) {
     $(`#t-${t}`).setAttribute("aria-selected", String(t === name));
     $(`#tab-${t}`).hidden = t !== name;
   }
-  store.set("tab", name);
   if (name === "play") decks.play.activate();
   if (name === "record") { decks.record.activate(); onRecordTab(); }
   if (name === "settings") loadSettings();
@@ -656,10 +656,7 @@ $("#lib-form").addEventListener("submit", async (e) => {
   note.className = "note"; note.textContent = "Switching…";
   try {
     const s = await api("/api/settings", { method: "PUT", body: JSON.stringify({ library_dir: $("#lib-path").value }) });
-    engine.stop(); current = null; loadingFolder = null; unloadTake();
-    Object.values(decks).forEach((d) => d.clear());
-    $$(".songbar .meta").forEach((el) => { el.textContent = ""; });
-    store.set("song", null);
+    unloadSong();
     showStatus(s); await refreshLibrary(); refreshJobs();
     $("#lib-path").value = s.library_dir;
     note.textContent = `Library switched. ${songs.length} ${songs.length === 1 ? "song" : "songs"} found.`;
@@ -915,6 +912,22 @@ $("#sel-move").addEventListener("click", async () => {
   selected.clear(); $("#sel-group").value = "";
   refreshLibrary();
 });
+$("#sel-delete").addEventListener("click", async () => {
+  if (recording) return;
+  const chosen = songs.filter((s) => selected.has(s.folder));
+  const n = chosen.length, t = chosen.reduce((sum, s) => sum + (s.takes || 0), 0);
+  const what = `${n} ${n === 1 ? "song" : "songs"}${t ? ` and ${t} ${t === 1 ? "take" : "takes"}` : ""}`;
+  if (!confirm(`Delete ${what}? The files are removed from the library folder (and from your other devices, if the library syncs). This can't be undone.`)) return;
+  const note = $("#add-note");
+  try {
+    const r = await api("/api/library/delete", { method: "POST", body: JSON.stringify({ folders: chosen.map((s) => s.folder) }) });
+    if (current && r.deleted.includes(current.folder)) unloadSong();
+    selected.clear(); await refreshLibrary();
+    note.className = r.skipped.length ? "note error" : "note";
+    note.textContent = `${r.deleted.length} deleted.` + (r.skipped.length
+      ? ` ${r.skipped.length} couldn't be deleted: being separated again, or a file is open in another program.` : "");
+  } catch (err) { note.className = "note error"; note.textContent = err.message; }
+});
 $$("[data-redo]").forEach((b) => b.addEventListener("click", async () => {
   const style = b.dataset.redo;
   const n = selected.size;
@@ -932,6 +945,15 @@ function audioCtx() {
 }
 let current = null;      // { folder, m, buffers }
 let loadingFolder = null;
+
+/** Forgets the loaded song: the library changed, or the song was deleted. */
+function unloadSong() {
+  engine.stop(); current = null; loadingFolder = null; unloadTake();
+  Object.values(decks).forEach((d) => d.clear());
+  $$(".songbar .meta").forEach((el) => { el.textContent = ""; });
+  $$(".song-pick").forEach((sel) => { sel.value = ""; });
+  store.set("song", null);
+}
 
 function fillSongPickers() {
   const byGroup = new Map();
@@ -2437,8 +2459,6 @@ refreshJobs();
 refreshLibrary().then(() => {
   const saved = store.get("song", null);
   if (saved && songs.some((s) => s.folder === saved)) selectSong(saved);
-  const tab = store.get("tab", "library");
-  if (tab !== "library") showTab(tab);
 });
 setInterval(refreshJobs, 2000);
 // Browsers keep audio suspended until the first click; resume it then.

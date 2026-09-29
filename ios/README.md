@@ -18,7 +18,9 @@ and **Delete**. The
 to the last song.
 
 - **Library:** your songs by group, with search. Songs that are only in the cloud are
-  downloaded when you open them.
+  downloaded when you open them. Swipe a song to the left to delete it with its takes,
+  everywhere the library syncs to (the desktop app deletes songs too: select them, then
+  **Delete**).
 - **Play along:** one **Band** fader for the whole song, the click on or off, and mute
   (speaker) or solo (headphones) for drums, bass, vocals and other (solo: hear only the
   soloed tracks; a track is muted or soloed, not both), the bar and beat counter, the tempo view with the song's
@@ -38,7 +40,7 @@ to the last song.
 The app is for practice: everything that edits (the beat grid, sections, a take's
 timing, level or name) stays in the desktop app, and the phone picks up
 the changes. The iOS app never changes a song's `manifest.json`, so two devices never
-write the same file.
+write the same file (deleting a song removes its whole folder).
 
 ## Run it on your iPhone
 

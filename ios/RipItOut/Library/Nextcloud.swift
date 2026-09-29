@@ -394,14 +394,15 @@ final class Nextcloud: @unchecked Sendable {
 
     /// Deletes a file or folder on the server. A take still waiting for its upload was
     /// never there: nothing to delete. One being uploaded right now is stopped, and what
-    /// made it up is removed afterwards.
+    /// made it up is removed afterwards. Deleting a song does the same for its takes.
     func deleteRemote(_ local: URL) throws {
         guard let rel = relative(local) else { return }
+        let inside = { (item: String) in item == rel || item.hasPrefix(rel + "/") }
         queueLock.lock()
         let waiting = readQueue().contains(rel)
         let busy = currentUpload == rel
-        if busy { cancelled.insert(rel) }
-        writeQueue(readQueue().filter { $0 != rel })
+        if let current = currentUpload, inside(current) { cancelled.insert(current) }
+        writeQueue(readQueue().filter { !inside($0) })
         queueLock.unlock()
         if busy { Log.write("delete \(rel): stops its upload"); return }
         if waiting { Log.write("delete \(rel): not uploaded yet, nothing on the server"); return }
