@@ -105,8 +105,8 @@ test("download keeps only a file that matches size and hash", async () => {
   } finally { gh.close(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-function fakeApp(dir, version) {
-  const app = path.join(dir, "Rip It Out.app");
+function fakeApp(dir, version, name = "Rip It Out.app") {
+  const app = path.join(dir, name);
   fs.mkdirSync(path.join(app, "Contents", "MacOS"), { recursive: true });
   fs.writeFileSync(path.join(app, "Contents", "Info.plist"), `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -143,11 +143,50 @@ test("the swap script replaces the app after the old one quit", () => {
     const staged = fakeApp(path.join(dir, "update"), "0.5.0");
     const script = updates.writeSwapScript(dir);
     const gone = spawnSync("true").pid; // a process that has already exited
-    const r = spawnSync("/bin/bash", [script, String(gone), staged, target], { env: { ...process.env, RIPITOUT_OPEN: "true" }, encoding: "utf8" });
+    const spare = path.join(dir, "update");
+    const r = spawnSync("/bin/bash", [script, String(gone), staged, target, spare], { env: { ...process.env, RIPITOUT_OPEN: "true" }, encoding: "utf8" });
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.match(fs.readFileSync(path.join(target, "Contents", "Info.plist"), "utf8"), /0\.5\.0/);
     assert.ok(!fs.existsSync(staged));
     assert.deepEqual(fs.readdirSync(path.join(dir, "Applications")), ["Rip It Out.app"]);
+    assert.deepEqual(fs.readdirSync(spare).filter((n) => n.startsWith("old-")), []); // the old app is gone
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("when macOS refuses to delete the old app, it waits hidden until the next start", () => {
+  const dir = tmp();
+  try {
+    const apps = path.join(dir, "Applications"), spare = path.join(dir, "update"), bin = path.join(dir, "bin");
+    const target = fakeApp(apps, "0.10.0");
+    const staged = fakeApp(path.join(dir, "staged"), "0.11.0");
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, "rm"), "#!/bin/sh\necho 'rm: Operation not permitted' >&2\nexit 1\n", { mode: 0o755 });
+    const script = updates.writeSwapScript(dir);
+    const gone = spawnSync("true").pid;
+    const env = { ...process.env, RIPITOUT_OPEN: "true", PATH: `${bin}:${process.env.PATH}` };
+    const r = spawnSync("/bin/bash", [script, String(gone), staged, target, spare], { env, encoding: "utf8" });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /removed at the next start/);
+    assert.deepEqual(fs.readdirSync(apps), ["Rip It Out.app"]); // nothing left next to the app
+    assert.match(fs.readFileSync(path.join(target, "Contents", "Info.plist"), "utf8"), /0\.11\.0/);
+    assert.equal(fs.readdirSync(spare).filter((n) => n.startsWith("old-")).length, 1);
+    assert.deepEqual(updates.cleanLeftovers(target, spare), []); // the next start
+    assert.ok(!fs.existsSync(spare));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("old app copies an update left behind are cleaned up at start", () => {
+  const dir = tmp();
+  try {
+    const apps = path.join(dir, "Applications"), spare = path.join(dir, "update");
+    const target = fakeApp(apps, "0.11.0");
+    fakeApp(apps, "0.10.0", "Rip It Out.app.old-18330");
+    fs.mkdirSync(path.join(apps, "Other.app"));
+    fakeApp(spare, "0.9.0", "old-123.app");
+    assert.deepEqual(updates.cleanLeftovers(target, spare), []);
+    assert.deepEqual(fs.readdirSync(apps).sort(), ["Other.app", "Rip It Out.app"]);
+    assert.ok(!fs.existsSync(spare));
+    assert.deepEqual(updates.cleanLeftovers(null, path.join(dir, "missing")), []); // nothing to do, no error
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
