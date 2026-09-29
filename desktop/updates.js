@@ -166,19 +166,46 @@ function installProblem(bundle) {
 
 // Waits for the app to quit, puts the new bundle in place (the old one comes back if
 // that fails) and starts it. Tests set RIPITOUT_OPEN so nothing is launched.
+// The old app is first moved out of sight into SPARE (the update folder, a rename on the same
+// disk), then deleted. macOS may refuse to delete inside an app bundle (App Management);
+// then it waits there, hidden, and the app removes it at its next start (cleanLeftovers).
 const SWAP_SCRIPT = `#!/bin/bash
-PID="$1"; NEW="$2"; TARGET="$3"
+PID="$1"; NEW="$2"; TARGET="$3"; SPARE="$4"
 echo "=== update $(date) : $NEW -> $TARGET"
 for _ in $(seq 1 240); do kill -0 "$PID" 2>/dev/null || break; sleep 0.25; done
 OLD="$TARGET.old-$$"
 if ! mv "$TARGET" "$OLD"; then echo "could not move the old app"; \${RIPITOUT_OPEN:-open} "$TARGET"; exit 1; fi
 if mv "$NEW" "$TARGET"; then
-  rm -rf "$OLD"; echo "installed"
+  if [ -n "$SPARE" ] && mkdir -p "$SPARE" && mv "$OLD" "$SPARE/old-$$.app"; then OLD="$SPARE/old-$$.app"; fi
+  rm -rf "$OLD" || echo "could not delete $OLD yet, removed at the next start"
+  echo "installed"
 else
   echo "could not move the new app, restoring"; rm -rf "$TARGET"; mv "$OLD" "$TARGET"
 fi
 \${RIPITOUT_OPEN:-open} "$TARGET"
 `;
+
+// Copies of the old app an update left behind: "<name>.app.old-<n>" next to the app (updates
+// before 0.11.1 deleted them in place, which macOS could refuse) and anything in spareDir.
+// They are moved into spareDir and deleted from there; whatever can't be deleted yet stays
+// there, out of sight. Never throws: this runs when the app starts.
+function cleanLeftovers(bundle, spareDir) {
+  const problems = [];
+  const tryDo = (what, fn) => { try { fn(); } catch (err) { problems.push(`${what}: ${err.message}`); } };
+  if (bundle) {
+    const dir = path.dirname(bundle), prefix = `${path.basename(bundle)}.old-`;
+    let names = [];
+    tryDo("list", () => { names = fs.readdirSync(dir).filter((n) => n.startsWith(prefix)); });
+    for (const name of names) {
+      tryDo(name, () => {
+        fs.mkdirSync(spareDir, { recursive: true });
+        fs.renameSync(path.join(dir, name), path.join(spareDir, name));
+      });
+    }
+  }
+  tryDo("update folder", () => fs.rmSync(spareDir, { recursive: true, force: true }));
+  return problems;
+}
 
 function writeSwapScript(dir) {
   const file = path.join(dir, "install.sh");
@@ -188,5 +215,5 @@ function writeSwapScript(dir) {
 
 module.exports = {
   PUBLIC_KEY, compareVersions, signedMessage, verifyManifest, releaseNotes, check, download, extractApp,
-  bundlePath, installProblem, writeSwapScript,
+  bundlePath, installProblem, writeSwapScript, cleanLeftovers,
 };

@@ -366,7 +366,9 @@ function updateBlocker() {
 }
 
 function setupUpdates() {
-  fs.rmSync(UPDATE_DIR, { recursive: true, force: true }); // leftovers from an earlier update
+  // Leftovers from an earlier update: the update folder and old copies of the app.
+  const bundle = PACKAGED && !WINDOWS ? updates.bundlePath(app.getPath("exe")) : null;
+  for (const problem of updates.cleanLeftovers(bundle, UPDATE_DIR)) console.warn(`Update cleanup: ${problem}`);
 
   handle("update-check", async () => {
     const result = await updates.check({ currentVersion: app.getVersion(), releasesUrl: process.env.RIPITOUT_UPDATE_URL });
@@ -407,7 +409,7 @@ function setupUpdates() {
     fs.mkdirSync(LOGS, { recursive: true });
     const log = fs.openSync(path.join(LOGS, "update.log"), "a");
     const target = updates.bundlePath(app.getPath("exe"));
-    spawn("/bin/bash", [script, String(process.pid), updateState.staged, target],
+    spawn("/bin/bash", [script, String(process.pid), updateState.staged, target, UPDATE_DIR],
       { detached: true, stdio: ["ignore", log, log] }).unref();
     quitting = true;
     await stopServer();
