@@ -191,8 +191,9 @@ to `main` and attaches the installer to releases for tags.
 
 1. Bump `__version__` in `stemtool/__init__.py` and `MARKETING_VERSION` in
    `ios/RipItOut.xcodeproj/project.pbxproj`, and merge to `main`.
-2. Create a release with a tag like `v0.8.0` on `main` (GitHub: *Releases > Draft a new
-   release*, or push the tag).
+2. Create a release with the tag `v<version>` on `main`, for example `v0.11.0` (GitHub:
+   *Releases > Draft a new release*, or push the tag). The builds check that the tag names
+   the version in `stemtool/__init__.py` and fail with a message if it doesn't.
 3. The macOS and Windows workflows build on the tag and attach
    `RipItOut-<version>.dmg`, `RipItOut-<version>.update.json` and
    `RipItOut-Setup-<version>.exe` to the release. The website's download buttons pick
