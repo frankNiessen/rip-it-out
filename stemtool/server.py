@@ -200,6 +200,8 @@ def submit(req: SubmitRequest) -> dict:  # sync: runs in a threadpool, playlist 
         return manager.submit(url, req.style, req.group)
     except DownloadError as exc:
         raise HTTPException(400, f"YouTube couldn't list that link: {exc}") from exc
+    except ValueError as exc:  # a link the app doesn't queue, e.g. a Mix without a video
+        raise HTTPException(400, str(exc)) from exc
 
 
 @app.post("/api/import")

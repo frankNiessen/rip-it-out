@@ -24,6 +24,54 @@ def test_expand_refuses_other_sites():
         youtube.expand("https://vimeo.com/1")
 
 
+class FakeYoutubeDL:
+    """Stands in for yt-dlp: a link with a video gives that video when noplaylist is
+    set (as yt-dlp does), anything else the list."""
+    opts: dict = {}
+
+    def __init__(self, opts):
+        FakeYoutubeDL.opts = opts
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def extract_info(self, url, download=False):
+        if "v=" in url and self.opts.get("noplaylist"):
+            return {"id": "HAK5D3drObI", "title": "The song"}
+        return {"title": "A list", "entries": [{"id": f"id{i}", "title": f"Song {i}", "ie_key": "Youtube"} for i in range(3)]}
+
+
+def test_a_video_in_a_mix_adds_only_that_video(monkeypatch):
+    monkeypatch.setattr(youtube, "YoutubeDL", FakeYoutubeDL)
+    title, refs = youtube.expand("https://www.youtube.com/watch?v=HAK5D3drObI&list=RDHAK5D3drObI&start_radio=1")
+    assert FakeYoutubeDL.opts["noplaylist"] is True
+    assert (title, [r.video_id for r in refs]) == ("", ["HAK5D3drObI"])
+
+
+def test_a_playlist_link_adds_the_playlist(monkeypatch):
+    monkeypatch.setattr(youtube, "YoutubeDL", FakeYoutubeDL)
+    title, refs = youtube.expand("https://www.youtube.com/playlist?list=PLabc")
+    assert title == "A list" and len(refs) == 3
+
+
+@pytest.mark.parametrize("url, mix", [
+    ("https://www.youtube.com/playlist?list=RDHAK5D3drObI", True),
+    ("https://www.youtube.com/watch?list=RDHAK5D3drObI", True),
+    ("https://www.youtube.com/watch?v=HAK5D3drObI&list=RDHAK5D3drObI", False),
+    ("https://youtu.be/HAK5D3drObI?list=RDHAK5D3drObI", False),
+    ("https://www.youtube.com/playlist?list=PLabc", False),
+])
+def test_a_mix_without_a_video_is_refused(monkeypatch, url, mix):
+    monkeypatch.setattr(youtube, "YoutubeDL", FakeYoutubeDL)
+    assert youtube.is_mix_only(url) is mix
+    if mix:
+        with pytest.raises(ValueError, match="Mix"):
+            youtube.expand(url)
+
+
 def test_click_has_the_song_length():
     audio = click.render_audio([0.5, 1.0, 1.5], [0.5], 44100 * 3, 44100)
     assert audio.shape == (44100 * 3, 2)
