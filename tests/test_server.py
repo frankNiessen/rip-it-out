@@ -90,3 +90,22 @@ def test_file_titles_from_tags_or_name(tmp_path):
     meta = localfiles.read_meta(path, "The Band - Great Song.wav")
     assert meta["title"] == "Great Song" and meta["artist"] == "The Band"
     assert localfiles.read_meta(path, "just a title.wav")["title"] == "just a title"
+
+
+def test_delete_songs_with_their_takes(client, song, library):
+    (song / "takes" / "20260101-120000").mkdir(parents=True)
+    (song / "takes" / "20260101-120000" / "take.json").write_text("{}")
+    r = client.post("/api/library/delete", json={"folders": ["test-song__abc123", "no-such-song", "../x"]})
+    assert r.json() == {"deleted": ["test-song__abc123"], "skipped": []}
+    assert not song.exists()
+    assert client.get("/api/library").json() == []
+    assert not list((library / ".stemtool-work").iterdir())  # nothing left behind
+
+
+def test_a_song_being_separated_again_is_not_deleted(client, song, monkeypatch):
+    import stemtool.server as server
+
+    monkeypatch.setattr(server.manager, "busy_folders", lambda: {"test-song__abc123"})
+    r = client.post("/api/library/delete", json={"folders": ["test-song__abc123"]})
+    assert r.json() == {"deleted": [], "skipped": ["test-song__abc123"]}
+    assert (song / "manifest.json").is_file()

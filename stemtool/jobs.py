@@ -119,6 +119,11 @@ class JobManager:
             self._queue.put(video_id)
             return True
 
+    def busy_folders(self) -> set[str]:
+        """Library songs a queued or running job is separating again."""
+        with self._lock:
+            return {j.reseparate for j in self._jobs.values() if j.reseparate and j.status in (QUEUED, RUNNING)}
+
     def retry(self, video_id: str) -> bool:
         with self._lock:
             job = self._jobs.get(video_id)

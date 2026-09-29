@@ -6,12 +6,14 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import threading
 import unicodedata
 from pathlib import Path
 from typing import Iterator
 
 from . import grid
+from .config import WORK_DIR_NAME
 
 MANIFEST = "manifest.json"
 SCHEMA_VERSION = 2  # 2: four stems (drums, bass, vocals, other), stem_format
@@ -73,6 +75,23 @@ def song_dir(library_dir: Path, folder: str) -> Path | None:
     if path.parent != library_dir or folder.startswith(".") or not (path / MANIFEST).is_file():
         return None
     return path
+
+
+def delete_song(library_dir: Path, folder: str) -> bool:
+    """Deletes a song with its takes. The folder is first moved into the hidden work
+    folder in one step, so the library (and a sync client) never shows half a song.
+    Returns False if it isn't a song in the library; raises OSError if it can't be
+    moved (on Windows, a file another program has open)."""
+    song = song_dir(library_dir, folder)
+    if song is None:
+        return False
+    trash = library_dir / WORK_DIR_NAME / f"deleting-{song.name}"
+    trash.parent.mkdir(exist_ok=True)
+    shutil.rmtree(trash, ignore_errors=True)
+    with manifest_lock:
+        os.replace(song, trash)
+    shutil.rmtree(trash, ignore_errors=True)
+    return True
 
 
 def read_manifest(library_dir: Path, folder: str) -> dict | None:

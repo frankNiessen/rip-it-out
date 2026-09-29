@@ -192,6 +192,18 @@ final class LibraryStore {
 
     func song(_ id: String) -> Song? { songs.first { $0.id == id } }
 
+    /// Deletes a song with its takes: on the Nextcloud server, or in the Files folder,
+    /// and so on every device and in the desktop app.
+    func delete(_ song: Song) async {
+        let folder = song.folder
+        do {
+            try await Background.run { try Files.delete(folder) }
+            songs.removeAll { $0.id == song.id }
+        } catch {
+            self.error = "Couldn't delete \(song.title): \(Explain.isNetwork(error) ? Explain.network(error) : error.localizedDescription)"
+        }
+    }
+
     /// Takes of a song, newest first. Blocks while take.json files download.
     nonisolated static func takes(of song: URL, sync: Bool = true) -> [Take] {
         if sync, let remote = Files.remote, remote.relative(song) != nil {
