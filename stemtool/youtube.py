@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from yt_dlp import YoutubeDL
 
@@ -38,15 +38,32 @@ def watch_url(video_id: str) -> str:
     return f"https://www.youtube.com/watch?v={video_id}"
 
 
+def is_mix_only(url: str) -> bool:
+    """A link to a YouTube Mix (a list starting with RD) without a video in it.
+    Mixes are endless and made for each viewer, so they are never queued whole."""
+    parsed = urlparse(url.strip())
+    query = parse_qs(parsed.query)
+    has_video = "v" in query or (parsed.hostname or "").lower() == "youtu.be" or parsed.path.startswith(("/shorts/", "/live/"))
+    return not has_video and any(v.startswith("RD") for v in query.get("list", []))
+
+
 def expand(url: str) -> tuple[str, list[VideoRef]]:
     """Return (playlist title, videos) for a playlist URL, or ("", [video]) for a
     video URL.
+
+    A link to a video adds only that video, even when it plays in a playlist or a
+    Mix (watch?v=...&list=...): the link names the song you were listening to. A
+    playlist's own link (playlist?list=...) adds the whole playlist.
 
     Only lists entries (no download), so this is quick even for long playlists.
     """
     if not is_youtube_url(url):
         raise ValueError("Only YouTube links are supported")
-    opts = {"extract_flat": "in_playlist", "quiet": True, "no_warnings": True, "skip_download": True}
+    if is_mix_only(url):
+        raise ValueError("That's a YouTube Mix, which never ends. Paste the link of a song in it, "
+                         "or of a playlist.")
+    opts = {"extract_flat": "in_playlist", "noplaylist": True, "quiet": True, "no_warnings": True,
+            "skip_download": True}
     with YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
 
