@@ -424,7 +424,7 @@ final class PlayerEngine {
     /// Hear only the take (and the click, unless muted), or everything again.
     func setTakeOnly(_ on: Bool) {
         soloed = on ? ["take"] : []
-        if on { muted.remove("take") }
+        if on { muted = [] }
         applyVolumes()
     }
 
@@ -462,14 +462,15 @@ final class PlayerEngine {
     private(set) var muted: Set<String> = []
     private(set) var soloed: Set<String> = []
 
-    // A track is muted or soloed, never both: each one switches the other off.
+    // Like a DAW's exclusive solo, and the same as the desktop: one track soloed at a
+    // time, soloing clears every mute, and a track is muted or soloed, never both.
     func toggleMute(_ key: String) {
         if muted.contains(key) { muted.remove(key) } else { muted.insert(key); soloed.remove(key) }
         applyVolumes()
     }
 
     func toggleSolo(_ key: String) {
-        if soloed.contains(key) { soloed.remove(key) } else { soloed.insert(key); muted.remove(key) }
+        if soloed.contains(key) { soloed = [] } else { soloed = [key]; muted = [] }
         applyVolumes()
     }
 

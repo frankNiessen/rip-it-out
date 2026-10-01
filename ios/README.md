@@ -9,10 +9,12 @@ fills, synced through iCloud Drive, Nextcloud, Dropbox or any other Files provid
 
 Three tabs: **Songs**, **Takes** and **Settings**. Open a song and switch between
 **Practice** (play along) and **Record** (record yourself, on video too) at the top; the
-song stays where it is. Microphone and camera are only on in Record; with video on, the camera picture stays in view while you scroll (beside the page with the phone on its side, and the video is then recorded in landscape). After a take,
+song stays where it is. Microphone and camera are only on in Record; with video on, the camera picture stays in view while you scroll (beside the page with the phone on its side, and the video is then recorded in landscape, the right way up). The front camera's
+preview is a mirror, like the Camera app's; the video itself is not mirrored. After a take,
 **Take saved: Listen** opens the take page: its video, your take with the band (the song
 page's mixer, with **Me** for your take; the band's drums start muted),
-**Share** (audio, or video with that sound, mixed the way you hear it), **Record again**
+**Share** (audio, or video with that sound, mixed the way you hear it, or
+**Save video to Photos**), **Record again**
 and **Delete**. The
 **Takes** tab lists every take in the library; **Continue** at the top of Songs goes back
 to the last song.
@@ -22,8 +24,9 @@ to the last song.
   everywhere the library syncs to (the desktop app deletes songs too: select them, then
   **Delete**).
 - **Play along:** one **Band** fader for the whole song, the click on or off, and mute
-  (speaker) or solo (headphones) for drums, bass, vocals and other (solo: hear only the
-  soloed tracks; a track is muted or soloed, not both), the bar and beat counter, the tempo view with the song's
+  (speaker) or solo (headphones) for drums, bass, vocals and other (as on the desktop
+  and in a DAW: one track soloed at a time, soloing clears the mutes, and a track is
+  muted or soloed, not both), the bar and beat counter, the tempo view with the song's
   sections, a count-in of one or two bars, and section loops: **Loop** loops the section
   you are in, a section button moves the loop there. Zoom with **−** / **+** or a pinch,
   drag or tap in the tempo view (or **‹ Bar ›**) to start anywhere. Mute and solo reset

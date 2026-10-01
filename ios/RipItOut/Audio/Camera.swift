@@ -62,7 +62,14 @@ final class Camera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unc
             }
             if let c = output.connection(with: .video) {
                 if c.isVideoRotationAngleSupported(90) { c.videoRotationAngle = 90 } // portrait frames
-                if c.isVideoMirroringSupported { c.isVideoMirrored = front }
+                // The video is the right way round, also with the front camera: a
+                // right-handed drummer stays right-handed (only the preview is a mirror,
+                // like the Camera app's). Mirrored frames also turned the file's rotation
+                // the wrong way, so landscape videos came out upside down.
+                if c.isVideoMirroringSupported {
+                    c.automaticallyAdjustsVideoMirroring = false
+                    c.isVideoMirrored = false
+                }
             }
             session.commitConfiguration()
             configuredPosition = position

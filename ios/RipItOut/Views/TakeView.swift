@@ -1,3 +1,4 @@
+import Photos
 import SwiftUI
 
 /// Watching and listening back to one take: its video, your take with the band, and
@@ -16,6 +17,7 @@ struct TakeView: View {
     @State private var error: String?
     @State private var exporting: String?
     @State private var shared: SharedFile?
+    @State private var saved: String?
 
     private var song: Song? { library.song(songID) }
 
@@ -66,6 +68,9 @@ struct TakeView: View {
                                     Button { Task { await share(song, take, video: true) } } label: {
                                         Label("Video with that sound", systemImage: "video")
                                     }
+                                    Button { Task { await saveToPhotos(song, take) } } label: {
+                                        Label("Save video to Photos", systemImage: "photo.on.rectangle")
+                                    }
                                 }
                             } label: {
                                 Label("Share", systemImage: "square.and.arrow.up")
@@ -82,6 +87,7 @@ struct TakeView: View {
                             .buttonStyle(QuietButtonStyle(danger: true))
                     }
                     if let error { Text(error).font(.system(size: 13)).foregroundStyle(Theme.fail) }
+                    if let saved { Text(saved).font(.system(size: 13)).foregroundStyle(Theme.muted) }
                     Text("Share mixes the take with the band the way you hear it here. Timing and level: in Rip It Out on your Mac, where this take shows up too.")
                         .font(.system(size: 12)).foregroundStyle(Theme.muted)
                 }
@@ -166,14 +172,39 @@ struct TakeView: View {
 
     /// Mixes the take's range as you hear it, then opens the share menu.
     private func share(_ song: Song, _ take: Take, video: Bool) async {
+        if let url = await prepare(song, take, video: video) { shared = SharedFile(url: url) }
+    }
+
+    /// Mixes the take's video with the sound as you hear it and adds it to the photo
+    /// library (the share menu's Save Video does the same; this is one tap).
+    private func saveToPhotos(_ song: Song, _ take: Take) async {
+        guard let url = await prepare(song, take, video: true) else { return }
+        let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        guard status == .authorized || status == .limited else {
+            error = "Allow Rip It Out to add to your photos in Settings > Privacy & Security > Photos."
+            return
+        }
+        do {
+            try await PHPhotoLibrary.shared().performChanges {
+                _ = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
+            }
+            saved = "Saved to Photos."
+        } catch {
+            self.error = "Couldn't save to Photos: \(error.localizedDescription)"
+        }
+    }
+
+    /// The take's range mixed as you hear it: an audio file, or the video with that sound.
+    private func prepare(_ song: Song, _ take: Take, video: Bool) async -> URL? {
         player.pause()
         exporting = "Preparing the audio…"
         error = nil
+        saved = nil
         defer { exporting = nil }
         let m = song.manifest, sr = Double(m.sampleRate)
         let start = max(0, Int((take.startS * sr).rounded()))
         let end = min(m.numSamples, Int(((take.startS + take.capturedS) * sr).rounded()))
-        guard end - start > Int(sr / 2) else { error = "This take doesn't overlap the song."; return }
+        guard end - start > Int(sr / 2) else { error = "This take doesn't overlap the song."; return nil }
         let sources = player.mixSources()
         let audioURL = TakeExport.fileURL(song: song.title, take: take.displayName, ext: "m4a")
         do {
@@ -189,9 +220,10 @@ struct TakeView: View {
                                            fromS: Double(start) / sr, durationS: Double(end - start) / sr, to: out)
                 result = out
             }
-            shared = SharedFile(url: result)
+            return result
         } catch {
             self.error = "Couldn't prepare the file: \(error.localizedDescription)"
+            return nil
         }
     }
 
