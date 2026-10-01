@@ -62,13 +62,13 @@
   nav button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
   nav button:focus-visible { outline: 2px solid var(--focus); outline-offset: -4px; }
   header .status { margin: 0 0 0 auto; align-self: center; color: var(--fail); font-size: .85rem; }
-  /* "an update is out", at the right of the header (like an editor's update badge) */
-  .upd-badge { all: unset; cursor: pointer; margin-left: auto; align-self: center; display: inline-flex; align-items: center; gap: .45rem;
-               padding: .3rem .7rem; border: 1px solid var(--accent); border-radius: 999px; color: var(--accent);
-               font: 600 .8rem/1 var(--sans); white-space: nowrap; }
-  .upd-badge::before { content: ""; width: .45rem; height: .45rem; border-radius: 50%; background: var(--accent); }
-  .upd-badge:hover { background: var(--accent); color: var(--on-accent, #10160a); }
-  .upd-badge:hover::before { background: currentColor; }
+  /* "a new update is available", at the right of the header: a quiet button, gone once
+     you have looked at the update in Settings */
+  .upd-badge { all: unset; cursor: pointer; margin-left: auto; align-self: center; display: inline-flex; align-items: center; gap: .4rem;
+               padding: .3rem .6rem; border: 1px solid var(--line-strong); border-radius: 3px; color: var(--muted);
+               font: 500 .78rem/1 var(--sans); white-space: nowrap; }
+  .upd-badge::before { content: ""; width: .4rem; height: .4rem; border-radius: 50%; background: var(--accent); }
+  .upd-badge:hover { color: var(--ink); border-color: var(--ink); }
   .upd-badge:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   header .upd-badge + .status { margin-left: 1rem; }
   .upd-auto { display: flex; align-items: center; gap: .5rem; margin-top: .9rem; font-size: .85rem; color: var(--muted); }
@@ -245,7 +245,7 @@
         padding: .5rem .6rem .55rem; background: var(--field); border: 1px solid var(--line); border-radius: 3px; }
   .ch .ch-name { grid-column: 1 / -1; display: flex; align-items: center; gap: .45rem; font-size: .85rem; color: var(--muted); }
   .ch .ch-name svg { width: 1rem; height: 1rem; flex: none; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
-  .ch.mine .ch-name { color: var(--ink); font-weight: 600; }
+  .ch.mine .ch-name, .ch.band .ch-name { color: var(--ink); font-weight: 600; }
   .ch input[type=range] { width: 100%; min-width: 0; margin: 0; accent-color: var(--ink); }
   .ch .ms { display: flex; gap: .25rem; }
   .ch .ms button { all: unset; cursor: pointer; width: 1.45rem; height: 1.3rem; display: grid; place-items: center;
@@ -354,7 +354,7 @@
     <button role="tab" id="t-takes" aria-controls="tab-takes" aria-selected="false">Takes</button>
     <button role="tab" id="t-settings" aria-controls="tab-settings" aria-selected="false">Settings</button>
   </nav>
-  <button class="upd-badge" id="upd-badge" hidden title="A new version of Rip It Out is out: see what's new in Settings"></button>
+  <button class="upd-badge" id="upd-badge" hidden title="A new version of Rip It Out is out: see what's new in Settings">New update available</button>
   <p class="status" id="status" hidden></p>
 </header>
 
@@ -501,7 +501,7 @@
       <div class="videobox" id="videobox"><span id="video-msg">No camera selected</span><video id="video" playsinline muted hidden></video></div>
     </div>
     <section style="margin-top:0">
-      <h2>Takes</h2>
+      <div class="takes-head"><h2>Takes</h2><button class="btn quiet" id="takes-refresh" title="Look for takes recorded on another device (they show up by themselves too when you come back to Rip It Out)">Refresh</button></div>
       <ul class="takes" id="takes"></ul>
       <div class="take-panel" id="take-panel" hidden></div>
     </section>
@@ -513,6 +513,7 @@
   <div class="takes-head">
     <h2 id="takes-title">Takes</h2>
     <span class="usage" id="takes-usage"></span>
+    <button class="btn quiet" id="all-takes-refresh" title="Look for takes recorded on another device (they show up by themselves too when you come back to Rip It Out)">Refresh</button>
   </div>
   <div class="take-tools">
     <input id="take-search" type="search" placeholder="Search song or take name" aria-label="Search takes">
@@ -711,13 +712,18 @@ function renderNotes(md) {
   }
   return list ? html + "</ul>" : html;
 }
-function showUpdateBadge(text) {
-  $("#upd-badge").textContent = text || "";
-  $("#upd-badge").hidden = !text;
+/** The "New update available" button, for a version you haven't looked at in Settings yet. */
+function showUpdateBadge(version) {
+  $("#upd-badge").hidden = !version || store.get("updates.seen", "") === version;
+  $("#upd-badge").dataset.version = version || "";
 }
 $("#upd-badge").addEventListener("click", () => {
   showTab("settings");
-  if (activeTab === "settings") $("#upd").scrollIntoView({ behavior: "smooth", block: "start" });
+  if (activeTab !== "settings") return; // recording: stay where you are
+  // Seen: the update and what's new are in Settings from now on, not in the header.
+  store.set("updates.seen", $("#upd-badge").dataset.version);
+  showUpdateBadge("");
+  $("#upd").scrollIntoView({ behavior: "smooth", block: "start" });
 });
 
 /** quiet: the check when the app starts, which says nothing unless an update is out. */
@@ -728,7 +734,7 @@ async function checkForUpdates(quiet = false) {
   if (r.error) return quiet ? undefined : updateUi("idle", esc(r.error), true);
   $("#upd-notes").innerHTML = r.newer ? renderNotes(r.notes) : "";
   $("#upd-notes").hidden = !r.newer || !r.notes;
-  showUpdateBadge(!r.newer ? "" : r.ready ? "Restart to update" : `Update ${r.version}`);
+  showUpdateBadge(r.newer && !r.ready ? r.version : "");
   if (!r.newer) return updateUi("idle", `You have the latest version (${esc(r.current)}).`);
   if (r.ready) return updateUi("ready", `Version ${esc(r.version)} is ready.`);
   if (!r.update) return updateUi("idle", `Version ${esc(r.version)} is out.${notesLink(r, "Download it from GitHub")}`);
@@ -751,7 +757,7 @@ if (updater) {
     const r = await updater.download();
     if (r.error) return updateUi("available", esc(r.error), r.error !== "Cancelled.");
     updateUi("ready", `Version ${esc(r.version)} is ready.`);
-    showUpdateBadge("Restart to update");
+    showUpdateBadge("");
   });
   $("#upd-cancel").addEventListener("click", () => updater.cancel());
   $("#upd-restart").addEventListener("click", async () => {
@@ -1224,10 +1230,13 @@ const STEM_FADERS = {
   2: [["drums", "Drums", 1], ["music", "Music", 1]],
 };
 const ALL_GAINS = ["take", "drums", "bass", "vocals", "other", "music", "click"];
+// The song's own tracks, which the Band fader turns up or down together (to balance
+// them against the click or your take without moving every fader).
+const BAND_KEYS = new Set(["drums", "bass", "vocals", "other", "music"]);
 function channelsFor(kind, tracks) {
-  return [...(kind === "record" ? [["take", "My take", 1]] : []), ...STEM_FADERS[tracks], ["click", "Click", 0.8]];
+  return [...(kind === "record" ? [["take", "My take", 1]] : []), ["band", "Band", 1], ...STEM_FADERS[tracks], ["click", "Click", 0.8]];
 }
-const DEFAULT_GAINS = { take: 1, drums: 1, bass: 1, vocals: 1, other: 1, music: 1, click: 0.8 };
+const DEFAULT_GAINS = { take: 1, band: 1, drums: 1, bass: 1, vocals: 1, other: 1, music: 1, click: 0.8 };
 // Line icons for the channel strips (16 x 16, drawn with the text colour).
 const ICONS = {
   take: '<circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2.4" fill="currentColor" stroke="none"/>',
@@ -1236,6 +1245,7 @@ const ICONS = {
   vocals: '<rect x="5.5" y="1.5" width="5" height="8" rx="2.5"/><path d="M3.3 7.6a4.7 4.7 0 0 0 9.4 0M8 12.3v2.2M5.6 14.5h4.8"/>',
   other: '<rect x="1.5" y="3.5" width="13" height="9" rx="1"/><path d="M4.8 3.5v5.3M8 3.5v9M11.2 3.5v5.3"/>',
   music: '<path d="M6 12V3.2l7-1.4v8.7"/><circle cx="4.3" cy="12" r="1.8"/><circle cx="11.3" cy="10.5" r="1.8"/>',
+  band: '<path d="M2 13V8M5 13V4M8 13V6M11 13V3M14 13V9"/>',
   click: '<path d="M5.6 2h4.8L13 14H3L5.6 2Z"/><path d="M8 11.5 11.6 4"/>',
 };
 const icon = (k) => `<svg viewBox="0 0 16 16" aria-hidden="true">${ICONS[k] || ""}</svg>`;
@@ -1244,7 +1254,10 @@ const activeDeck = () => { try { return decks[activeTab] || null; } catch { retu
 
 function makeDeck(kind, root) {
   const gains = { ...DEFAULT_GAINS, ...store.get(`gains.${kind}`, {}) };
-  const mute = {}, solo = {}; // for this session only: a forgotten solo would be confusing next time
+  // For this session only: a forgotten solo would be confusing next time. Like a DAW's
+  // exclusive solo: one track at a time, and soloing clears the mutes.
+  const mute = {};
+  let soloed = null;
   root.innerHTML = `
     <div class="deck">
       <div class="deck-top">
@@ -1300,18 +1313,20 @@ function makeDeck(kind, root) {
     renderMixer() {
       const tracks = current?.m.stems.bass ? 4 : 2;
       const takeShown = !!q('[data-ch="take"]') && !q('[data-ch="take"]').hidden;
-      q(".mixer").innerHTML = channelsFor(kind, tracks).map(([k, label]) => `<div class="ch ${k === "take" ? "mine" : ""}" data-ch="${k}" ${k === "take" && !takeShown ? "hidden" : ""}>
+      q(".mixer").innerHTML = channelsFor(kind, tracks).map(([k, label]) => `<div class="ch ${k === "take" ? "mine" : ""} ${k === "band" ? "band" : ""}" data-ch="${k}" ${k === "take" && !takeShown ? "hidden" : ""}>
         <span class="ch-name">${icon(k)}${label}</span>
-        <input type="range" min="0" max="1" step="0.01" value="${gains[k] ?? DEFAULT_GAINS[k]}" data-gain="${k}" aria-label="${label} volume">
-        <span class="ms"><button data-mute="${k}" aria-pressed="false" title="Mute ${label}" aria-label="Mute ${label}">M</button><button data-solo="${k}" aria-pressed="false" title="Solo: hear only this${k === "click" ? "" : " (and the click)"}. Several can be soloed." aria-label="Solo ${label}">S</button></span></div>`).join("");
+        <input type="range" min="0" max="1" step="0.01" value="${gains[k] ?? DEFAULT_GAINS[k]}" data-gain="${k}" aria-label="${label} volume"${k === "band" ? ` title="All of the song's tracks together"` : ""}>
+        ${k === "band" ? "" : `<span class="ms"><button data-mute="${k}" aria-pressed="false" title="Mute ${label}" aria-label="Mute ${label}">M</button><button data-solo="${k}" aria-pressed="false" title="Solo: hear only this${k === "click" ? "" : " (and the click)"}. One track at a time; soloing clears the mutes." aria-label="Solo ${label}">S</button></span>`}</div>`).join("");
       deck.applyGains();
     },
-    // What each channel actually plays at: its fader, unless muted, or unless another
-    // channel is soloed. The click is never silenced by another channel's solo.
+    // What each channel actually plays at: its fader (times the Band fader for the
+    // song's tracks), unless muted, or unless another channel is soloed. The click is
+    // never silenced by another channel's solo.
     level(k) {
-      const anySolo = Object.values(solo).some(Boolean);
-      if (mute[k] || (anySolo && !solo[k] && k !== "click")) return 0;
-      return gains[k] ?? DEFAULT_GAINS[k];
+      const g = (key) => gains[key] ?? DEFAULT_GAINS[key];
+      if (k === "band") return g("band");
+      if (mute[k] || (soloed && soloed !== k && k !== "click")) return 0;
+      return g(k) * (BAND_KEYS.has(k) ? g("band") : 1);
     },
     applyGains() {
       for (const k of ALL_GAINS) {
@@ -1319,8 +1334,8 @@ function makeDeck(kind, root) {
       }
       $$(".ch", root).forEach((el) => {
         const k = el.dataset.ch;
-        $("[data-mute]", el).setAttribute("aria-pressed", String(!!mute[k]));
-        $("[data-solo]", el).setAttribute("aria-pressed", String(!!solo[k]));
+        $("[data-mute]", el)?.setAttribute("aria-pressed", String(!!mute[k]));
+        $("[data-solo]", el)?.setAttribute("aria-pressed", String(soloed === k));
         el.classList.toggle("silent", deck.level(k) === 0 && (gains[k] ?? 1) > 0);
       });
     },
@@ -1366,8 +1381,17 @@ function makeDeck(kind, root) {
   root.addEventListener("click", (e) => {
     const b = e.target.closest("[data-mute], [data-solo]");
     if (!b) return;
-    const [set, k] = b.dataset.mute ? [mute, b.dataset.mute] : [solo, b.dataset.solo];
-    set[k] = !set[k];
+    if (b.dataset.solo) {
+      // One solo at a time; soloing clears every mute, so only the soloed track plays.
+      const k = b.dataset.solo;
+      soloed = soloed === k ? null : k;
+      if (soloed) for (const m of Object.keys(mute)) delete mute[m];
+    } else {
+      // A track is muted or soloed, never both.
+      const k = b.dataset.mute;
+      mute[k] = !mute[k];
+      if (mute[k] && soloed === k) soloed = null;
+    }
     deck.applyGains();
   });
   playBtn.addEventListener("click", () => deck.toggle());
@@ -2216,6 +2240,18 @@ async function refreshTakes() {
       <span class="when">${esc(t.name || when)}</span><span class="info">${range}${t.video ? " · video" : ""}</span></button></li>`;
   }).join("") : `<p class="empty">No takes yet. Press Record and play along.</p>`;
 }
+// Takes recorded on the phone arrive through the library's sync: look again when asked,
+// when you come back to the window, and every half minute on the takes pages.
+function refreshTakePages() {
+  if (recording) return;
+  if (activeTab === "record") refreshTakes();
+  if (activeTab === "takes") refreshAllTakes();
+}
+$("#takes-refresh").addEventListener("click", refreshTakePages);
+$("#all-takes-refresh").addEventListener("click", refreshTakePages);
+window.addEventListener("focus", refreshTakePages);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshTakePages(); });
+setInterval(() => { if (!document.hidden) refreshTakePages(); }, 30000);
 $("#takes").addEventListener("click", (e) => {
   const b = e.target.closest("[data-take]");
   if (b && !recording) openTake(b.dataset.take);

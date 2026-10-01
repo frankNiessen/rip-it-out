@@ -255,6 +255,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Rip It Out records you playing along with a song. The microphone or your audio interface is only used while you record or calibrate.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Rip It Out can film you while you record a take, to watch it with the song afterwards. The camera is only on while a song is open and Record video is switched on.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Rip It Out saves the videos of your takes you share to your photo library.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -286,6 +287,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Rip It Out records you playing along with a song. The microphone or your audio interface is only used while you record or calibrate.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Rip It Out can film you while you record a take, to watch it with the song afterwards. The camera is only on while a song is open and Record video is switched on.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Rip It Out saves the videos of your takes you share to your photo library.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
