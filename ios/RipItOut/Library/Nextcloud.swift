@@ -34,6 +34,8 @@ final class Nextcloud: @unchecked Sendable {
             switch self {
             case .http(401, _): return "Nextcloud didn't accept the user name or app password."
             case .http(404, let what): return "Not found on the server: \(what)"
+            case .http(413, let what): return "The server refused \(what): the file is bigger than its upload limit allows."
+            case .http(507, _): return "Your Nextcloud storage is full."
             case .http(let code, let what): return "The server answered \(code) for \(what)."
             case .message(let m): return m
             }

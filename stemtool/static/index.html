@@ -238,6 +238,7 @@
   .transport select { padding: .3rem .45rem; font-size: .85rem; }
   .grid-tools { display: flex; align-items: center; gap: .3rem; margin-left: auto; flex-wrap: wrap; }
   .grid-tools .btn.quiet { padding: .2rem .5rem; min-width: 2.1rem; }
+  .grid-edit { display: inline-flex; align-items: center; gap: .3rem; flex-wrap: wrap; }
   .grid-tools .hint:not(:first-child) { margin-left: .6rem; }
   /* the mixer: one channel strip per track, like a console: name, fader, mute and solo */
   .mixer { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1rem; padding-top: .9rem; border-top: 1px solid var(--line); }
@@ -262,7 +263,11 @@
   .stepper button:hover { color: var(--ink); background: var(--field); }
   .stepper button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
   .stepper span { font: 400 .72rem var(--mono); color: var(--ink); padding: 0 .15rem; }
-  .loop-edit { display: inline-flex; gap: .35rem; }
+  .loop-edit { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+  .loop-bars { display: inline-flex; gap: .25rem; align-items: center; }
+  .loop-bars .btn.quiet { padding: .2rem .5rem; min-width: 2.1rem; font: 400 .8rem var(--mono); }
+  .loop-bars .btn.quiet.on { border-color: var(--accent); color: var(--accent); }
+  .speed-bpm { font: 400 .72rem var(--mono); color: var(--muted); }
   /* section editor under the tempo view */
   .sec-edit { margin-top: .9rem; padding: .75rem .8rem; background: var(--field); border: 1px solid var(--line); border-radius: 3px; }
   .sec-list { list-style: none; margin: 0 0 .7rem; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(15.5rem, 1fr)); gap: .35rem .9rem; }
@@ -1139,18 +1144,41 @@ const engine = {
   song: null, gains: {}, sources: [], playing: false, offset: 0, tAudio: 0, pos0: 0,
   plan: null, take: null, takeShift: 0, withTake: false, onEnded: null, ticks: null,
   loop: null, // { a, b } in seconds on bar lines, or null
+  rate: 1, activeRate: 1, slow: null, // speed (1: normal) and the stems rendered at that speed: { rate, buffers }
   init() {
     for (const k of [...ALL_GAINS, "count"]) { this.gains[k] = ctx.createGain(); this.gains[k].connect(ctx.destination); }
     this.gains.count.gain.value = 0.9;
     this.ticks = { hi: makeTick(1760), lo: makeTick(1100) };
   },
-  load(song) { this.stop(); if (this.song?.folder !== song.folder) this.loop = null; this.song = song; this.offset = 0; },
+  load(song) { this.stop(); if (this.song?.folder !== song.folder) this.loop = null; this.song = song; this.offset = 0; this.rate = 1; this.slow = null; },
+  /** The click for a slowed song: the same ticks, not stretched, on the slowed beats. */
+  clickAt(rate) {
+    const m = this.song.m, sr = ctx.sampleRate;
+    if (this.clickCache?.rate === rate && this.clickCache.beats === m.beats) return this.clickCache.buf;
+    const buf = ctx.createBuffer(1, Math.ceil((m.duration_s / rate) * sr) + sr, sr), out = buf.getChannelData(0);
+    const tick = { hi: this.ticks.hi.getChannelData(0), lo: this.ticks.lo.getChannelData(0) };
+    for (const b of m.beats) {
+      const d = m.downbeats[lastLE(m.downbeats, b + 0.03)];
+      const t = tick[d !== undefined && Math.abs(d - b) < 0.03 ? "hi" : "lo"], start = Math.round((b / rate) * sr);
+      for (let i = 0; i < t.length && start + i < out.length; i++) out[start + i] += t[i] * 0.6;
+    }
+    this.clickCache = { rate, beats: m.beats, buf };
+    return buf;
+  },
+  /** Plays at `rate` from now on; `buffers` are the stems rendered at that speed. */
+  setRate(rate, buffers) {
+    const was = this.playing, pos = this.position(false);
+    if (was) this.stop();
+    this.rate = rate; this.slow = rate === 1 ? null : { rate, buffers };
+    this.offset = pos;
+    if (was) this.play({ countInBars: 0 });
+  },
   get duration() { return this.song ? this.song.m.duration_s : 0; },
   setGain(k, v) { if (this.gains[k]) this.gains[k].gain.value = v; },
   position(visual = true) {
     if (!this.playing) return this.offset;
     const now = visual ? visualNow() : ctx.currentTime;
-    let pos = this.pos0 + now - this.tAudio;
+    let pos = this.pos0 + (now - this.tAudio) * this.activeRate;
     const L = this.activeLoop;
     if (L && pos >= L.b) pos = L.a + ((pos - L.a) % (L.b - L.a)); // the sources wrap the same way
     return Math.max(0, Math.min(this.duration, pos));
@@ -1172,30 +1200,38 @@ const engine = {
     if (L && (from < L.a || from >= L.b)) from = L.a;
     const plan = planStart(m, bpb, from, countInBars);
     if (L && plan.pos < L.a) plan.pos = L.a; // the count-in may not snap out of the loop
+    const rate = this.slow ? this.slow.rate : 1; // song seconds per second heard
     const now = ctx.currentTime;
-    const lead = plan.clicks.length ? Math.max(0, plan.pos - plan.clicks[0].s) : 0;
+    const lead = plan.clicks.length ? Math.max(0, plan.pos - plan.clicks[0].s) / rate : 0;
     // With a count-in its clicks are the first sounds after silence: give the output a
     // moment (some USB interfaces swallow the first fraction of a second).
     const tAudio = now + (plan.clicks.length ? 0.3 : 0.12) + lead;
-    const play = (buf, gainKey, when, off, shift = 0) => {
-      if (off < 0) { when -= off; off = 0; }
-      if (off >= buf.duration) return;
+    // `scale`: seconds of this buffer per song second (the slowed stems are longer);
+    // `pr`: its playback rate (the click is simply played slower: its pitch doesn't matter).
+    const play = (buf, gainKey, when, off, shift = 0, scale = 1, pr = 1) => {
+      if (off < 0) { when -= off / rate; off = 0; }
+      if (off * scale >= buf.duration) return;
       const s = ctx.createBufferSource(); s.buffer = buf; s.connect(this.gains[gainKey]);
+      s.playbackRate.value = pr;
       if (L) { // every track loops the same stretch, sample-accurately
-        s.loop = true; s.loopStart = Math.max(0, L.a - shift); s.loopEnd = Math.max(s.loopStart + 0.01, L.b - shift);
+        s.loop = true; s.loopStart = Math.max(0, L.a - shift) * scale; s.loopEnd = Math.max(s.loopStart + 0.01, (L.b - shift) * scale);
       }
-      s.start(when, off); this.sources.push(s);
+      s.start(when, off * scale); this.sources.push(s);
     };
-    for (const [k, buf] of Object.entries(buffers)) play(buf, k, tAudio, plan.pos);
-    if (this.withTake && this.take) play(this.take, "take", tAudio, plan.pos - this.takeShift, this.takeShift);
+    for (const [k, buf] of Object.entries(buffers)) {
+      if (k === "click" && rate !== 1) play(this.clickAt(rate), k, tAudio, plan.pos, 0, 1 / rate); // plain ticks, only later
+      else if (this.slow && this.slow.buffers[k]) play(this.slow.buffers[k], k, tAudio, plan.pos, 0, 1 / rate);
+      else play(buf, k, tAudio, plan.pos);
+    }
+    if (this.withTake && this.take && rate === 1) play(this.take, "take", tAudio, plan.pos - this.takeShift, this.takeShift);
     const ticks = { hi: this.ticks.hi, lo: this.ticks.lo };
     for (const c of plan.clicks) {
-      c.t = tAudio + (c.s - plan.pos);
+      c.t = tAudio + (c.s - plan.pos) / rate;
       const tick = ctx.createBufferSource(); tick.buffer = c.down ? ticks.hi : ticks.lo;
       tick.connect(this.gains.count); tick.start(c.t); this.sources.push(tick);
     }
-    this.activeLoop = L;
-    plan.end = plan.clicks.length ? tAudio + (plan.target - plan.pos) : 0;
+    this.activeLoop = L; this.activeRate = rate;
+    plan.end = plan.clicks.length ? tAudio + (plan.target - plan.pos) / rate : 0;
     this.plan = plan; this.tAudio = tAudio; this.pos0 = plan.pos; this.playing = true;
     return { tAudio, pos: plan.pos };
   },
@@ -1216,7 +1252,7 @@ const engine = {
     return was;
   },
   checkEnd() {
-    if (this.playing && !this.activeLoop && this.pos0 + ctx.currentTime - this.tAudio >= this.duration) {
+    if (this.playing && !this.activeLoop && this.pos0 + (ctx.currentTime - this.tAudio) * this.activeRate >= this.duration) {
       this.stop(); this.offset = this.duration;
       if (this.onEnded) this.onEnded();
     }
@@ -1225,6 +1261,7 @@ const engine = {
 
 // ---- decks (the player UI; Play and Record each have one) ---------------------
 // Faders per song layout: four tracks, or two for songs not converted yet ("music" is no_drums).
+const SPEEDS = [1.5, 1.25, 1.1, 1, 0.9, 0.8, 0.75, 0.7, 0.6, 0.5];
 const STEM_FADERS = {
   4: [["drums", "Drums", 1], ["bass", "Bass", 1], ["vocals", "Vocals", 1], ["other", "Other", 1]],
   2: [["drums", "Drums", 1], ["music", "Music", 1]],
@@ -1272,21 +1309,26 @@ function makeDeck(kind, root) {
         <button class="btn quiet rewind" disabled>To start</button>
         <button class="btn quiet loop-btn" aria-pressed="false" title="Loop the current section (L). Or drag across the view, or click a section.">Loop</button>
         <span class="loop-edit" hidden>
-          <span class="stepper" title="Loop start"><button data-nudge="a" data-dir="-1" aria-label="Loop starts a bar earlier">‹</button><span>Start</span><button data-nudge="a" data-dir="1" aria-label="Loop starts a bar later">›</button></span>
-          <span class="stepper" title="Loop end"><button data-nudge="b" data-dir="-1" aria-label="Loop ends a bar earlier">‹</button><span>End</span><button data-nudge="b" data-dir="1" aria-label="Loop ends a bar later">›</button></span>
+          <span class="loop-bars" title="Loop this many bars from the start of the loop"><button class="btn quiet" data-bars="4">4</button><button class="btn quiet" data-bars="8">8</button><button class="btn quiet" data-bars="16">16</button><button class="btn quiet" data-bars="32">32</button><button class="btn quiet" data-bars="0" title="The whole section again">Section</button></span>
+          <span class="stepper" title="Move the loop one bar"><button data-shift="-1" aria-label="Move the loop a bar earlier">‹</button><span>Move loop</span><button data-shift="1" aria-label="Move the loop a bar later">›</button></span>
         </span>
+        ${kind === "play" ? `<label title="Slow the song down without changing its pitch">Speed <select class="speed">
+          ${SPEEDS.map((r) => `<option value="${r}"${r === 1 ? " selected" : ""}>${Math.round(r * 100)}%</option>`).join("")}
+        </select></label><span class="speed-bpm"></span>` : ""}
         <label>Count-in <select class="countin">
           <option value="0">Off</option><option value="1">1 bar</option><option value="2">2 bars</option>
         </select></label>
-        ${kind === "play" ? `<span class="grid-tools" title="Fix the beat grid if the click or bar numbers are off">
-          <span class="hint">Bar line</span>
+        ${kind === "play" ? `<span class="grid-tools">
+          <button class="btn quiet sec-toggle" aria-expanded="false" title="Change the song's parts (verse, chorus, ...) and fix the beat grid if the click or bar numbers are off">Edit sections</button>
+          <span class="grid-edit" hidden title="Fix the beat grid if the click or bar numbers are off">
+          <span class="hint">Move bar lines</span>
           <button class="btn quiet" data-grid="shift" data-steps="-1" aria-label="Move the bar line one beat earlier">◂</button>
           <button class="btn quiet" data-grid="shift" data-steps="1" aria-label="Move the bar line one beat later">▸</button>
           <span class="hint">Tempo</span>
           <button class="btn quiet" data-grid="double" aria-label="Double the tempo">×2</button>
           <button class="btn quiet" data-grid="half" aria-label="Halve the tempo">½</button>
           <button class="btn quiet" data-grid="clean" title="Back to the automatic grid">Undo edits</button>
-          <button class="btn quiet sec-toggle" aria-expanded="false" title="Rename, move, split or join the song's parts (verse, chorus, ...)">Sections</button>
+          </span>
         </span>` : ""}
       </div>
       ${kind === "play" ? `<div class="sec-edit" hidden></div>` : ""}
@@ -1303,6 +1345,7 @@ function makeDeck(kind, root) {
     dragSel: null,
     get countIn() { return +countSel.value; },
     activate() {
+      if (kind === "record" && engine.rate !== 1) engine.setRate(1); // a take is recorded at full speed
       engine.withTake = kind === "record";
       for (const k of ALL_GAINS) engine.setGain(k, kind === "play" && k === "take" ? 0 : deck.level(k));
     },
@@ -1365,6 +1408,15 @@ function makeDeck(kind, root) {
       q(".loop-btn").setAttribute("aria-pressed", String(!!L));
       q(".loop-btn").classList.toggle("on", !!L);
       q(".loop-edit").hidden = !L;
+      if (L) {
+        const n = barsIn(m, L), sec = (m.sections || []).some((x) => Math.abs(x.start - L.a) < 0.05 && Math.abs(x.end - L.b) < 0.05);
+        $$("[data-bars]", root).forEach((b) => b.classList.toggle("on", +b.dataset.bars === 0 ? sec && ![4, 8, 16, 32].includes(n) : +b.dataset.bars === n));
+      }
+      const sp = q(".speed");
+      if (sp) {
+        if (+sp.value !== engine.rate && !sp.disabled) sp.value = String(engine.rate);
+        q(".speed-bpm").textContent = sp.disabled ? "Preparing…" : sp.dataset.err || (engine.rate !== 1 && m.bpm ? `${Math.round(m.bpm * engine.rate)} bpm` : "");
+      }
       q(".cap-hint").textContent = L ? `Loop: bars ${barOf(m, L.a)} to ${barOf(m, L.b) - 1}${sectionName(m, L)}` : "";
       q(".cap-hint").classList.toggle("on", !!L);
       drawCounter(counter, m);
@@ -1406,9 +1458,12 @@ function makeDeck(kind, root) {
     if (v.span >= d) { v.span = null; v.start = 0; } else v.start = clampStart(center - v.span / 2, v.span, d);
   });
   q(".loop-btn").addEventListener("click", () => toggleLoop());
+  q(".speed")?.addEventListener("change", (e) => setSpeed(+e.target.value, e.target));
   q(".loop-edit").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-nudge]");
-    if (b) nudgeLoop(b.dataset.nudge, +b.dataset.dir);
+    const b = e.target.closest("[data-shift]");
+    if (b) shiftLoop(+b.dataset.shift);
+    const n = e.target.closest("[data-bars]");
+    if (n) loopBars(+n.dataset.bars);
   });
   if (kind === "play") setupSectionEditor(deck, q(".sec-toggle"), q(".sec-edit"));
   if (q(".rec")) q(".rec").addEventListener("click", () => (recording ? stopRecording() : startRecording()));
@@ -1551,7 +1606,11 @@ function setupSectionEditor(deck, toggle, panel) {
     busy = false;
     render();
   };
-  const show = (on) => { panel.hidden = !on; toggle.setAttribute("aria-expanded", String(on)); render(); };
+  const show = (on) => {
+    panel.hidden = !on; toggle.setAttribute("aria-expanded", String(on));
+    deck.root.querySelector(".grid-edit").hidden = !on; // bar lines and tempo are edited here, nowhere else
+    render();
+  };
   toggle.addEventListener("click", () => current && show(panel.hidden));
   deck.renderSections = render;
   panel.addEventListener("change", (e) => {
@@ -1585,17 +1644,67 @@ function setupSectionEditor(deck, toggle, panel) {
   });
 }
 
-// Move the loop's start or end by one bar (the song's start and end count as bar lines).
-function nudgeLoop(edge, dir) {
+// How many bars a loop spans.
+function barsIn(m, L) {
+  return Math.round(m.downbeats.filter((t) => t >= L.a - 0.05 && t < L.b - 0.05).length);
+}
+
+// Loop `n` bars from where the loop starts (the start of the section stays the start
+// of the loop); 0 goes back to the whole section.
+function loopBars(n) {
+  const L = engine.loop;
+  if (!current || !L || recording) return;
+  const m = current.m, db = m.downbeats;
+  if (!n) {
+    const sec = (m.sections || []).find((x) => L.a >= x.start - 0.05 && L.a < x.end);
+    if (sec) engine.setLoop({ a: sec.start, b: sec.end });
+    return;
+  }
+  const j = db.findIndex((t) => t >= L.a - 0.05); // the bar line the loop starts on (-1: none after it)
+  const b = j < 0 ? m.duration_s : db[j + n] ?? m.duration_s;
+  if (b - L.a < 0.5) return;
+  engine.setLoop({ a: L.a, b });
+}
+
+let speedToken = 0;
+// Slow the song down (rate < 1) without changing its pitch. The stems are rendered
+// by the engine once per speed and kept, so only the first time takes a moment.
+async function setSpeed(rate, select) {
+  if (!current || recording) { select.value = String(engine.rate); return; }
+  const token = ++speedToken, folder = current.folder;
+  if (rate === 1) { engine.setRate(1); return; }
+  current.slowed ??= {};
+  select.disabled = true; select.dataset.err = "";
+  try {
+    if (!current.slowed[rate]) {
+      const stems = Object.keys(current.buffers).filter((k) => k !== "click");
+      const buffers = {};
+      await Promise.all(stems.map(async (k) => {
+        const res = await fetch(`/api/library/${encodeURIComponent(folder)}/stretch/${k}?rate=${rate}`);
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
+        buffers[k] = await ctx.decodeAudioData(await res.arrayBuffer());
+      }));
+      current.slowed[rate] = buffers;
+    }
+    if (token === speedToken && current?.folder === folder) engine.setRate(rate, current.slowed[rate]);
+  } catch (err) {
+    if (token === speedToken) { engine.setRate(1); select.dataset.err = `Couldn't change the speed: ${err.message}`; }
+  } finally {
+    select.disabled = false;
+    if (token === speedToken && current?.folder === folder) select.value = String(engine.rate);
+  }
+}
+
+// Move the whole loop one bar earlier or later (the song's start and end count as bar lines).
+function shiftLoop(dir) {
   const L = engine.loop;
   if (!current || !L || recording) return;
   const m = current.m;
   const lines = [...new Set([0, ...m.downbeats, m.duration_s].map((t) => +t.toFixed(3)))].sort((x, y) => x - y);
-  const i = lines.reduce((best, t, j) => Math.abs(t - L[edge]) < Math.abs(lines[best] - L[edge]) ? j : best, 0);
-  const t = lines[Math.max(0, Math.min(lines.length - 1, i + dir))];
-  const next = { ...L, [edge]: t };
-  if (next.b - next.a < 0.5) return; // at least a bar
-  engine.setLoop(next);
+  const near = (t) => lines.reduce((best, u, j) => Math.abs(u - t) < Math.abs(lines[best] - t) ? j : best, 0);
+  const a = near(L.a) + dir, b = near(L.b) + dir;
+  if (a < 0 || b > lines.length - 1) return; // the loop stays inside the song
+  engine.setLoop({ a: lines[a], b: lines[b] });
 }
 
 function setupTimeline(deck, el) {

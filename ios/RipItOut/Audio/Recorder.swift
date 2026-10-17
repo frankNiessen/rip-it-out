@@ -292,6 +292,7 @@ final class Recorder {
         guard await prepareInput() else { return }
         await player.settle() // until the audio route has stopped changing
         player.setLoop(nil) // a take is one pass through the song
+        player.setSpeed(1) // at full speed, as the timing math expects
         note = nil
         lastSaved = nil
         do {

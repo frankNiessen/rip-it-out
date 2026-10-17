@@ -28,8 +28,13 @@ to the last song.
   and in a DAW: one track soloed at a time, soloing clears the mutes, and a track is
   muted or soloed, not both), the bar and beat counter, the tempo view with the song's
   sections, a count-in of one or two bars, and section loops: **Loop** loops the section
-  you are in, a section button moves the loop there. Zoom with **−** / **+** or a pinch,
-  drag or tap in the tempo view (or **‹ Bar ›**) to start anywhere. Mute and solo reset
+  you are in, a section button moves the loop there, and **4 / 8 / 16 / 32** shortens the
+  loop to that many bars from where the loop starts (so the start of the section stays
+  the start; **Section** goes back to the whole section), and the arrows move the loop a bar
+  at a time. The **speed** button (next to the time) plays slower or faster (150% down to 50%) without
+  changing the pitch; the click stays a plain click on the slowed beats. It's for practising, so Record
+  and a take's page always play at full speed. With no loop on, zoom with **−** / **+** or a pinch,
+  drag or tap in the tempo view to start anywhere. Mute and solo reset
   when the app restarts, the Band fader and the click are kept.
 - **Record:** from the built-in microphone, a headset or a USB audio interface. Latency
   is measured once with **Settings > Calibrate** (the same 20 clicks as on the desktop).
@@ -52,6 +57,15 @@ an Apple ID. A free account is enough to run the app on your own devices (the ap
 has to be reinstalled from Xcode every 7 days); TestFlight and the App Store need a paid
 Apple Developer account.
 
+**Not reinstalling every week:** that 7 days is Apple's limit for free accounts. Either
+pay for the Apple Developer Program (about 99 USD a year): a TestFlight build stays
+installed for 90 days and can be renewed from the phone, and a build you run from Xcode
+lasts a year. Or stay free and let a refresher re-sign the app before it expires:
+[AltStore](https://altstore.io) (a small helper on the Mac refreshes the app over Wi-Fi) or
+[SideStore](https://sidestore.io) (refreshes on the phone itself after a one-time setup).
+Both use your Apple ID and are not endorsed by this project; free accounts also allow
+only three sideloaded apps at a time.
+
 1. Open `ios/RipItOut.xcodeproj` in Xcode.
 2. Select the **RipItOut** target, **Signing & Capabilities**, and pick your team (your
    Apple ID). If Xcode says the bundle identifier is taken, change
@@ -65,8 +79,10 @@ Apple Developer account.
      sessions > Create new app password*) and the library folder, e.g. `StemLibrary`.
      The app talks to the server directly (WebDAV): the Files app can't hand whole
      Nextcloud folders to other apps. Songs are downloaded when you open them and kept
-     on the phone; takes are saved on the phone first and uploaded in the background (tried
-     again later when there's no connection).
+     on the phone; takes are saved on the phone first and uploaded in the background (a few
+     moments of that continue after you leave the app; the rest is tried again when you open
+     it). The **Takes** tab lists the takes that aren't on the server yet, says why, and has
+     **Upload now**. A take only shows up on the computer once it is on the server.
    - **iCloud Drive or On My iPhone:** tap *Choose a folder in Files*, for example
      *iCloud Drive > Rip It Out*. On the Mac, put the library in that folder with
      *Settings > Library folder*.

@@ -21,6 +21,9 @@ final class PlayerEngine {
     private(set) var isPlaying = false
     private(set) var loading = false
     private(set) var loop: Loop?
+    /// Playback speed (1 is normal); the pitch stays where it is.
+    static let speeds: [Double] = [1.5, 1.25, 1.1, 1, 0.9, 0.8, 0.75, 0.7, 0.6, 0.5]
+    private(set) var rate: Double = 1
     private(set) var countInHosts: [Double] = []   // host seconds of the count-in clicks
     var countInBars: Int = UserDefaults.standard.object(forKey: "countInBars") as? Int ?? 1 {
         didSet { UserDefaults.standard.set(countInBars, forKey: "countInBars") }
@@ -45,6 +48,11 @@ final class PlayerEngine {
     @ObservationIgnored private var pos0: Double = 0
     @ObservationIgnored private(set) var startHost: Double = 0   // host seconds at which pos0 plays
     @ObservationIgnored private var activeLoop: Loop?
+    @ObservationIgnored private var activeRate: Double = 1
+    /// One time-stretch unit per track, bypassed at normal speed. (The click's is always
+    /// bypassed: it plays a click track rendered for the speed instead.)
+    @ObservationIgnored private var slowClicks: [Double: AVAudioFile] = [:]
+    @ObservationIgnored private var stretchers: [String: AVAudioUnit] = [:]
     @ObservationIgnored private var endTimer: Timer?
 
     var duration: Double { song?.manifest.durationS ?? 0 }
@@ -177,6 +185,7 @@ final class PlayerEngine {
         let old = engine
         old.stop()
         for p in players.values { old.detach(p) }
+        for fx in stretchers.values { old.detach(fx) }
         if let b = takeBoost { old.detach(b); takeBoost = nil }
         old.detach(countPlayer)
         if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
@@ -267,6 +276,7 @@ final class PlayerEngine {
         self.loop = nil
         self.offset = 0
         self.zoom = 1
+        setSpeed(1)
         loadGeneration += 1
         let generation = loadGeneration
         loading = true
@@ -350,17 +360,34 @@ final class PlayerEngine {
     /// recording up to full level (a player's own volume only goes down).
     private func connect(_ key: String, _ player: AVAudioPlayerNode, _ file: AVAudioFile, in e: AVAudioEngine) {
         e.attach(player)
+        let fx = stretcher(for: key)
+        e.attach(fx)
+        e.connect(player, to: fx, format: file.processingFormat)
         if key == "take" {
             let boost = AVAudioUnitEQ(numberOfBands: 0)
             boost.globalGain = takeBoostDb
             e.attach(boost)
-            e.connect(player, to: boost, format: file.processingFormat)
+            e.connect(fx, to: boost, format: file.processingFormat)
             e.connect(boost, to: e.mainMixerNode, format: file.processingFormat)
             takeBoost = boost
         } else {
-            e.connect(player, to: e.mainMixerNode, format: file.processingFormat)
+            e.connect(fx, to: e.mainMixerNode, format: file.processingFormat)
         }
         player.volume = effectiveLevel(key)
+    }
+
+    private func stretcher(for key: String) -> AVAudioUnit {
+        if let fx = stretchers[key] { return fx }
+        // The click is never stretched: it has its own ticks on the slowed beats (ClickRender).
+        let fx: AVAudioUnit = key == "click" ? AVAudioUnitVarispeed() : AVAudioUnitTimePitch()
+        stretchers[key] = fx
+        applyRate(to: fx)
+        return fx
+    }
+
+    private func applyRate(to fx: AVAudioUnit) {
+        if let unit = fx as? AVAudioUnitTimePitch { unit.rate = Float(rate); unit.bypass = rate == 1 }
+        if let unit = fx as? AVAudioUnitVarispeed { unit.rate = 1; unit.bypass = true }
     }
 
     @ObservationIgnored private var takeBoost: AVAudioUnitEQ?
@@ -372,11 +399,14 @@ final class PlayerEngine {
             p.stop()
             engine.detach(p)
         }
+        if let fx = stretchers.removeValue(forKey: key) { engine.detach(fx) }
         if key == "take", let b = takeBoost { engine.detach(b); takeBoost = nil }
         files[key] = nil
     }
 
     private func unloadTracks() {
+        for file in slowClicks.values { try? FileManager.default.removeItem(at: file.url) }
+        slowClicks = [:]
         for key in Array(players.keys) { remove(key) }
         trackKeys = []
     }
@@ -392,6 +422,7 @@ final class PlayerEngine {
         self.take = nil
         applyVolumes()
         guard let take else { return }
+        setSpeed(1) // a take is listened to at full speed, in sync with its video
         do {
             let url = take.myTakeURL
             let file = try await Background.run { () throws -> AVAudioFile in
@@ -506,7 +537,7 @@ final class PlayerEngine {
     /// Song time now (what you hear, give or take the output latency).
     var position: Double {
         guard isPlaying else { return offset }
-        var pos = pos0 + Self.hostNow - startHost
+        var pos = pos0 + (Self.hostNow - startHost) * activeRate
         if let L = activeLoop, pos >= L.b { pos = L.a + (pos - L.a).truncatingRemainder(dividingBy: L.b - L.a) }
         return min(max(0, pos), duration)
     }
@@ -526,7 +557,8 @@ final class PlayerEngine {
         if let L = loop, from < L.a || from >= L.b { from = L.a }
         var plan = grid.planStart(from: from, bars: bars ?? countInBars)
         if let L = loop, plan.pos < L.a { plan.pos = L.a } // the count-in may not snap out of the loop
-        let lead = plan.clicks.first.map { max(0, plan.pos - $0.s) } ?? 0
+        let r = rate // song seconds per second heard
+        let lead = plan.clicks.first.map { max(0, plan.pos - $0.s) / r } ?? 0
         // With a count-in its clicks are the first sounds after silence: give the output a
         // moment (some USB interfaces swallow the first fraction of a second).
         let start = Self.hostNow + (plan.clicks.isEmpty ? 0.12 : 0.3) + lead
@@ -537,19 +569,28 @@ final class PlayerEngine {
         let gen = generation
         let when = AVAudioTime(hostTime: AVAudioTime.hostTime(forSeconds: start))
         for (key, player) in players {
-            guard let file = files[key] else { continue }
-            schedule(player, file, from: plan.pos, loop: loop, gen: gen)
-            player.play(at: when)
+            var scale = 1.0
+            var source = files[key]
+            if key == "click" && r != 1 { // the click made for this speed, or none until it's ready
+                source = slowClicks[r]
+                scale = 1 / r
+            }
+            guard let file = source else { continue }
+            schedule(player, file, from: plan.pos, loop: loop, gen: gen, scale: scale)
+            // The stretch unit holds the sound back a little: start the track that much earlier.
+            let held = r == 1 || key == "click" ? 0 : min(0.1, stretchers[key]?.auAudioUnit.latency ?? 0)
+            player.play(at: held > 0 ? AVAudioTime(hostTime: AVAudioTime.hostTime(forSeconds: start - held)) : when)
         }
         if !plan.clicks.isEmpty {
-            let first = start + (plan.clicks[0].s - plan.pos)
-            let buffer = Ticks.buffer(clicks: plan.clicks.map { ($0.s - plan.clicks[0].s, $0.down) })
+            let first = start + (plan.clicks[0].s - plan.pos) / r
+            let buffer = Ticks.buffer(clicks: plan.clicks.map { (($0.s - plan.clicks[0].s) / r, $0.down) })
             countPlayer.volume = effectiveLevel("count")
             countPlayer.scheduleBuffer(buffer, at: nil)
             countPlayer.play(at: AVAudioTime(hostTime: AVAudioTime.hostTime(forSeconds: first)))
         }
-        countInHosts = plan.clicks.map { start + ($0.s - plan.pos) }
+        countInHosts = plan.clicks.map { start + ($0.s - plan.pos) / r }
         activeLoop = loop
+        activeRate = r
         pos0 = plan.pos
         startHost = start
         isPlaying = true
@@ -561,13 +602,14 @@ final class PlayerEngine {
         return (start, plan.pos)
     }
 
-    private func frames(_ file: AVAudioFile) -> AVAudioFramePosition {
-        min(file.length, AVAudioFramePosition(song?.manifest.numSamples ?? Int(file.length)))
+    /// `scale`: seconds of the file per song second (a click made for a slowed song is longer).
+    private func frames(_ file: AVAudioFile, scale: Double = 1) -> AVAudioFramePosition {
+        min(file.length, AVAudioFramePosition(Double(song?.manifest.numSamples ?? Int(file.length)) * scale))
     }
 
-    private func schedule(_ player: AVAudioPlayerNode, _ file: AVAudioFile, from pos: Double, loop: Loop?, gen: Int) {
-        let sr = file.processingFormat.sampleRate
-        let length = frames(file)
+    private func schedule(_ player: AVAudioPlayerNode, _ file: AVAudioFile, from pos: Double, loop: Loop?, gen: Int, scale: Double = 1) {
+        let sr = file.processingFormat.sampleRate * scale
+        let length = frames(file, scale: scale)
         let startFrame = min(length, AVAudioFramePosition((pos * sr).rounded()))
         guard let L = loop else {
             if length > startFrame {
@@ -634,6 +676,31 @@ final class PlayerEngine {
         if was { play(countInBars: 0) }
     }
 
+    /// Slows down (or back): makes the click for that speed first, then plays at it.
+    func changeSpeed(_ r: Double) async {
+        if r != 1, slowClicks[r] == nil, trackKeys.contains("click"), let song {
+            let beats = grid.beats, downbeats = grid.downbeats
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("click-\(Int(r * 100))-\(UUID().uuidString.prefix(6)).caf")
+            let made: AVAudioFile? = try? await Background.run {
+                try ClickRender.render(beats: beats, downbeats: downbeats, rate: r, to: url)
+                return try AVAudioFile(forReading: url)
+            }
+            guard self.song?.folder == song.folder else { return } // another song opened meanwhile
+            if let made { slowClicks[r] = made }
+        }
+        setSpeed(r)
+    }
+
+    /// Plays at another speed from now on, from where it is.
+    func setSpeed(_ r: Double) {
+        guard r != rate else { return }
+        let was = isPlaying
+        pause()
+        rate = r
+        for fx in stretchers.values { applyRate(to: fx) }
+        if was { play(countInBars: 0) }
+    }
+
     /// How far the tempo view is zoomed in (1 = the whole song).
     var zoom: Double = 1
 
@@ -649,16 +716,29 @@ final class PlayerEngine {
         }
     }
 
-    /// Moves the loop's start (or end) by `dir` bars, keeping at least one bar.
-    func nudgeLoop(end: Bool, by dir: Int) {
+    /// Moves the whole loop a bar earlier or later; it stays inside the song.
+    func shiftLoop(by dir: Int) {
         guard let L = loop else { return }
         let lines = Array(Set(([0] + grid.downbeats + [duration]).map { ($0 * 1000).rounded() / 1000 })).sorted()
-        let edge = end ? L.b : L.a
-        guard let i = lines.indices.min(by: { abs(lines[$0] - edge) < abs(lines[$1] - edge) }) else { return }
-        let t = lines[max(0, min(lines.count - 1, i + dir))]
-        let next = end ? Loop(a: L.a, b: t) : Loop(a: t, b: L.b)
-        if next.b - next.a < 0.5 { return } // at least a bar
-        setLoop(next)
+        func nearest(_ t: Double) -> Int? { lines.indices.min(by: { abs(lines[$0] - t) < abs(lines[$1] - t) }) }
+        guard let a = nearest(L.a), let b = nearest(L.b), a + dir >= 0, b + dir < lines.count else { return }
+        setLoop(Loop(a: lines[a + dir], b: lines[b + dir]))
+    }
+
+    /// How many bars the loop spans.
+    var loopBars: Int? { loop.map { grid.bars(from: $0.a, to: $0.b) } }
+
+    /// Loops `bars` bars from where the loop starts, so the start of the section stays
+    /// the start of the loop; 0 goes back to the whole section.
+    func setLoopBars(_ bars: Int) {
+        guard let L = loop else { return }
+        if bars == 0 {
+            if let s = section(at: L.a) { setLoop(Loop(a: s.start, b: s.end)) }
+            return
+        }
+        let b = grid.loopEnd(from: L.a, bars: bars, duration: duration)
+        if b - L.a < 0.5 { return }
+        setLoop(Loop(a: L.a, b: b))
     }
 
     /// Loops the section at the current position, or ends the loop.
@@ -673,7 +753,7 @@ final class PlayerEngine {
     }
 
     private func checkEnd() {
-        guard isPlaying, activeLoop == nil, pos0 + Self.hostNow - startHost >= duration else { return }
+        guard isPlaying, activeLoop == nil, pos0 + (Self.hostNow - startHost) * activeRate >= duration else { return }
         stopAll()
         offset = duration
         onEnded?()

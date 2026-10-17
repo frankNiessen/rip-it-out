@@ -91,6 +91,7 @@ def delete_song(library_dir: Path, folder: str) -> bool:
     with manifest_lock:
         os.replace(song, trash)
     shutil.rmtree(trash, ignore_errors=True)
+    shutil.rmtree(library_dir / WORK_DIR_NAME / "stretch" / song.name, ignore_errors=True)  # slowed-down copies
     return True
 
 

@@ -17,6 +17,7 @@ struct TakesOverview: View {
 
     var body: some View {
         List {
+            UploadStatus()
             if checking {
                 HStack(spacing: 8) {
                     ProgressView().tint(Theme.muted)
@@ -33,6 +34,9 @@ struct TakesOverview: View {
                         Text(row.song.title).font(.system(size: 16, weight: .semibold)).foregroundStyle(Theme.ink).lineLimit(1)
                         HStack(spacing: 8) {
                             Text(row.take.displayName).font(.system(size: 14)).foregroundStyle(Theme.ink)
+                            if Uploads.shared.isWaiting(row.take.folder) {
+                                Text("not on Nextcloud yet").font(Theme.mono(10)).foregroundStyle(Theme.mute)
+                            }
                             if row.take.hasVideo {
                                 Text("video").font(Theme.mono(10)).foregroundStyle(Theme.muted)
                                     .padding(.horizontal, 5).padding(.vertical, 1)
@@ -76,6 +80,7 @@ struct TakesOverview: View {
 
     /// The takes on this device at once, then whatever changed on the server.
     private func load() async {
+        Uploads.shared.run()
         loading = true
         defer { loading = false }
         rows = await collect(sync: false)
@@ -116,6 +121,31 @@ struct TakesOverview: View {
             self.error = Explain.isNetwork(error)
                 ? "Couldn't delete the take on Nextcloud: \(Explain.network(error)) Try again when you're online."
                 : "Couldn't delete the take: \(error.localizedDescription)"
+        }
+    }
+}
+
+/// Takes that are on this iPhone but not on the server (so not on the computer either),
+/// and why, with a button to try again.
+struct UploadStatus: View {
+    var body: some View {
+        let uploads = Uploads.shared
+        if uploads.pending > 0 {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    if uploads.active { ProgressView().tint(Theme.muted) }
+                    Text(uploads.pending == 1 ? "1 take is not on Nextcloud yet." : "\(uploads.pending) takes are not on Nextcloud yet.")
+                        .font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.mute)
+                    Spacer(minLength: 0)
+                    if !uploads.active { Button("Upload now") { uploads.run() }.buttonStyle(QuietButtonStyle()) }
+                }
+                if let reason = uploads.lastError {
+                    Text(reason).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                } else if !uploads.active {
+                    Text("They go up while the app is open and online.").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                }
+            }
+            .listRowBackground(Theme.bg)
         }
     }
 }

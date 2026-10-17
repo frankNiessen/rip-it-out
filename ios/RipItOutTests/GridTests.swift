@@ -23,6 +23,16 @@ final class GridTests: XCTestCase {
         XCTAssertEqual(g.position(at: 2.5), Grid.Position(bar: 2, beat: 1, down: true))
     }
 
+    func testLoopBars() {
+        let g = steady(80) // bars start at 0.5, 2.5, 4.5, ... (20 of them)
+        XCTAssertEqual(g.loopEnd(from: 0.5, bars: 8, duration: 40), 16.5)
+        XCTAssertEqual(g.loopEnd(from: 0, bars: 8, duration: 40), 16.5) // a section starting before the first bar line
+        XCTAssertEqual(g.loopEnd(from: 20.5, bars: 32, duration: 40), 40) // not that many bars left: to the end
+        XCTAssertEqual(g.loopEnd(from: 0.5, bars: 4, duration: 40), 8.5)
+        XCTAssertEqual(g.bars(from: 0.5, to: 16.5), 8)
+        XCTAssertEqual(g.bars(from: 0, to: 40), 20)
+    }
+
     func testBeatsPerBarEstimate() {
         let beats = (0..<30).map { Double($0) * 0.5 }
         XCTAssertEqual(Grid.estimateBeatsPerBar(beats: beats, downbeats: stride(from: 0, to: 30, by: 3).map { beats[$0] }), 3)

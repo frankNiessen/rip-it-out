@@ -64,7 +64,7 @@ struct SongView: View {
                 SongTimeline(song: song)
             }
             .frame(height: 140)
-            Caption()
+            Caption(showSpeed: mode == .practice)
             TransportView(mode: mode)
             Rectangle().fill(Theme.line).frame(height: 1)
             MixerView()
@@ -165,6 +165,7 @@ struct SongView: View {
         if entering {
             player.pause() // Record starts the song itself
             if player.loop != nil { player.setLoop(nil) } // a take is one pass through the song
+            player.setSpeed(1)
             recorder.cameraOn = false // video only when you switch it on
         }
         Task { await recorder.updateCamera(active: true) }
@@ -434,6 +435,60 @@ struct TransportView: View {
     }
 }
 
+/// Speed: slower, same pitch.
+struct SpeedMenu: View {
+    @Environment(PlayerEngine.self) private var player
+
+    var body: some View {
+        Menu {
+            ForEach(PlayerEngine.speeds, id: \.self) { r in
+                Button { Task { await player.changeSpeed(r) } } label: {
+                    if r == player.rate { Label(Self.label(r), systemImage: "checkmark") } else { Text(Self.label(r)) }
+                }
+            }
+        } label: {
+            if player.rate == 1 { Image(systemName: "speedometer") } else { Text(Self.label(player.rate)) }
+        }
+        .buttonStyle(QuietButtonStyle(on: player.rate != 1))
+        .accessibilityLabel("Speed \(Self.label(player.rate))")
+    }
+
+    static func label(_ r: Double) -> String { "\(Int((r * 100).rounded()))%" }
+}
+
+/// With a loop on: its length in bars (4, 8, 16 or 32 from where the loop starts, or the
+/// whole section) and arrows that move the loop a bar at a time.
+struct LoopControls: View {
+    @Environment(PlayerEngine.self) private var player
+
+    var body: some View {
+        if let current = player.loopBars {
+            HStack(spacing: 6) {
+                ForEach([4, 8, 16, 32], id: \.self) { n in
+                    Button("\(n)") { player.setLoopBars(n) }
+                        .buttonStyle(QuietButtonStyle(on: current == n))
+                        .accessibilityLabel("Loop \(n) bars")
+                }
+                Button("Section") { player.setLoopBars(0) }
+                    .buttonStyle(QuietButtonStyle(on: isSection))
+                    .accessibilityLabel("Loop the whole section")
+                Spacer(minLength: 0)
+                Button { player.shiftLoop(by: -1) } label: { Image(systemName: "chevron.left") }
+                    .buttonStyle(QuietButtonStyle())
+                    .accessibilityLabel("Move the loop a bar earlier")
+                Button { player.shiftLoop(by: 1) } label: { Image(systemName: "chevron.right") }
+                    .buttonStyle(QuietButtonStyle())
+                    .accessibilityLabel("Move the loop a bar later")
+            }
+        }
+    }
+
+    private var isSection: Bool {
+        guard let L = player.loop, let s = player.section(at: L.a) else { return false }
+        return L == PlayerEngine.Loop(a: s.start, b: s.end) && ![4, 8, 16, 32].contains(player.loopBars ?? 0)
+    }
+}
+
 struct LevelMeter: View {
     let level: Float
 
@@ -563,6 +618,7 @@ struct SectionStrip: View {
 
 /// Time on the left, the loop in lime on the right, like the desktop's caption row.
 struct Caption: View {
+    var showSpeed = false
     @Environment(PlayerEngine.self) private var player
 
     var body: some View {
@@ -571,20 +627,23 @@ struct Caption: View {
                 HStack(spacing: 8) {
                     Text("\(Theme.time(player.position)) / \(Theme.time(player.duration))")
                         .font(Theme.mono(12)).foregroundStyle(Theme.muted)
+                    if showSpeed { SpeedMenu() }
                     Spacer(minLength: 0)
-                    Stepper2(label: "Bar", back: { player.stepBar(-1) }, forward: { player.stepBar(1) })
-                    HStack(spacing: 0) {
-                        Button { player.zoom = max(1, player.zoom / 2) } label: { Text("−").frame(width: 30, height: 30) }
-                            .disabled(player.zoom <= 1)
-                        Button { player.zoom = min(16, player.zoom * 2) } label: { Text("+").frame(width: 30, height: 30) }
-                            .disabled(player.zoom >= 16)
+                    if player.loop == nil {
+                        HStack(spacing: 0) {
+                            Button { player.zoom = max(1, player.zoom / 2) } label: { Text("−").frame(width: 30, height: 30) }
+                                .disabled(player.zoom <= 1)
+                            Button { player.zoom = min(16, player.zoom * 2) } label: { Text("+").frame(width: 30, height: 30) }
+                                .disabled(player.zoom >= 16)
+                        }
+                        .buttonStyle(.plain)
+                        .font(Theme.mono(15))
+                        .foregroundStyle(Theme.ink)
+                        .overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.lineStrong, lineWidth: 1))
+                        .accessibilityLabel("Zoom")
                     }
-                    .buttonStyle(.plain)
-                    .font(Theme.mono(15))
-                    .foregroundStyle(Theme.ink)
-                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.lineStrong, lineWidth: 1))
-                    .accessibilityLabel("Zoom")
                 }
+                LoopControls()
             }
         }
     }

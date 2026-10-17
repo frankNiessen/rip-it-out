@@ -70,6 +70,18 @@ struct Grid {
         return Position(bar: di + 1, beat: min(n, 12), down: abs(beatTime - downbeats[di]) < 0.03)
     }
 
+    /// How many bars start within [a, b).
+    func bars(from a: Double, to b: Double) -> Int {
+        downbeats.filter { $0 >= a - 0.05 && $0 < b - 0.05 }.count
+    }
+
+    /// Where a loop of `bars` bars ends when it starts at `a` (the end of the song if
+    /// there aren't that many bars left).
+    func loopEnd(from a: Double, bars: Int, duration: Double) -> Double {
+        guard let i = downbeats.firstIndex(where: { $0 >= a - 0.05 }) else { return duration }
+        return i + bars < downbeats.count ? downbeats[i + bars] : duration
+    }
+
     /// Song time of the start of bar `bar` (1-based), for display.
     func barStart(_ bar: Int) -> Double? {
         bar >= 1 && bar <= downbeats.count ? downbeats[bar - 1] : nil
