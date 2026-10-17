@@ -49,8 +49,9 @@ final class PlayerEngine {
     @ObservationIgnored private(set) var startHost: Double = 0   // host seconds at which pos0 plays
     @ObservationIgnored private var activeLoop: Loop?
     @ObservationIgnored private var activeRate: Double = 1
-    /// One time-stretch unit per track (the click is simply played slower: its pitch
-    /// doesn't matter, and a stretch would smear it). Bypassed at normal speed.
+    /// One time-stretch unit per track, bypassed at normal speed. (The click's is always
+    /// bypassed: it plays a click track rendered for the speed instead.)
+    @ObservationIgnored private var slowClicks: [Double: AVAudioFile] = [:]
     @ObservationIgnored private var stretchers: [String: AVAudioUnit] = [:]
     @ObservationIgnored private var endTimer: Timer?
 
@@ -377,6 +378,7 @@ final class PlayerEngine {
 
     private func stretcher(for key: String) -> AVAudioUnit {
         if let fx = stretchers[key] { return fx }
+        // The click is never stretched: it has its own ticks on the slowed beats (ClickRender).
         let fx: AVAudioUnit = key == "click" ? AVAudioUnitVarispeed() : AVAudioUnitTimePitch()
         stretchers[key] = fx
         applyRate(to: fx)
@@ -385,7 +387,7 @@ final class PlayerEngine {
 
     private func applyRate(to fx: AVAudioUnit) {
         if let unit = fx as? AVAudioUnitTimePitch { unit.rate = Float(rate); unit.bypass = rate == 1 }
-        if let unit = fx as? AVAudioUnitVarispeed { unit.rate = Float(rate); unit.bypass = rate == 1 }
+        if let unit = fx as? AVAudioUnitVarispeed { unit.rate = 1; unit.bypass = true }
     }
 
     @ObservationIgnored private var takeBoost: AVAudioUnitEQ?
@@ -403,6 +405,8 @@ final class PlayerEngine {
     }
 
     private func unloadTracks() {
+        for file in slowClicks.values { try? FileManager.default.removeItem(at: file.url) }
+        slowClicks = [:]
         for key in Array(players.keys) { remove(key) }
         trackKeys = []
     }
@@ -565,8 +569,14 @@ final class PlayerEngine {
         let gen = generation
         let when = AVAudioTime(hostTime: AVAudioTime.hostTime(forSeconds: start))
         for (key, player) in players {
-            guard let file = files[key] else { continue }
-            schedule(player, file, from: plan.pos, loop: loop, gen: gen)
+            var scale = 1.0
+            var source = files[key]
+            if key == "click" && r != 1 { // the click made for this speed, or none until it's ready
+                source = slowClicks[r]
+                scale = 1 / r
+            }
+            guard let file = source else { continue }
+            schedule(player, file, from: plan.pos, loop: loop, gen: gen, scale: scale)
             // The stretch unit holds the sound back a little: start the track that much earlier.
             let held = r == 1 || key == "click" ? 0 : min(0.1, stretchers[key]?.auAudioUnit.latency ?? 0)
             player.play(at: held > 0 ? AVAudioTime(hostTime: AVAudioTime.hostTime(forSeconds: start - held)) : when)
@@ -592,13 +602,14 @@ final class PlayerEngine {
         return (start, plan.pos)
     }
 
-    private func frames(_ file: AVAudioFile) -> AVAudioFramePosition {
-        min(file.length, AVAudioFramePosition(song?.manifest.numSamples ?? Int(file.length)))
+    /// `scale`: seconds of the file per song second (a click made for a slowed song is longer).
+    private func frames(_ file: AVAudioFile, scale: Double = 1) -> AVAudioFramePosition {
+        min(file.length, AVAudioFramePosition(Double(song?.manifest.numSamples ?? Int(file.length)) * scale))
     }
 
-    private func schedule(_ player: AVAudioPlayerNode, _ file: AVAudioFile, from pos: Double, loop: Loop?, gen: Int) {
-        let sr = file.processingFormat.sampleRate
-        let length = frames(file)
+    private func schedule(_ player: AVAudioPlayerNode, _ file: AVAudioFile, from pos: Double, loop: Loop?, gen: Int, scale: Double = 1) {
+        let sr = file.processingFormat.sampleRate * scale
+        let length = frames(file, scale: scale)
         let startFrame = min(length, AVAudioFramePosition((pos * sr).rounded()))
         guard let L = loop else {
             if length > startFrame {
@@ -665,6 +676,21 @@ final class PlayerEngine {
         if was { play(countInBars: 0) }
     }
 
+    /// Slows down (or back): makes the click for that speed first, then plays at it.
+    func changeSpeed(_ r: Double) async {
+        if r != 1, slowClicks[r] == nil, trackKeys.contains("click"), let song {
+            let beats = grid.beats, downbeats = grid.downbeats
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("click-\(Int(r * 100))-\(UUID().uuidString.prefix(6)).caf")
+            let made: AVAudioFile? = try? await Background.run {
+                try ClickRender.render(beats: beats, downbeats: downbeats, rate: r, to: url)
+                return try AVAudioFile(forReading: url)
+            }
+            guard self.song?.folder == song.folder else { return } // another song opened meanwhile
+            if let made { slowClicks[r] = made }
+        }
+        setSpeed(r)
+    }
+
     /// Plays at another speed from now on, from where it is.
     func setSpeed(_ r: Double) {
         guard r != rate else { return }
@@ -690,16 +716,13 @@ final class PlayerEngine {
         }
     }
 
-    /// Moves the loop's start (or end) by `dir` bars, keeping at least one bar.
-    func nudgeLoop(end: Bool, by dir: Int) {
+    /// Moves the whole loop a bar earlier or later; it stays inside the song.
+    func shiftLoop(by dir: Int) {
         guard let L = loop else { return }
         let lines = Array(Set(([0] + grid.downbeats + [duration]).map { ($0 * 1000).rounded() / 1000 })).sorted()
-        let edge = end ? L.b : L.a
-        guard let i = lines.indices.min(by: { abs(lines[$0] - edge) < abs(lines[$1] - edge) }) else { return }
-        let t = lines[max(0, min(lines.count - 1, i + dir))]
-        let next = end ? Loop(a: L.a, b: t) : Loop(a: t, b: L.b)
-        if next.b - next.a < 0.5 { return } // at least a bar
-        setLoop(next)
+        func nearest(_ t: Double) -> Int? { lines.indices.min(by: { abs(lines[$0] - t) < abs(lines[$1] - t) }) }
+        guard let a = nearest(L.a), let b = nearest(L.b), a + dir >= 0, b + dir < lines.count else { return }
+        setLoop(Loop(a: lines[a + dir], b: lines[b + dir]))
     }
 
     /// How many bars the loop spans.

@@ -1150,6 +1150,20 @@ const engine = {
     this.ticks = { hi: makeTick(1760), lo: makeTick(1100) };
   },
   load(song) { this.stop(); if (this.song?.folder !== song.folder) this.loop = null; this.song = song; this.offset = 0; this.rate = 1; this.slow = null; },
+  /** The click for a slowed song: the same ticks, not stretched, on the slowed beats. */
+  clickAt(rate) {
+    const m = this.song.m, sr = ctx.sampleRate;
+    if (this.clickCache?.rate === rate && this.clickCache.beats === m.beats) return this.clickCache.buf;
+    const buf = ctx.createBuffer(1, Math.ceil((m.duration_s / rate) * sr) + sr, sr), out = buf.getChannelData(0);
+    const tick = { hi: this.ticks.hi.getChannelData(0), lo: this.ticks.lo.getChannelData(0) };
+    for (const b of m.beats) {
+      const d = m.downbeats[lastLE(m.downbeats, b + 0.03)];
+      const t = tick[d !== undefined && Math.abs(d - b) < 0.03 ? "hi" : "lo"], start = Math.round((b / rate) * sr);
+      for (let i = 0; i < t.length && start + i < out.length; i++) out[start + i] += t[i] * 0.6;
+    }
+    this.clickCache = { rate, beats: m.beats, buf };
+    return buf;
+  },
   /** Plays at `rate` from now on; `buffers` are the stems rendered at that speed. */
   setRate(rate, buffers) {
     const was = this.playing, pos = this.position(false);
@@ -1204,9 +1218,9 @@ const engine = {
       s.start(when, off * scale); this.sources.push(s);
     };
     for (const [k, buf] of Object.entries(buffers)) {
-      const slowed = this.slow && this.slow.buffers[k];
-      if (slowed) play(slowed, k, tAudio, plan.pos, 0, 1 / rate);
-      else play(buf, k, tAudio, plan.pos, 0, 1, rate);
+      if (k === "click" && rate !== 1) play(this.clickAt(rate), k, tAudio, plan.pos, 0, 1 / rate); // plain ticks, only later
+      else if (this.slow && this.slow.buffers[k]) play(this.slow.buffers[k], k, tAudio, plan.pos, 0, 1 / rate);
+      else play(buf, k, tAudio, plan.pos);
     }
     if (this.withTake && this.take && rate === 1) play(this.take, "take", tAudio, plan.pos - this.takeShift, this.takeShift);
     const ticks = { hi: this.ticks.hi, lo: this.ticks.lo };
@@ -1294,9 +1308,8 @@ function makeDeck(kind, root) {
         <button class="btn quiet rewind" disabled>To start</button>
         <button class="btn quiet loop-btn" aria-pressed="false" title="Loop the current section (L). Or drag across the view, or click a section.">Loop</button>
         <span class="loop-edit" hidden>
-          <span class="stepper" title="Loop start"><button data-nudge="a" data-dir="-1" aria-label="Loop starts a bar earlier">‹</button><span>Start</span><button data-nudge="a" data-dir="1" aria-label="Loop starts a bar later">›</button></span>
-          <span class="loop-bars" title="Loop this many bars from the start of the loop"><span class="hint">Length</span><button class="btn quiet" data-bars="8">8</button><button class="btn quiet" data-bars="16">16</button><button class="btn quiet" data-bars="32">32</button><button class="btn quiet" data-bars="0" title="The whole section again">Section</button></span>
-          <span class="stepper" title="Loop end"><button data-nudge="b" data-dir="-1" aria-label="Loop ends a bar earlier">‹</button><span>End</span><button data-nudge="b" data-dir="1" aria-label="Loop ends a bar later">›</button></span>
+          <span class="loop-bars" title="Loop this many bars from the start of the loop"><button class="btn quiet" data-bars="4">4</button><button class="btn quiet" data-bars="8">8</button><button class="btn quiet" data-bars="16">16</button><button class="btn quiet" data-bars="32">32</button><button class="btn quiet" data-bars="0" title="The whole section again">Section</button></span>
+          <span class="stepper" title="Move the loop one bar"><button data-shift="-1" aria-label="Move the loop a bar earlier">‹</button><span>Bar</span><button data-shift="1" aria-label="Move the loop a bar later">›</button></span>
         </span>
         ${kind === "play" ? `<label title="Slow the song down without changing its pitch">Speed <select class="speed">
           ${SPEEDS.map((r) => `<option value="${r}">${Math.round(r * 100)}%</option>`).join("")}
@@ -1394,7 +1407,7 @@ function makeDeck(kind, root) {
       q(".loop-edit").hidden = !L;
       if (L) {
         const n = barsIn(m, L), sec = (m.sections || []).some((x) => Math.abs(x.start - L.a) < 0.05 && Math.abs(x.end - L.b) < 0.05);
-        $$("[data-bars]", root).forEach((b) => b.classList.toggle("on", +b.dataset.bars === 0 ? sec && ![8, 16, 32].includes(n) : +b.dataset.bars === n));
+        $$("[data-bars]", root).forEach((b) => b.classList.toggle("on", +b.dataset.bars === 0 ? sec && ![4, 8, 16, 32].includes(n) : +b.dataset.bars === n));
       }
       const sp = q(".speed");
       if (sp) {
@@ -1444,8 +1457,8 @@ function makeDeck(kind, root) {
   q(".loop-btn").addEventListener("click", () => toggleLoop());
   q(".speed")?.addEventListener("change", (e) => setSpeed(+e.target.value, e.target));
   q(".loop-edit").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-nudge]");
-    if (b) nudgeLoop(b.dataset.nudge, +b.dataset.dir);
+    const b = e.target.closest("[data-shift]");
+    if (b) shiftLoop(+b.dataset.shift);
     const n = e.target.closest("[data-bars]");
     if (n) loopBars(+n.dataset.bars);
   });
@@ -1675,17 +1688,16 @@ async function setSpeed(rate, select) {
   }
 }
 
-// Move the loop's start or end by one bar (the song's start and end count as bar lines).
-function nudgeLoop(edge, dir) {
+// Move the whole loop one bar earlier or later (the song's start and end count as bar lines).
+function shiftLoop(dir) {
   const L = engine.loop;
   if (!current || !L || recording) return;
   const m = current.m;
   const lines = [...new Set([0, ...m.downbeats, m.duration_s].map((t) => +t.toFixed(3)))].sort((x, y) => x - y);
-  const i = lines.reduce((best, t, j) => Math.abs(t - L[edge]) < Math.abs(lines[best] - L[edge]) ? j : best, 0);
-  const t = lines[Math.max(0, Math.min(lines.length - 1, i + dir))];
-  const next = { ...L, [edge]: t };
-  if (next.b - next.a < 0.5) return; // at least a bar
-  engine.setLoop(next);
+  const near = (t) => lines.reduce((best, u, j) => Math.abs(u - t) < Math.abs(lines[best] - t) ? j : best, 0);
+  const a = near(L.a) + dir, b = near(L.b) + dir;
+  if (a < 0 || b > lines.length - 1) return; // the loop stays inside the song
+  engine.setLoop({ a: lines[a], b: lines[b] });
 }
 
 function setupTimeline(deck, el) {

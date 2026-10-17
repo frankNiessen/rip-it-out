@@ -6,7 +6,6 @@ from __future__ import annotations
 import os
 import subprocess
 import uuid
-from functools import lru_cache
 from pathlib import Path
 
 from .config import WORK_DIR_NAME
@@ -18,25 +17,10 @@ class StretchError(RuntimeError):
     pass
 
 
-@lru_cache(maxsize=1)
-def _filter() -> str:
-    """Rubberband sounds better when this ffmpeg has it; atempo is always there."""
-    try:
-        out = subprocess.run(["ffmpeg", "-hide_banner", "-filters"], capture_output=True, text=True,
-                             encoding="utf-8", errors="replace", timeout=20).stdout
-    except (OSError, subprocess.SubprocessError):
-        return "atempo"
-    return "rubberband" if " rubberband " in out else "atempo"
-
-
-def _spec(rate: float) -> str:
-    if _filter() == "rubberband":
-        return f"rubberband=tempo={rate:.4f}:pitchq=quality"
-    return f"atempo={rate:.4f}"
-
-
 def rendered(library_dir: Path, folder: str, stem_file: Path, rate: float) -> Path:
-    """The stem at `rate` (0.5 is half speed). Returns the cached file, making it first."""
+    """The stem at `rate` (0.5 is half speed). Returns the cached file, making it first.
+    atempo is many times faster than rubberband, and good enough to practise with;
+    FLAC at its fastest setting keeps the files small without slowing the render."""
     if not MIN_RATE <= rate <= MAX_RATE:
         raise StretchError(f"Speed must be between {MIN_RATE:g} and {MAX_RATE:g}")
     stat = stem_file.stat()
@@ -50,7 +34,7 @@ def rendered(library_dir: Path, folder: str, stem_file: Path, rate: float) -> Pa
         old.unlink(missing_ok=True)
     tmp = out_dir / f".{uuid.uuid4().hex}.flac"
     cmd = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i", str(stem_file),
-           "-vn", "-af", _spec(rate), "-c:a", "flac", str(tmp)]
+           "-vn", "-af", f"atempo={rate:.4f}", "-c:a", "flac", "-compression_level", "0", str(tmp)]
     try:
         run = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if run.returncode != 0:

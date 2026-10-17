@@ -28,11 +28,12 @@ to the last song.
   and in a DAW: one track soloed at a time, soloing clears the mutes, and a track is
   muted or soloed, not both), the bar and beat counter, the tempo view with the song's
   sections, a count-in of one or two bars, and section loops: **Loop** loops the section
-  you are in, a section button moves the loop there, and **8 / 16 / 32** shortens the
+  you are in, a section button moves the loop there, and **4 / 8 / 16 / 32** shortens the
   loop to that many bars from where the loop starts (so the start of the section stays
-  the start; **Section** goes back to the whole section). The **speed** button plays
-  slower (90% down to 50%) without changing the pitch; it's for practising, so Record
-  and a take's page always play at full speed. Zoom with **−** / **+** or a pinch,
+  the start; **Section** goes back to the whole section), and the arrows move the loop a bar
+  at a time. The **speed** button (next to the time) plays slower (90% down to 50%) without
+  changing the pitch; the click stays a plain click on the slowed beats. It's for practising, so Record
+  and a take's page always play at full speed. With no loop on, zoom with **−** / **+** or a pinch,
   drag or tap in the tempo view (or **‹ Bar ›**) to start anywhere. Mute and solo reset
   when the app restarts, the Band fader and the click are kept.
 - **Record:** from the built-in microphone, a headset or a USB audio interface. Latency

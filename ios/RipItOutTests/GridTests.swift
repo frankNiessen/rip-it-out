@@ -28,6 +28,7 @@ final class GridTests: XCTestCase {
         XCTAssertEqual(g.loopEnd(from: 0.5, bars: 8, duration: 40), 16.5)
         XCTAssertEqual(g.loopEnd(from: 0, bars: 8, duration: 40), 16.5) // a section starting before the first bar line
         XCTAssertEqual(g.loopEnd(from: 20.5, bars: 32, duration: 40), 40) // not that many bars left: to the end
+        XCTAssertEqual(g.loopEnd(from: 0.5, bars: 4, duration: 40), 8.5)
         XCTAssertEqual(g.bars(from: 0.5, to: 16.5), 8)
         XCTAssertEqual(g.bars(from: 0, to: 40), 20)
     }
