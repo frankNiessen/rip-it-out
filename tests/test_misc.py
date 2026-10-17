@@ -1,3 +1,5 @@
+import shutil
+
 import numpy as np
 import pytest
 
@@ -130,6 +132,9 @@ def test_stem_formats_keep_length_and_alignment(tmp_path, fmt):
 
 def test_stretch_endpoint_slows_a_stem_and_keeps_its_pitch_length(client, song):
     import soundfile as sf
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg not installed")
     r = client.get(f"/api/library/{song.name}/stretch/drums?rate=0.5")
     assert r.status_code == 200
     out = song.parent / ".stemtool-work" / "stretch" / song.name
