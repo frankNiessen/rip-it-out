@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .config import WORK_DIR_NAME
 
-MIN_RATE, MAX_RATE = 0.5, 1.25
+MIN_RATE, MAX_RATE = 0.5, 1.5
 
 
 class StretchError(RuntimeError):

@@ -1261,7 +1261,7 @@ const engine = {
 
 // ---- decks (the player UI; Play and Record each have one) ---------------------
 // Faders per song layout: four tracks, or two for songs not converted yet ("music" is no_drums).
-const SPEEDS = [1, 0.9, 0.8, 0.75, 0.7, 0.6, 0.5];
+const SPEEDS = [1.5, 1.25, 1.1, 1, 0.9, 0.8, 0.75, 0.7, 0.6, 0.5];
 const STEM_FADERS = {
   4: [["drums", "Drums", 1], ["bass", "Bass", 1], ["vocals", "Vocals", 1], ["other", "Other", 1]],
   2: [["drums", "Drums", 1], ["music", "Music", 1]],
@@ -1313,7 +1313,7 @@ function makeDeck(kind, root) {
           <span class="stepper" title="Move the loop one bar"><button data-shift="-1" aria-label="Move the loop a bar earlier">‹</button><span>Move loop</span><button data-shift="1" aria-label="Move the loop a bar later">›</button></span>
         </span>
         ${kind === "play" ? `<label title="Slow the song down without changing its pitch">Speed <select class="speed">
-          ${SPEEDS.map((r) => `<option value="${r}">${Math.round(r * 100)}%</option>`).join("")}
+          ${SPEEDS.map((r) => `<option value="${r}"${r === 1 ? " selected" : ""}>${Math.round(r * 100)}%</option>`).join("")}
         </select></label><span class="speed-bpm"></span>` : ""}
         <label>Count-in <select class="countin">
           <option value="0">Off</option><option value="1">1 bar</option><option value="2">2 bars</option>

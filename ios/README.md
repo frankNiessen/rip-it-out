@@ -31,7 +31,7 @@ to the last song.
   you are in, a section button moves the loop there, and **4 / 8 / 16 / 32** shortens the
   loop to that many bars from where the loop starts (so the start of the section stays
   the start; **Section** goes back to the whole section), and the arrows move the loop a bar
-  at a time. The **speed** button (next to the time) plays slower (90% down to 50%) without
+  at a time. The **speed** button (next to the time) plays slower or faster (150% down to 50%) without
   changing the pitch; the click stays a plain click on the slowed beats. It's for practising, so Record
   and a take's page always play at full speed. With no loop on, zoom with **−** / **+** or a pinch,
   drag or tap in the tempo view to start anywhere. Mute and solo reset

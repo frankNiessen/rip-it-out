@@ -22,7 +22,7 @@ final class PlayerEngine {
     private(set) var loading = false
     private(set) var loop: Loop?
     /// Playback speed (1 is normal); the pitch stays where it is.
-    static let speeds: [Double] = [1, 0.9, 0.8, 0.75, 0.7, 0.6, 0.5]
+    static let speeds: [Double] = [1.5, 1.25, 1.1, 1, 0.9, 0.8, 0.75, 0.7, 0.6, 0.5]
     private(set) var rate: Double = 1
     private(set) var countInHosts: [Double] = []   // host seconds of the count-in clicks
     var countInBars: Int = UserDefaults.standard.object(forKey: "countInBars") as? Int ?? 1 {
