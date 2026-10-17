@@ -126,3 +126,16 @@ def test_stem_formats_keep_length_and_alignment(tmp_path, fmt):
     assert sr == 44100 and len(y) == len(x)
     assert abs(int(np.argmax(np.abs(y[:, 0]))) - 44100 * 2) <= 1
     assert np.allclose(audio.read_range(tmp_path / name, 44100, 100), y[44100:44100 + 100])
+
+
+def test_stretch_endpoint_slows_a_stem_and_keeps_its_pitch_length(client, song):
+    import soundfile as sf
+    r = client.get(f"/api/library/{song.name}/stretch/drums?rate=0.5")
+    assert r.status_code == 200
+    out = song.parent / ".stemtool-work" / "stretch" / song.name
+    (cached,) = out.glob("drums-500-*.flac")
+    info = sf.info(str(cached))
+    assert abs(info.duration - 24) < 0.5  # 12 s at half speed
+    assert client.get(f"/api/library/{song.name}/stretch/drums?rate=0.5").status_code == 200  # from the cache
+    assert client.get(f"/api/library/{song.name}/stretch/drums?rate=3").status_code == 400
+    assert client.get(f"/api/library/{song.name}/stretch/nothing?rate=0.5").status_code == 404

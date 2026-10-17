@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from yt_dlp.utils import DownloadError
 
-from . import __version__, audio, config, demo, library, localfiles, pipeline, sections, takes, youtube
+from . import __version__, audio, config, demo, library, localfiles, pipeline, sections, stretch, takes, youtube
 from .config import STYLES, load_settings
 from .jobs import JobManager
 
@@ -295,6 +295,20 @@ def song(folder: str) -> dict:
     if manifest is None:
         raise HTTPException(404, "Song not found")
     return manifest
+
+
+@app.get("/api/library/{folder}/stretch/{stem}")
+def stretched(folder: str, stem: str, rate: float) -> FileResponse:
+    """One stem at another speed (rate 0.75: three quarters), pitch unchanged."""
+    path = _song(folder)
+    manifest = library.read_manifest(settings.library_dir, folder) or {}
+    name = (manifest.get("stems") or {}).get("no_drums" if stem == "music" else stem)
+    if not name or not (path / name).is_file():
+        raise HTTPException(404, "Track not found")
+    try:
+        return FileResponse(stretch.rendered(settings.library_dir, path.name, path / name, rate))
+    except stretch.StretchError as exc:
+        raise HTTPException(400, str(exc))
 
 
 @app.post("/api/library/group")

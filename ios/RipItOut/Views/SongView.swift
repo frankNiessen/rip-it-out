@@ -165,6 +165,7 @@ struct SongView: View {
         if entering {
             player.pause() // Record starts the song itself
             if player.loop != nil { player.setLoop(nil) } // a take is one pass through the song
+            player.setSpeed(1)
             recorder.cameraOn = false // video only when you switch it on
         }
         Task { await recorder.updateCamera(active: true) }
@@ -419,6 +420,7 @@ struct TransportView: View {
                     .accessibilityLabel(recorder.cameraOn ? "Video on" : "Video off")
                 }
             }
+            if mode == .practice { SpeedAndLoopBars() }
             SectionStrip(locked: recording)
             if recording {
                 TimelineView(.animation(minimumInterval: 1 / 20)) { _ in
@@ -432,6 +434,49 @@ struct TransportView: View {
             }
         }
     }
+}
+
+/// Speed (slower, same pitch) and, while a loop is on, its length in bars: 8, 16 or 32
+/// from the start of the loop, or the whole section.
+struct SpeedAndLoopBars: View {
+    @Environment(PlayerEngine.self) private var player
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                Menu {
+                    ForEach(PlayerEngine.speeds, id: \.self) { r in
+                        Button { player.setSpeed(r) } label: {
+                            if r == player.rate { Label(Self.label(r), systemImage: "checkmark") } else { Text(Self.label(r)) }
+                        }
+                    }
+                } label: {
+                    Label(Self.label(player.rate), systemImage: "speedometer")
+                }
+                .buttonStyle(QuietButtonStyle(on: player.rate != 1))
+                .accessibilityLabel("Speed \(Self.label(player.rate))")
+                if let current = player.loopBars {
+                    Text("Loop").font(Theme.mono(11)).foregroundStyle(Theme.muted).padding(.leading, 6)
+                    ForEach([8, 16, 32], id: \.self) { n in
+                        Button("\(n)") { player.setLoopBars(n) }
+                            .buttonStyle(QuietButtonStyle(on: current == n))
+                            .accessibilityLabel("Loop \(n) bars")
+                    }
+                    Button("Section") { player.setLoopBars(0) }
+                        .buttonStyle(QuietButtonStyle(on: isSection))
+                        .accessibilityLabel("Loop the whole section")
+                }
+            }
+            .padding(.vertical, 1)
+        }
+    }
+
+    private var isSection: Bool {
+        guard let L = player.loop, let s = player.section(at: L.a) else { return false }
+        return L == PlayerEngine.Loop(a: s.start, b: s.end) && ![8, 16, 32].contains(player.loopBars ?? 0)
+    }
+
+    static func label(_ r: Double) -> String { "\(Int((r * 100).rounded()))%" }
 }
 
 struct LevelMeter: View {

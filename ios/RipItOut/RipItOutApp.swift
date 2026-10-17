@@ -24,7 +24,10 @@ struct RipItOutApp: App {
                 .preferredColorScheme(.dark)
                 .onChange(of: phase) {
                     if phase == .background { Task { await recorder.appInBackground() } }
-                    if phase == .active { Task { await recorder.appActive() } }
+                    if phase == .active {
+                        Task { await recorder.appActive() }
+                        Uploads.shared.run() // takes that were still on their way when the app was left
+                    }
                 }
                 // The screen stays on while the song plays or a take records: locking it
                 // would send the app to the background, which ends both.
