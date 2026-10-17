@@ -630,7 +630,6 @@ struct Caption: View {
                     if showSpeed { SpeedMenu() }
                     Spacer(minLength: 0)
                     if player.loop == nil {
-                        Stepper2(label: "Bar", back: { player.stepBar(-1) }, forward: { player.stepBar(1) })
                         HStack(spacing: 0) {
                             Button { player.zoom = max(1, player.zoom / 2) } label: { Text("−").frame(width: 30, height: 30) }
                                 .disabled(player.zoom <= 1)

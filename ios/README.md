@@ -34,7 +34,7 @@ to the last song.
   at a time. The **speed** button (next to the time) plays slower (90% down to 50%) without
   changing the pitch; the click stays a plain click on the slowed beats. It's for practising, so Record
   and a take's page always play at full speed. With no loop on, zoom with **−** / **+** or a pinch,
-  drag or tap in the tempo view (or **‹ Bar ›**) to start anywhere. Mute and solo reset
+  drag or tap in the tempo view to start anywhere. Mute and solo reset
   when the app restarts, the Band fader and the click are kept.
 - **Record:** from the built-in microphone, a headset or a USB audio interface. Latency
   is measured once with **Settings > Calibrate** (the same 20 clicks as on the desktop).

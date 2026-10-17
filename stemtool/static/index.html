@@ -238,6 +238,7 @@
   .transport select { padding: .3rem .45rem; font-size: .85rem; }
   .grid-tools { display: flex; align-items: center; gap: .3rem; margin-left: auto; flex-wrap: wrap; }
   .grid-tools .btn.quiet { padding: .2rem .5rem; min-width: 2.1rem; }
+  .grid-edit { display: inline-flex; align-items: center; gap: .3rem; flex-wrap: wrap; }
   .grid-tools .hint:not(:first-child) { margin-left: .6rem; }
   /* the mixer: one channel strip per track, like a console: name, fader, mute and solo */
   .mixer { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1rem; padding-top: .9rem; border-top: 1px solid var(--line); }
@@ -1309,7 +1310,7 @@ function makeDeck(kind, root) {
         <button class="btn quiet loop-btn" aria-pressed="false" title="Loop the current section (L). Or drag across the view, or click a section.">Loop</button>
         <span class="loop-edit" hidden>
           <span class="loop-bars" title="Loop this many bars from the start of the loop"><button class="btn quiet" data-bars="4">4</button><button class="btn quiet" data-bars="8">8</button><button class="btn quiet" data-bars="16">16</button><button class="btn quiet" data-bars="32">32</button><button class="btn quiet" data-bars="0" title="The whole section again">Section</button></span>
-          <span class="stepper" title="Move the loop one bar"><button data-shift="-1" aria-label="Move the loop a bar earlier">‹</button><span>Bar</span><button data-shift="1" aria-label="Move the loop a bar later">›</button></span>
+          <span class="stepper" title="Move the loop one bar"><button data-shift="-1" aria-label="Move the loop a bar earlier">‹</button><span>Move loop</span><button data-shift="1" aria-label="Move the loop a bar later">›</button></span>
         </span>
         ${kind === "play" ? `<label title="Slow the song down without changing its pitch">Speed <select class="speed">
           ${SPEEDS.map((r) => `<option value="${r}">${Math.round(r * 100)}%</option>`).join("")}
@@ -1317,15 +1318,17 @@ function makeDeck(kind, root) {
         <label>Count-in <select class="countin">
           <option value="0">Off</option><option value="1">1 bar</option><option value="2">2 bars</option>
         </select></label>
-        ${kind === "play" ? `<span class="grid-tools" title="Fix the beat grid if the click or bar numbers are off">
-          <span class="hint">Bar line</span>
+        ${kind === "play" ? `<span class="grid-tools">
+          <button class="btn quiet sec-toggle" aria-expanded="false" title="Change the song's parts (verse, chorus, ...) and fix the beat grid if the click or bar numbers are off">Edit sections</button>
+          <span class="grid-edit" hidden title="Fix the beat grid if the click or bar numbers are off">
+          <span class="hint">Move bar lines</span>
           <button class="btn quiet" data-grid="shift" data-steps="-1" aria-label="Move the bar line one beat earlier">◂</button>
           <button class="btn quiet" data-grid="shift" data-steps="1" aria-label="Move the bar line one beat later">▸</button>
           <span class="hint">Tempo</span>
           <button class="btn quiet" data-grid="double" aria-label="Double the tempo">×2</button>
           <button class="btn quiet" data-grid="half" aria-label="Halve the tempo">½</button>
           <button class="btn quiet" data-grid="clean" title="Back to the automatic grid">Undo edits</button>
-          <button class="btn quiet sec-toggle" aria-expanded="false" title="Rename, move, split or join the song's parts (verse, chorus, ...)">Sections</button>
+          </span>
         </span>` : ""}
       </div>
       ${kind === "play" ? `<div class="sec-edit" hidden></div>` : ""}
@@ -1603,7 +1606,11 @@ function setupSectionEditor(deck, toggle, panel) {
     busy = false;
     render();
   };
-  const show = (on) => { panel.hidden = !on; toggle.setAttribute("aria-expanded", String(on)); render(); };
+  const show = (on) => {
+    panel.hidden = !on; toggle.setAttribute("aria-expanded", String(on));
+    deck.root.querySelector(".grid-edit").hidden = !on; // bar lines and tempo are edited here, nowhere else
+    render();
+  };
   toggle.addEventListener("click", () => current && show(panel.hidden));
   deck.renderSections = render;
   panel.addEventListener("change", (e) => {
