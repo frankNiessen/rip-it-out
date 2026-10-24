@@ -362,16 +362,23 @@ final class PlayerEngine {
         e.attach(player)
         let fx = stretcher(for: key)
         e.attach(fx)
-        e.connect(player, to: fx, format: file.processingFormat)
+        // At normal speed the stretch unit is left out of the chain: even bypassed it can hold
+        // the sound back a little, and the click (which has none) would then run ahead of the stems.
+        let stretching = rate != 1 && key != "click"
+        var source: AVAudioNode = player
+        if stretching {
+            e.connect(player, to: fx, format: file.processingFormat)
+            source = fx
+        }
         if key == "take" {
-            let boost = AVAudioUnitEQ(numberOfBands: 0)
+            let boost = takeBoost ?? AVAudioUnitEQ(numberOfBands: 0)
             boost.globalGain = takeBoostDb
             e.attach(boost)
-            e.connect(fx, to: boost, format: file.processingFormat)
+            e.connect(source, to: boost, format: file.processingFormat)
             e.connect(boost, to: e.mainMixerNode, format: file.processingFormat)
             takeBoost = boost
         } else {
-            e.connect(fx, to: e.mainMixerNode, format: file.processingFormat)
+            e.connect(source, to: e.mainMixerNode, format: file.processingFormat)
         }
         player.volume = effectiveLevel(key)
     }
@@ -696,8 +703,10 @@ final class PlayerEngine {
         guard r != rate else { return }
         let was = isPlaying
         pause()
+        let rewire = (r == 1) != (rate == 1)
         rate = r
         for fx in stretchers.values { applyRate(to: fx) }
+        if rewire { for (key, player) in players { if let file = files[key] { connect(key, player, file, in: engine) } } }
         if was { play(countInBars: 0) }
     }
 
